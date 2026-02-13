@@ -1,0 +1,5 @@
+{
+  "name": "agent-dash",
+  "private": true,
+  "workspaces": ["apps/*"]
+}
