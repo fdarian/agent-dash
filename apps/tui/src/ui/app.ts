@@ -9,10 +9,10 @@ import { createPanePreview } from "./pane-preview.js"
 export const App = Effect.gen(function* () {
   const tmux = yield* TmuxClient
 
-  const renderer = await createCliRenderer({
+  const renderer = yield* Effect.promise(() => createCliRenderer({
     exitOnCtrlC: true,
     targetFps: 30,
-  })
+  }))
 
   const root = new BoxRenderable(renderer, {
     id: "root",
@@ -90,13 +90,5 @@ export const App = Effect.gen(function* () {
     })
   })
 
-  renderer.start()
-
-  yield* Effect.async<void>((resume) => {
-    renderer.on("destroy", () => {
-      resume(Effect.void)
-    })
-  })
-
-  yield* Fiber.interrupt(pollingFiber)
+  yield* renderer.render(root)
 })
