@@ -1,8 +1,8 @@
 import { Command } from '@effect/cli';
 import { BunContext, BunRuntime } from '@effect/platform-bun';
 import { Effect } from 'effect';
-import { App } from '../src/ui/app.js';
-import { TmuxClient } from '../src/services/tmux-client.js';
+import { App } from '../src/ui/app.ts';
+import { TmuxClient } from '../src/services/tmux-client.ts';
 import pkg from '../package.json' with { type: 'json' };
 
 const agentDashCmd = Command.make('agent-dash', {}, () =>

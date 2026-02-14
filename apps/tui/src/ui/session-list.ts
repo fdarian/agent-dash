@@ -3,8 +3,8 @@ import {
   TextRenderable,
   type CliRenderer,
 } from "@opentui/core"
-import type { ClaudeSession } from "../domain/session.js"
-import { PRIMARY_COLOR, UNFOCUSED_COLOR } from "./constants.js"
+import type { ClaudeSession } from "../domain/session.ts"
+import { PRIMARY_COLOR, UNFOCUSED_COLOR } from "./constants.ts"
 
 export function createSessionList(renderer: CliRenderer) {
   const box = new BoxRenderable(renderer, {

@@ -1,6 +1,6 @@
 import { TextRenderable, ScrollBoxRenderable, type CliRenderer } from "@opentui/core"
-import { PRIMARY_COLOR, UNFOCUSED_COLOR } from "./constants.js"
-import { parseAnsiToStyledText } from "./ansi-parser.js"
+import { PRIMARY_COLOR, UNFOCUSED_COLOR } from "./constants.ts"
+import { parseAnsiToStyledText } from "./ansi-parser.ts"
 
 export function createPanePreview(renderer: CliRenderer) {
   const scrollBox = new ScrollBoxRenderable(renderer, {

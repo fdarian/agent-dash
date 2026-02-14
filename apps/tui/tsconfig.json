@@ -1,6 +1,7 @@
 {
   "extends": "../../packages/config/tsconfig.json",
   "compilerOptions": {
-    "types": ["bun-types"]
+    "types": ["bun-types"],
+    "allowImportingTsExtensions": true
   }
 }

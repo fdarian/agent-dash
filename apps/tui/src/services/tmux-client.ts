@@ -1,5 +1,5 @@
 import { Effect, Context, Layer, Data } from "effect"
-import { type ClaudeSession, parseSessionStatus } from "../domain/session.js"
+import { type ClaudeSession, parseSessionStatus } from "../domain/session.ts"
 
 export class TmuxError extends Data.TaggedError("TmuxError")<{
   message: string

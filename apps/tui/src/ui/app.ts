@@ -1,9 +1,9 @@
 import { Effect, Ref, Schedule, Fiber } from "effect"
 import { createCliRenderer, BoxRenderable, KeyEvent } from "@opentui/core"
-import type { ClaudeSession } from "../domain/session.js"
-import { TmuxClient } from "../services/tmux-client.js"
-import { createSessionList } from "./session-list.js"
-import { createPanePreview } from "./pane-preview.js"
+import type { ClaudeSession } from "../domain/session.ts"
+import { TmuxClient } from "../services/tmux-client.ts"
+import { createSessionList } from "./session-list.ts"
+import { createPanePreview } from "./pane-preview.ts"
 
 export const App = Effect.gen(function* () {
   const tmux = yield* TmuxClient
