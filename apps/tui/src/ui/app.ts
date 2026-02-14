@@ -90,5 +90,13 @@ export const App = Effect.gen(function* () {
     })
   })
 
-  yield* renderer.render(root)
+  renderer.start()
+
+  yield* Effect.async<void>((resume) => {
+    renderer.on("destroy", () => {
+      resume(Effect.void)
+    })
+  })
+
+  yield* Fiber.interrupt(pollingFiber)
 })
