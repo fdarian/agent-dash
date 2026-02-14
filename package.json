@@ -6,7 +6,8 @@
 		"packages/*"
 	],
 	"scripts": {
-		"format": "biome check --write"
+		"format": "biome check --write",
+		"check:lint": "biome check"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.3.15"
