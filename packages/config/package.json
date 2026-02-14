@@ -1,7 +1,7 @@
 {
-  "name": "@agent-dash/config",
-  "private": true,
-  "dependencies": {
-    "@total-typescript/tsconfig": "latest"
-  }
+	"name": "@agent-dash/config",
+	"private": true,
+	"dependencies": {
+		"@total-typescript/tsconfig": "latest"
+	}
 }
