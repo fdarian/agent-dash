@@ -1,6 +1,5 @@
 import { Effect, Ref, Schedule, Fiber } from "effect"
-import { createCliRenderer } from "@opentui/core"
-import { BoxRenderable } from "@opentui/core"
+import { createCliRenderer, BoxRenderable, KeyEvent } from "@opentui/core"
 import type { ClaudeSession } from "../domain/session.js"
 import { TmuxClient } from "../services/tmux-client.js"
 import { createSessionList } from "./session-list.js"
@@ -66,7 +65,7 @@ export const App = Effect.gen(function* () {
   )
 
   yield* Effect.sync(() => {
-    renderer.keyInput.on("keypress", (key: { name: string }) => {
+    ;(renderer.keyInput as unknown as NodeJS.EventEmitter).on("keypress", (key: KeyEvent) => {
       const handler = Effect.gen(function* () {
         const sessions = yield* Ref.get(sessionsRef)
         const selectedIndex = yield* Ref.get(selectedIndexRef)
