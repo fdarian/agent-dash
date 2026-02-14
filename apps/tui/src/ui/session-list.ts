@@ -4,6 +4,7 @@ import {
   type CliRenderer,
 } from "@opentui/core"
 import type { ClaudeSession } from "../domain/session.js"
+import { PRIMARY_COLOR, UNFOCUSED_COLOR } from "./constants.js"
 
 export function createSessionList(renderer: CliRenderer) {
   const box = new BoxRenderable(renderer, {
@@ -11,11 +12,15 @@ export function createSessionList(renderer: CliRenderer) {
     width: 40,
     flexDirection: "column",
     border: true,
-    title: "Sessions",
+    title: "[1] Sessions",
     paddingX: 1,
   })
 
   let childIds: Array<string> = []
+
+  function setFocused(focused: boolean) {
+    box.borderColor = focused ? PRIMARY_COLOR : UNFOCUSED_COLOR
+  }
 
   function update(sessions: Array<ClaudeSession>, selectedIndex: number) {
     for (const id of childIds) {
@@ -52,5 +57,7 @@ export function createSessionList(renderer: CliRenderer) {
     }
   }
 
-  return { box, update }
+  setFocused(true)
+
+  return { box, update, setFocused }
 }

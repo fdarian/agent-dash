@@ -28,10 +28,27 @@ export const App = Effect.gen(function* () {
 
   const sessionsRef = yield* Ref.make<Array<ClaudeSession>>([])
   const selectedIndexRef = yield* Ref.make(0)
+  const focusRef = yield* Ref.make<"sessions" | "preview">("sessions")
 
   const refreshUI = Effect.gen(function* () {
     const sessions = yield* Ref.get(sessionsRef)
     const selectedIndex = yield* Ref.get(selectedIndexRef)
+    const focus = yield* Ref.get(focusRef)
+
+    const sessionsFocused = focus === "sessions"
+    const previewFocused = focus === "preview"
+
+    if (sessionsFocused) {
+      root.remove(panePreview.box.id)
+      root.add(sessionList.box)
+      root.add(panePreview.box)
+    } else {
+      root.remove(sessionList.box.id)
+    }
+
+    sessionList.setFocused(sessionsFocused)
+    panePreview.setFocused(previewFocused)
+
     sessionList.update(sessions, selectedIndex)
 
     if (sessions.length > 0 && selectedIndex < sessions.length) {
@@ -69,16 +86,31 @@ export const App = Effect.gen(function* () {
       const handler = Effect.gen(function* () {
         const sessions = yield* Ref.get(sessionsRef)
         const selectedIndex = yield* Ref.get(selectedIndexRef)
+        const focus = yield* Ref.get(focusRef)
 
-        if (key.name === "j" || key.name === "down") {
-          if (selectedIndex < sessions.length - 1) {
-            yield* Ref.set(selectedIndexRef, selectedIndex + 1)
-            yield* refreshUI
+        if (key.name === "1") {
+          yield* Ref.set(focusRef, "sessions")
+          yield* refreshUI
+        } else if (key.name === "0") {
+          yield* Ref.set(focusRef, "preview")
+          yield* refreshUI
+        } else if (key.name === "j" || key.name === "down") {
+          if (focus === "sessions") {
+            if (selectedIndex < sessions.length - 1) {
+              yield* Ref.set(selectedIndexRef, selectedIndex + 1)
+              yield* refreshUI
+            }
+          } else if (focus === "preview") {
+            panePreview.scrollBy(1)
           }
         } else if (key.name === "k" || key.name === "up") {
-          if (selectedIndex > 0) {
-            yield* Ref.set(selectedIndexRef, selectedIndex - 1)
-            yield* refreshUI
+          if (focus === "sessions") {
+            if (selectedIndex > 0) {
+              yield* Ref.set(selectedIndexRef, selectedIndex - 1)
+              yield* refreshUI
+            }
+          } else if (focus === "preview") {
+            panePreview.scrollBy(-1)
           }
         } else if (key.name === "q") {
           renderer.destroy()
@@ -92,7 +124,7 @@ export const App = Effect.gen(function* () {
   renderer.start()
 
   yield* Effect.async<void>((resume) => {
-    renderer.on("destroy", () => {
+    ;(renderer as unknown as NodeJS.EventEmitter).on("destroy", () => {
       resume(Effect.void)
     })
   })
