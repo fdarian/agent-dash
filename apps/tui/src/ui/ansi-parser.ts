@@ -226,12 +226,14 @@ function createChunk(text: string, state: StyleState): TextChunk {
 export function parseAnsiToStyledText(raw: string): StyledText {
 	const chunks: TextChunk[] = [];
 	const state = createDefaultState();
-	const ansiRegex = /\x1b\[([0-9;]*)m/g;
+	// biome-ignore lint/complexity/useRegexLiterals: RegExp constructor required to avoid control character in regex literal
+	const ansiRegex = new RegExp('\u001b\\[([0-9;]*)m', 'g');
 
 	let lastIndex = 0;
 	let match: RegExpExecArray | null;
 
-	while ((match = ansiRegex.exec(raw)) !== null) {
+	match = ansiRegex.exec(raw);
+	while (match !== null) {
 		if (match.index > lastIndex) {
 			const text = raw.slice(lastIndex, match.index);
 			if (text.length > 0) {
@@ -244,6 +246,7 @@ export function parseAnsiToStyledText(raw: string): StyledText {
 			parseAnsiCode(code, state);
 		}
 		lastIndex = ansiRegex.lastIndex;
+		match = ansiRegex.exec(raw);
 	}
 
 	if (lastIndex < raw.length) {
