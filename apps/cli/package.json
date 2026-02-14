@@ -1,5 +1,5 @@
 {
-	"name": "@agent-dash/tui",
+	"name": "@agent-dash/cli",
 	"version": "0.0.0",
 	"private": true,
 	"scripts": {

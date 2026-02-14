@@ -10,8 +10,8 @@
         "turbo": "^2.8.8",
       },
     },
-    "apps/tui": {
-      "name": "@agent-dash/tui",
+    "apps/cli": {
+      "name": "@agent-dash/cli",
       "version": "0.0.0",
       "dependencies": {
         "@agent-dash/config": "workspace:*",
@@ -32,9 +32,9 @@
     },
   },
   "packages": {
-    "@agent-dash/config": ["@agent-dash/config@workspace:packages/config"],
+    "@agent-dash/cli": ["@agent-dash/cli@workspace:apps/cli"],
 
-    "@agent-dash/tui": ["@agent-dash/tui@workspace:apps/tui"],
+    "@agent-dash/config": ["@agent-dash/config@workspace:packages/config"],
 
     "@biomejs/biome": ["@biomejs/biome@2.3.15", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.3.15", "@biomejs/cli-darwin-x64": "2.3.15", "@biomejs/cli-linux-arm64": "2.3.15", "@biomejs/cli-linux-arm64-musl": "2.3.15", "@biomejs/cli-linux-x64": "2.3.15", "@biomejs/cli-linux-x64-musl": "2.3.15", "@biomejs/cli-win32-arm64": "2.3.15", "@biomejs/cli-win32-x64": "2.3.15" }, "bin": { "biome": "bin/biome" } }, "sha512-u+jlPBAU2B45LDkjjNNYpc1PvqrM/co4loNommS9/sl9oSxsAQKsNZejYuUztvToB5oXi1tN/e62iNd6ESiY3g=="],
 
