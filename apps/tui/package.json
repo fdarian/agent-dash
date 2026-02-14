@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "bun run src/main.ts"
+    "dev": "bun run --watch src/main.ts"
   },
   "dependencies": {
     "@opentui/core": "latest",
