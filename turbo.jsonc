@@ -1,0 +1,10 @@
+{
+	"$schema": "https://turborepo.dev/schema.json",
+	"tasks": {
+		"check:tsc": {},
+		"check:lint": {},
+		"check": {
+			"dependsOn": ["check:tsc", "check:lint"]
+		}
+	}
+}
