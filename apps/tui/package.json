@@ -8,6 +8,7 @@
 		"check:lint": "biome check"
 	},
 	"dependencies": {
+		"@agent-dash/config": "workspace:*",
 		"@effect/cli": "^0.73.2",
 		"@effect/platform-bun": "^0.87.1",
 		"@opentui/core": "^0.1.79",
