@@ -1,8 +1,5 @@
 {
   "name": "agent-dash",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
-  "devDependencies": {
-    "bun-types": "^1.3.9"
-  }
+  "workspaces": ["apps/*", "packages/*"]
 }

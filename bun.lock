@@ -4,9 +4,6 @@
   "workspaces": {
     "": {
       "name": "agent-dash",
-      "devDependencies": {
-        "bun-types": "^1.3.9",
-      },
     },
     "apps/tui": {
       "name": "@agent-dash/tui",
