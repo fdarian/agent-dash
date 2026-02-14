@@ -86,6 +86,10 @@ function parseAnsiCode(code: string, state: StyleState): void {
 
   while (i < parts.length) {
     const n = parts[i]
+    if (n === undefined) {
+      i++
+      continue
+    }
 
     if (n === 0) {
       state.fg = undefined
@@ -120,55 +124,77 @@ function parseAnsiCode(code: string, state: StyleState): void {
     } else if (n === 29) {
       state.strikethrough = false
     } else if (n >= 30 && n <= 37) {
-      state.fg = ANSI_256_COLORS[n - 30]
+      const color = ANSI_256_COLORS[n - 30]
+      if (color !== undefined) {
+        state.fg = color
+      }
     } else if (n === 38) {
-      if (i + 1 < parts.length && parts[i + 1] === 5) {
+      const next = parts[i + 1]
+      if (next === 5) {
         if (i + 2 < parts.length) {
           const colorIndex = parts[i + 2]
-          const fgColor = ANSI_256_COLORS[colorIndex]
-          if (fgColor !== undefined) {
-            state.fg = fgColor
+          if (colorIndex !== undefined) {
+            const fgColor = ANSI_256_COLORS[colorIndex]
+            if (fgColor !== undefined) {
+              state.fg = fgColor
+            }
           }
           i += 2
         }
-      } else if (i + 1 < parts.length && parts[i + 1] === 2) {
+      } else if (next === 2) {
         if (i + 4 < parts.length) {
           const r = parts[i + 2]
           const g = parts[i + 3]
           const b = parts[i + 4]
-          state.fg = `#${toHex(r)}${toHex(g)}${toHex(b)}`
+          if (r !== undefined && g !== undefined && b !== undefined) {
+            state.fg = `#${toHex(r)}${toHex(g)}${toHex(b)}`
+          }
           i += 4
         }
       }
     } else if (n === 39) {
       state.fg = undefined
     } else if (n >= 40 && n <= 47) {
-      state.bg = ANSI_256_COLORS[n - 40]
+      const color = ANSI_256_COLORS[n - 40]
+      if (color !== undefined) {
+        state.bg = color
+      }
     } else if (n === 48) {
-      if (i + 1 < parts.length && parts[i + 1] === 5) {
+      const next = parts[i + 1]
+      if (next === 5) {
         if (i + 2 < parts.length) {
           const colorIndex = parts[i + 2]
-          const bgColor = ANSI_256_COLORS[colorIndex]
-          if (bgColor !== undefined) {
-            state.bg = bgColor
+          if (colorIndex !== undefined) {
+            const bgColor = ANSI_256_COLORS[colorIndex]
+            if (bgColor !== undefined) {
+              state.bg = bgColor
+            }
           }
           i += 2
         }
-      } else if (i + 1 < parts.length && parts[i + 1] === 2) {
+      } else if (next === 2) {
         if (i + 4 < parts.length) {
           const r = parts[i + 2]
           const g = parts[i + 3]
           const b = parts[i + 4]
-          state.bg = `#${toHex(r)}${toHex(g)}${toHex(b)}`
+          if (r !== undefined && g !== undefined && b !== undefined) {
+            state.bg = `#${toHex(r)}${toHex(g)}${toHex(b)}`
+          }
           i += 4
         }
       }
     } else if (n === 49) {
       state.bg = undefined
     } else if (n >= 90 && n <= 97) {
-      state.fg = ANSI_256_COLORS[n - 90 + 8]
+      const color = ANSI_256_COLORS[n - 90 + 8]
+      if (color !== undefined) {
+        state.fg = color
+      }
     } else if (n >= 100 && n <= 107) {
-      state.bg = ANSI_256_COLORS[n - 100 + 8]
+      const color = ANSI_256_COLORS[n - 100 + 8]
+      if (color !== undefined) {
+        state.bg = color
+      }
     }
 
     i++
@@ -213,7 +239,10 @@ export function parseAnsiToStyledText(raw: string): StyledText {
       }
     }
 
-    parseAnsiCode(match[1], state)
+    const code = match[1]
+    if (code !== undefined) {
+      parseAnsiCode(code, state)
+    }
     lastIndex = ansiRegex.lastIndex
   }
 

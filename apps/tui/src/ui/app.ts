@@ -53,10 +53,14 @@ export const App = Effect.gen(function* () {
 
     if (sessions.length > 0 && selectedIndex < sessions.length) {
       const selected = sessions[selectedIndex]
-      const content = yield* tmux.capturePaneContent(selected.paneTarget).pipe(
-        Effect.catchAll(() => Effect.succeed("(unable to capture pane)")),
-      )
-      panePreview.update(content)
+      if (selected !== undefined) {
+        const content = yield* tmux.capturePaneContent(selected.paneTarget).pipe(
+          Effect.catchAll(() => Effect.succeed("(unable to capture pane)")),
+        )
+        panePreview.update(content)
+      } else {
+        panePreview.update("")
+      }
     } else {
       panePreview.update("")
     }

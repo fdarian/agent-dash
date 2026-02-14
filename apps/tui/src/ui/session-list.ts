@@ -30,6 +30,8 @@ export function createSessionList(renderer: CliRenderer) {
 
     for (let i = 0; i < sessions.length; i++) {
       const session = sessions[i]
+      if (session === undefined) continue
+
       const isSelected = i === selectedIndex
       const icon = session.status === "active" ? "●" : "○"
       const id = `session-item-${i}`

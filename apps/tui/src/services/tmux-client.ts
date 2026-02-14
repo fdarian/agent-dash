@@ -44,7 +44,10 @@ export class TmuxClient extends Context.Tag("TmuxClient")<
           const panePid = parts[1]
           const paneTitle = parts[2]
           const paneTarget = parts[3]
+          if (!paneId || !panePid || !paneTitle || !paneTarget) continue
+
           const sessionName = paneTarget.split(":")[0]
+          if (!sessionName) continue
 
           const isClaude = yield* checkForClaudeProcess(panePid)
           if (!isClaude) continue
