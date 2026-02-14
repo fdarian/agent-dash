@@ -4,7 +4,8 @@
 	"private": true,
 	"scripts": {
 		"dev": "bun run --watch entries/cli.ts",
-		"check:tsc": "tsgo --noEmit"
+		"check:tsc": "tsgo --noEmit",
+		"check:lint": "biome check"
 	},
 	"dependencies": {
 		"@effect/cli": "^0.73.2",
