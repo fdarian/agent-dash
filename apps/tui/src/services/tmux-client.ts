@@ -62,7 +62,7 @@ export class TmuxClient extends Context.Tag("TmuxClient")<
       }),
 
       capturePaneContent: (paneTarget) =>
-        runCommand("tmux", ["capture-pane", "-t", paneTarget, "-p"]),
+        runCommand("tmux", ["capture-pane", "-e", "-t", paneTarget, "-p"]),
     }),
   )
 
