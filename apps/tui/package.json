@@ -3,9 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "bun run --watch src/main.ts"
+    "dev": "bun run --watch entries/cli.ts"
   },
   "dependencies": {
+    "@effect/cli": "^0.73.2",
+    "@effect/platform-bun": "^0.87.1",
     "@opentui/core": "latest",
     "effect": "^3"
   },
