@@ -1,5 +1,14 @@
 {
-  "name": "agent-dash",
-  "private": true,
-  "workspaces": ["apps/*", "packages/*"]
+	"name": "agent-dash",
+	"private": true,
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
+	"scripts": {
+		"format": "biome check --write"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.3.15"
+	}
 }
