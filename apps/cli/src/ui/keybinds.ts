@@ -12,6 +12,7 @@ const keybinds: Array<KeybindEntry> = [
 	{ key: 'h', description: 'Collapse group', context: 'sessions' },
 	{ key: 'l', description: 'Expand group', context: 'sessions' },
 	{ key: 'o', description: 'Switch to tmux pane', context: 'global' },
+	{ key: 'O', description: 'Open pane scrollback in popup', context: 'global' },
 	{ key: 'r', description: 'Mark session as read', context: 'sessions' },
 	{ key: '?', description: 'Toggle help', context: 'global' },
 	{ key: '/', description: 'Filter keybinds', context: 'global' },
