@@ -164,21 +164,22 @@ export const App = Effect.gen(function* () {
 						yield* Ref.set(focusRef, 'sessions');
 						yield* refreshSessionListUI;
 					} else if (key.name === '0') {
+						if (sessions.length > 0 && selectedIndex < sessions.length) {
+							const selected = sessions[selectedIndex];
+							if (selected !== undefined) {
+								yield* Ref.update(unreadPaneIdsRef, (set) => {
+									const next = new Set(set);
+									next.delete(selected.paneId);
+									return next;
+								});
+							}
+						}
 						yield* Ref.set(focusRef, 'preview');
 						yield* refreshSessionListUI;
 					} else if (key.name === 'j' || key.name === 'down') {
 						if (focus === 'sessions') {
 							if (selectedIndex < sessions.length - 1) {
-								const newIndex = selectedIndex + 1;
-								yield* Ref.set(selectedIndexRef, newIndex);
-								const newSelected = sessions[newIndex];
-								if (newSelected !== undefined) {
-									yield* Ref.update(unreadPaneIdsRef, (set) => {
-										const next = new Set(set);
-										next.delete(newSelected.paneId);
-										return next;
-									});
-								}
+								yield* Ref.set(selectedIndexRef, selectedIndex + 1);
 								yield* refreshSessionListUI;
 								yield* refreshPreviewUI;
 							}
@@ -188,16 +189,7 @@ export const App = Effect.gen(function* () {
 					} else if (key.name === 'k' || key.name === 'up') {
 						if (focus === 'sessions') {
 							if (selectedIndex > 0) {
-								const newIndex = selectedIndex - 1;
-								yield* Ref.set(selectedIndexRef, newIndex);
-								const newSelected = sessions[newIndex];
-								if (newSelected !== undefined) {
-									yield* Ref.update(unreadPaneIdsRef, (set) => {
-										const next = new Set(set);
-										next.delete(newSelected.paneId);
-										return next;
-									});
-								}
+								yield* Ref.set(selectedIndexRef, selectedIndex - 1);
 								yield* refreshSessionListUI;
 								yield* refreshPreviewUI;
 							}
