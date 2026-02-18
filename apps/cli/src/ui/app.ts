@@ -1,6 +1,7 @@
 import { BoxRenderable, createCliRenderer, type KeyEvent } from '@opentui/core';
 import { Effect, Fiber, Ref, Schedule } from 'effect';
 import { parseSessionStatus, type ClaudeSession, type SessionStatus } from '../domain/session.ts';
+import { AppConfig } from '../services/config.ts';
 import { TmuxClient, type CreatedPaneInfo } from '../services/tmux-client.ts';
 import { createPanePreview } from './pane-preview.ts';
 import { createSessionList } from './session-list.ts';
@@ -13,6 +14,7 @@ import { groupSessionsByName, buildVisibleItems, resolveSelectedIndex, type Visi
 export const App = Effect.gen(function* () {
 	const terminalBg = yield* detectTerminalBackground;
 
+	const config = yield* AppConfig;
 	const tmux = yield* TmuxClient;
 
 	const renderer = yield* Effect.promise(() =>
@@ -49,6 +51,7 @@ export const App = Effect.gen(function* () {
 	const collapsedGroupsRef = yield* Ref.make<Set<string>>(new Set());
 	const visibleItemsRef = yield* Ref.make<Array<VisibleItem>>([]);
 	const previousContentRef = yield* Ref.make<string | null>(null);
+	const displayNameMapRef = yield* Ref.make<Map<string, string>>(new Map());
 
 	const persistedState = yield* loadState;
 	yield* Ref.set(prevStatusMapRef, persistedState.prevStatusMap);
@@ -58,8 +61,9 @@ export const App = Effect.gen(function* () {
 		const sessions = yield* Ref.get(sessionsRef);
 		const collapsedGroups = yield* Ref.get(collapsedGroupsRef);
 		const unreadPaneIds = yield* Ref.get(unreadPaneIdsRef);
+		const displayNameMap = yield* Ref.get(displayNameMapRef);
 		const groups = groupSessionsByName(sessions);
-		return buildVisibleItems(groups, collapsedGroups, unreadPaneIds);
+		return buildVisibleItems(groups, collapsedGroups, unreadPaneIds, displayNameMap);
 	});
 
 	const getSelectedSession = Effect.gen(function* () {
@@ -118,6 +122,17 @@ export const App = Effect.gen(function* () {
 			Effect.catchAll(() => Effect.succeed([] as Array<ClaudeSession>)),
 		);
 		yield* Ref.set(sessionsRef, sessions);
+
+		const uniqueSessionNames = [...new Set(sessions.map((s) => s.sessionName))];
+		const formattedNames = yield* Effect.all(
+			uniqueSessionNames.map((name) => config.formatSessionName(name)),
+			{ concurrency: 'unbounded' },
+		);
+		const nextDisplayNameMap = new Map<string, string>();
+		for (let i = 0; i < uniqueSessionNames.length; i++) {
+			nextDisplayNameMap.set(uniqueSessionNames[i]!, formattedNames[i]!);
+		}
+		yield* Ref.set(displayNameMapRef, nextDisplayNameMap);
 
 		const prevStatusMap = yield* Ref.get(prevStatusMapRef);
 		const unreadPaneIds = yield* Ref.get(unreadPaneIdsRef);
