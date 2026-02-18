@@ -239,6 +239,19 @@ export const App = Effect.gen(function* () {
 		Effect.fork,
 	);
 
+	const markAsRead = (paneId: string) =>
+		Effect.gen(function* () {
+			yield* Ref.update(unreadPaneIdsRef, (set) => {
+				const next = new Set(set);
+				next.delete(paneId);
+				return next;
+			});
+			const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
+			const currentStatusMap = yield* Ref.get(prevStatusMapRef);
+			yield* saveState(updatedUnread, currentStatusMap);
+			yield* refreshSessionListUI;
+		});
+
 	yield* Effect.sync(() => {
 		(renderer.keyInput as unknown as NodeJS.EventEmitter).on(
 			'keypress',
@@ -356,15 +369,7 @@ export const App = Effect.gen(function* () {
 					} else if (key.name === 'r') {
 						const selected = yield* getSelectedSession;
 						if (selected !== undefined) {
-							yield* Ref.update(unreadPaneIdsRef, (set) => {
-								const next = new Set(set);
-								next.delete(selected.paneId);
-								return next;
-							});
-							const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
-							const currentStatusMap = yield* Ref.get(prevStatusMapRef);
-							yield* saveState(updatedUnread, currentStatusMap);
-							yield* refreshSessionListUI;
+							yield* markAsRead(selected.paneId);
 						}
 					} else if (key.name === 'o' && key.shift) {
 						const selected = yield* getSelectedSession;
@@ -377,6 +382,9 @@ export const App = Effect.gen(function* () {
 						if (focus === 'sessions') {
 							const currentItem = visibleItems[selectedIndex];
 							if (currentItem !== undefined) {
+								if (currentItem.kind === 'session') {
+									yield* markAsRead(currentItem.session.paneId);
+								}
 								const target = currentItem.kind === 'session'
 									? currentItem.session.paneTarget
 									: currentItem.kind === 'group-header'
