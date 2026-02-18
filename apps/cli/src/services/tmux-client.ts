@@ -1,5 +1,4 @@
 import { Data, Effect } from 'effect';
-import { basename } from 'path';
 import { type ClaudeSession, parseSessionStatus } from '../domain/session.ts';
 import { AppConfig } from './config.ts';
 
@@ -19,7 +18,6 @@ export interface CreatedPaneInfo {
 export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 	effect: Effect.gen(function* () {
 		const config = yield* AppConfig;
-		const commandBasename = basename(config.command);
 
 		return {
 			discoverSessions: Effect.gen(function* () {
@@ -53,8 +51,8 @@ export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 					const sessionName = paneTarget.split(':')[0];
 					if (!sessionName) continue;
 
-					const isMatch = yield* checkForProcess(panePid, commandBasename);
-					if (!isMatch) continue;
+					const isClaude = yield* checkForClaudeProcess(panePid);
+					if (!isClaude) continue;
 
 					sessions.push({
 						paneId,
@@ -168,9 +166,8 @@ function runCommand(
 	});
 }
 
-function checkForProcess(
+function checkForClaudeProcess(
 	parentPid: string,
-	command: string,
 ): Effect.Effect<boolean, TmuxError> {
 	return Effect.gen(function* () {
 		const selfComm = yield* runCommand('ps', [
@@ -179,7 +176,7 @@ function checkForProcess(
 			'-p',
 			parentPid,
 		]).pipe(Effect.catchAll(() => Effect.succeed('')));
-		if (selfComm.trim().endsWith(command)) return true;
+		if (selfComm.trim().endsWith('claude')) return true;
 
 		const pgrepOutput = yield* runCommand('pgrep', ['-P', parentPid]).pipe(
 			Effect.catchAll(() => Effect.succeed('')),
@@ -194,9 +191,9 @@ function checkForProcess(
 				'-p',
 				childPid,
 			]).pipe(Effect.catchAll(() => Effect.succeed('')));
-			if (comm.trim().endsWith(command)) return true;
+			if (comm.trim().endsWith('claude')) return true;
 
-			const nested = yield* checkForProcess(childPid, command);
+			const nested = yield* checkForClaudeProcess(childPid);
 			if (nested) return true;
 		}
 
