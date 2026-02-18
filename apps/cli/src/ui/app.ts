@@ -25,7 +25,6 @@ export const App = Effect.gen(function* () {
 	renderer.root.add(root);
 
 	const helpOverlay = createHelpOverlay(renderer);
-	renderer.root.add(helpOverlay.backdrop);
 	renderer.root.add(helpOverlay.modal);
 
 	const sessionList = createSessionList(renderer);

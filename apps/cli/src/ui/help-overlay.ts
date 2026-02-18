@@ -9,17 +9,6 @@ import { filterKeybinds } from './keybinds.ts';
 import { PRIMARY_COLOR } from './constants.ts';
 
 export function createHelpOverlay(renderer: CliRenderer) {
-	const backdrop = new BoxRenderable(renderer, {
-		id: 'help-backdrop',
-		position: 'absolute',
-		width: '100%',
-		height: '100%',
-		zIndex: 90,
-		backgroundColor: '#000000',
-		opacity: 0.5,
-		visible: false,
-	});
-
 	const modal = new BoxRenderable(renderer, {
 		id: 'help-modal',
 		position: 'absolute',
@@ -34,6 +23,7 @@ export function createHelpOverlay(renderer: CliRenderer) {
 		flexDirection: 'column',
 		paddingX: 1,
 		paddingY: 1,
+		backgroundColor: '#000000',
 		visible: false,
 	});
 
@@ -98,7 +88,6 @@ export function createHelpOverlay(renderer: CliRenderer) {
 
 	function show() {
 		visible = true;
-		backdrop.visible = true;
 		modal.visible = true;
 		filterActive = false;
 		filterInput.value = '';
@@ -108,7 +97,6 @@ export function createHelpOverlay(renderer: CliRenderer) {
 	function hide() {
 		visible = false;
 		filterActive = false;
-		backdrop.visible = false;
 		modal.visible = false;
 		modal.remove(filterInput.id);
 		filterInput.blur();
@@ -144,5 +132,5 @@ export function createHelpOverlay(renderer: CliRenderer) {
 		return filterActive;
 	}
 
-	return { backdrop, modal, show, hide, toggle, getIsVisible, showFilter, hideFilter, getIsFilterActive };
+	return { modal, show, hide, toggle, getIsVisible, showFilter, hideFilter, getIsFilterActive };
 }
