@@ -13,6 +13,7 @@ export function createPanePreview(renderer: CliRenderer) {
 		border: true,
 		title: '[0] Preview',
 		stickyScroll: true,
+		stickyStart: 'bottom',
 		scrollY: true,
 	});
 
@@ -28,7 +29,6 @@ export function createPanePreview(renderer: CliRenderer) {
 
 	function update(content: string) {
 		textContent.content = parseAnsiToStyledText(content);
-		scrollBox.scrollTop = scrollBox.scrollHeight;
 	}
 
 	function scrollBy(amount: number) {
