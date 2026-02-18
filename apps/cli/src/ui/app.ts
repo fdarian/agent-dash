@@ -7,6 +7,7 @@ import { createSessionList } from './session-list.ts';
 import { createHelpOverlay } from './help-overlay.ts';
 import { loadState, saveState } from '../services/state.ts';
 import { detectTerminalBackground } from '../utils/terminal.ts';
+import { groupSessionsByName, buildVisibleItems, resolveSelectedIndex, type VisibleItem } from './session-groups.ts';
 
 export const App = Effect.gen(function* () {
 	const terminalBg = yield* detectTerminalBackground;
@@ -41,13 +42,34 @@ export const App = Effect.gen(function* () {
 	const focusRef = yield* Ref.make<'sessions' | 'preview'>('sessions');
 	const prevStatusMapRef = yield* Ref.make<Map<string, SessionStatus>>(new Map());
 	const unreadPaneIdsRef = yield* Ref.make<Set<string>>(new Set());
+	const collapsedGroupsRef = yield* Ref.make<Set<string>>(new Set());
+	const visibleItemsRef = yield* Ref.make<Array<VisibleItem>>([]);
 
 	const persistedState = yield* loadState;
 	yield* Ref.set(prevStatusMapRef, persistedState.prevStatusMap);
 	yield* Ref.set(unreadPaneIdsRef, persistedState.unreadPaneIds);
 
-	const refreshSessionListUI = Effect.gen(function* () {
+	const getVisibleItems = Effect.gen(function* () {
 		const sessions = yield* Ref.get(sessionsRef);
+		const collapsedGroups = yield* Ref.get(collapsedGroupsRef);
+		const unreadPaneIds = yield* Ref.get(unreadPaneIdsRef);
+		const groups = groupSessionsByName(sessions);
+		return buildVisibleItems(groups, collapsedGroups, unreadPaneIds);
+	});
+
+	const getSelectedSession = Effect.gen(function* () {
+		const visibleItems = yield* Ref.get(visibleItemsRef);
+		const selectedIndex = yield* Ref.get(selectedIndexRef);
+		const item = visibleItems[selectedIndex];
+		if (item !== undefined && item.kind === 'session') {
+			return item.session;
+		}
+		return undefined;
+	});
+
+	const refreshSessionListUI = Effect.gen(function* () {
+		const visibleItems = yield* getVisibleItems;
+		yield* Ref.set(visibleItemsRef, visibleItems);
 		const selectedIndex = yield* Ref.get(selectedIndexRef);
 		const focus = yield* Ref.get(focusRef);
 
@@ -65,26 +87,18 @@ export const App = Effect.gen(function* () {
 		sessionList.setFocused(sessionsFocused);
 		panePreview.setFocused(previewFocused);
 
-		const unreadPaneIds = yield* Ref.get(unreadPaneIdsRef);
-		sessionList.update(sessions, selectedIndex, unreadPaneIds);
+		sessionList.update(visibleItems, selectedIndex);
 	});
 
 	const refreshPreviewUI = Effect.gen(function* () {
-		const sessions = yield* Ref.get(sessionsRef);
-		const selectedIndex = yield* Ref.get(selectedIndexRef);
-
-		if (sessions.length > 0 && selectedIndex < sessions.length) {
-			const selected = sessions[selectedIndex];
-			if (selected !== undefined) {
-				const content = yield* tmux
-					.capturePaneContent(selected.paneTarget)
-					.pipe(
-						Effect.catchAll(() => Effect.succeed('(unable to capture pane)')),
-					);
-				panePreview.update(content);
-			} else {
-				panePreview.update('');
-			}
+		const selected = yield* getSelectedSession;
+		if (selected !== undefined) {
+			const content = yield* tmux
+				.capturePaneContent(selected.paneTarget)
+				.pipe(
+					Effect.catchAll(() => Effect.succeed('(unable to capture pane)')),
+				);
+			panePreview.update(content);
 		} else {
 			panePreview.update('');
 		}
@@ -95,11 +109,6 @@ export const App = Effect.gen(function* () {
 			Effect.catchAll(() => Effect.succeed([] as Array<ClaudeSession>)),
 		);
 		yield* Ref.set(sessionsRef, sessions);
-
-		const selectedIndex = yield* Ref.get(selectedIndexRef);
-		if (selectedIndex >= sessions.length && sessions.length > 0) {
-			yield* Ref.set(selectedIndexRef, sessions.length - 1);
-		}
 
 		const prevStatusMap = yield* Ref.get(prevStatusMapRef);
 		const unreadPaneIds = yield* Ref.get(unreadPaneIdsRef);
@@ -125,6 +134,12 @@ export const App = Effect.gen(function* () {
 		yield* Ref.set(prevStatusMapRef, nextStatusMap);
 		yield* Ref.set(unreadPaneIdsRef, nextUnreadPaneIds);
 		yield* saveState(nextUnreadPaneIds, nextStatusMap);
+
+		const oldVisibleItems = yield* Ref.get(visibleItemsRef);
+		const oldSelectedIndex = yield* Ref.get(selectedIndexRef);
+		const newVisibleItems = yield* getVisibleItems;
+		const newSelectedIndex = resolveSelectedIndex(newVisibleItems, oldVisibleItems, oldSelectedIndex);
+		yield* Ref.set(selectedIndexRef, newSelectedIndex);
 
 		yield* refreshSessionListUI;
 	});
@@ -165,7 +180,7 @@ export const App = Effect.gen(function* () {
 						return;
 					}
 
-					const sessions = yield* Ref.get(sessionsRef);
+					const visibleItems = yield* Ref.get(visibleItemsRef);
 					const selectedIndex = yield* Ref.get(selectedIndexRef);
 					const focus = yield* Ref.get(focusRef);
 
@@ -173,15 +188,13 @@ export const App = Effect.gen(function* () {
 						yield* Ref.set(focusRef, 'sessions');
 						yield* refreshSessionListUI;
 					} else if (key.name === '0') {
-						if (sessions.length > 0 && selectedIndex < sessions.length) {
-							const selected = sessions[selectedIndex];
-							if (selected !== undefined) {
-								yield* Ref.update(unreadPaneIdsRef, (set) => {
-									const next = new Set(set);
-									next.delete(selected.paneId);
-									return next;
-								});
-							}
+						const selected = yield* getSelectedSession;
+						if (selected !== undefined) {
+							yield* Ref.update(unreadPaneIdsRef, (set) => {
+								const next = new Set(set);
+								next.delete(selected.paneId);
+								return next;
+							});
 							const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
 							const currentStatusMap = yield* Ref.get(prevStatusMapRef);
 							yield* saveState(updatedUnread, currentStatusMap);
@@ -190,8 +203,20 @@ export const App = Effect.gen(function* () {
 						yield* refreshSessionListUI;
 					} else if (key.name === 'j' || key.name === 'down') {
 						if (focus === 'sessions') {
-							if (selectedIndex < sessions.length - 1) {
-								yield* Ref.set(selectedIndexRef, selectedIndex + 1);
+							if (selectedIndex < visibleItems.length - 1) {
+								const newIndex = selectedIndex + 1;
+								yield* Ref.set(selectedIndexRef, newIndex);
+								const newItem = visibleItems[newIndex];
+								if (newItem !== undefined && newItem.kind === 'session') {
+									yield* Ref.update(unreadPaneIdsRef, (set) => {
+										const next = new Set(set);
+										next.delete(newItem.session.paneId);
+										return next;
+									});
+									const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
+									const currentStatusMap = yield* Ref.get(prevStatusMapRef);
+									yield* saveState(updatedUnread, currentStatusMap);
+								}
 								yield* refreshSessionListUI;
 								yield* refreshPreviewUI;
 							}
@@ -201,36 +226,87 @@ export const App = Effect.gen(function* () {
 					} else if (key.name === 'k' || key.name === 'up') {
 						if (focus === 'sessions') {
 							if (selectedIndex > 0) {
-								yield* Ref.set(selectedIndexRef, selectedIndex - 1);
+								const newIndex = selectedIndex - 1;
+								yield* Ref.set(selectedIndexRef, newIndex);
+								const newItem = visibleItems[newIndex];
+								if (newItem !== undefined && newItem.kind === 'session') {
+									yield* Ref.update(unreadPaneIdsRef, (set) => {
+										const next = new Set(set);
+										next.delete(newItem.session.paneId);
+										return next;
+									});
+									const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
+									const currentStatusMap = yield* Ref.get(prevStatusMapRef);
+									yield* saveState(updatedUnread, currentStatusMap);
+								}
 								yield* refreshSessionListUI;
 								yield* refreshPreviewUI;
 							}
 						} else if (focus === 'preview') {
 							panePreview.scrollBy(-1);
 						}
-					} else if (key.name === 'r') {
-						if (sessions.length > 0 && selectedIndex < sessions.length) {
-							const selected = sessions[selectedIndex];
-							if (selected !== undefined) {
-								yield* Ref.update(unreadPaneIdsRef, (set) => {
-									const next = new Set(set);
-									next.delete(selected.paneId);
-									return next;
-								});
-								const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
-								const currentStatusMap = yield* Ref.get(prevStatusMapRef);
-								yield* saveState(updatedUnread, currentStatusMap);
-								yield* refreshSessionListUI;
+					} else if (key.name === 'h') {
+						if (focus === 'sessions') {
+							const currentItem = visibleItems[selectedIndex];
+							if (currentItem !== undefined) {
+								if (currentItem.kind === 'group-header') {
+									yield* Ref.update(collapsedGroupsRef, (set) => {
+										const next = new Set(set);
+										next.add(currentItem.sessionName);
+										return next;
+									});
+									yield* refreshSessionListUI;
+									yield* refreshPreviewUI;
+								} else if (currentItem.kind === 'session') {
+									yield* Ref.update(collapsedGroupsRef, (set) => {
+										const next = new Set(set);
+										next.add(currentItem.groupSessionName);
+										return next;
+									});
+									const updatedVisibleItems = yield* getVisibleItems;
+									const headerIndex = updatedVisibleItems.findIndex(
+										(item) => item.kind === 'group-header' && item.sessionName === currentItem.groupSessionName,
+									);
+									if (headerIndex !== -1) {
+										yield* Ref.set(selectedIndexRef, headerIndex);
+									}
+									yield* refreshSessionListUI;
+									yield* refreshPreviewUI;
+								}
 							}
 						}
-					} else if (key.name === 'o') {
-						if (sessions.length > 0 && selectedIndex < sessions.length) {
-							const selected = sessions[selectedIndex];
-							if (selected !== undefined) {
-								yield* tmux.switchToPane(selected.paneTarget).pipe(
-									Effect.catchAll(() => Effect.void),
-								);
+					} else if (key.name === 'l') {
+						if (focus === 'sessions') {
+							const currentItem = visibleItems[selectedIndex];
+							if (currentItem !== undefined && currentItem.kind === 'group-header') {
+								yield* Ref.update(collapsedGroupsRef, (set) => {
+									const next = new Set(set);
+									next.delete(currentItem.sessionName);
+									return next;
+								});
+								yield* refreshSessionListUI;
+								yield* refreshPreviewUI;
 							}
+						}
+					} else if (key.name === 'r') {
+						const selected = yield* getSelectedSession;
+						if (selected !== undefined) {
+							yield* Ref.update(unreadPaneIdsRef, (set) => {
+								const next = new Set(set);
+								next.delete(selected.paneId);
+								return next;
+							});
+							const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
+							const currentStatusMap = yield* Ref.get(prevStatusMapRef);
+							yield* saveState(updatedUnread, currentStatusMap);
+							yield* refreshSessionListUI;
+						}
+					} else if (key.name === 'o') {
+						const selected = yield* getSelectedSession;
+						if (selected !== undefined) {
+							yield* tmux.switchToPane(selected.paneTarget).pipe(
+								Effect.catchAll(() => Effect.void),
+							);
 						}
 					} else if (key.name === '?') {
 						helpOverlay.toggle();
