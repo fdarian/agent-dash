@@ -1,6 +1,6 @@
 import { BoxRenderable, createCliRenderer, type KeyEvent } from '@opentui/core';
 import { Effect, Fiber, Ref, Schedule } from 'effect';
-import type { ClaudeSession } from '../domain/session.ts';
+import type { ClaudeSession, SessionStatus } from '../domain/session.ts';
 import { TmuxClient } from '../services/tmux-client.ts';
 import { createPanePreview } from './pane-preview.ts';
 import { createSessionList } from './session-list.ts';
@@ -31,6 +31,8 @@ export const App = Effect.gen(function* () {
 	const sessionsRef = yield* Ref.make<Array<ClaudeSession>>([]);
 	const selectedIndexRef = yield* Ref.make(0);
 	const focusRef = yield* Ref.make<'sessions' | 'preview'>('sessions');
+	const prevStatusMapRef = yield* Ref.make<Map<string, SessionStatus>>(new Map());
+	const unreadPaneIdsRef = yield* Ref.make<Set<string>>(new Set());
 
 	const refreshSessionListUI = Effect.gen(function* () {
 		const sessions = yield* Ref.get(sessionsRef);
@@ -51,7 +53,8 @@ export const App = Effect.gen(function* () {
 		sessionList.setFocused(sessionsFocused);
 		panePreview.setFocused(previewFocused);
 
-		sessionList.update(sessions, selectedIndex);
+		const unreadPaneIds = yield* Ref.get(unreadPaneIdsRef);
+		sessionList.update(sessions, selectedIndex, unreadPaneIds);
 	});
 
 	const refreshPreviewUI = Effect.gen(function* () {
@@ -85,6 +88,30 @@ export const App = Effect.gen(function* () {
 		if (selectedIndex >= sessions.length && sessions.length > 0) {
 			yield* Ref.set(selectedIndexRef, sessions.length - 1);
 		}
+
+		const prevStatusMap = yield* Ref.get(prevStatusMapRef);
+		const unreadPaneIds = yield* Ref.get(unreadPaneIdsRef);
+		const nextStatusMap = new Map<string, SessionStatus>();
+		const nextUnreadPaneIds = new Set(unreadPaneIds);
+		const currentPaneIds = new Set<string>();
+
+		for (const session of sessions) {
+			currentPaneIds.add(session.paneId);
+			nextStatusMap.set(session.paneId, session.status);
+			const prevStatus = prevStatusMap.get(session.paneId);
+			if (prevStatus === 'active' && session.status === 'idle') {
+				nextUnreadPaneIds.add(session.paneId);
+			}
+		}
+
+		for (const paneId of nextUnreadPaneIds) {
+			if (!currentPaneIds.has(paneId)) {
+				nextUnreadPaneIds.delete(paneId);
+			}
+		}
+
+		yield* Ref.set(prevStatusMapRef, nextStatusMap);
+		yield* Ref.set(unreadPaneIdsRef, nextUnreadPaneIds);
 
 		yield* refreshSessionListUI;
 	});
@@ -120,7 +147,16 @@ export const App = Effect.gen(function* () {
 					} else if (key.name === 'j' || key.name === 'down') {
 						if (focus === 'sessions') {
 							if (selectedIndex < sessions.length - 1) {
-								yield* Ref.set(selectedIndexRef, selectedIndex + 1);
+								const newIndex = selectedIndex + 1;
+								yield* Ref.set(selectedIndexRef, newIndex);
+								const newSelected = sessions[newIndex];
+								if (newSelected !== undefined) {
+									yield* Ref.update(unreadPaneIdsRef, (set) => {
+										const next = new Set(set);
+										next.delete(newSelected.paneId);
+										return next;
+									});
+								}
 								yield* refreshSessionListUI;
 								yield* refreshPreviewUI;
 							}
@@ -130,12 +166,33 @@ export const App = Effect.gen(function* () {
 					} else if (key.name === 'k' || key.name === 'up') {
 						if (focus === 'sessions') {
 							if (selectedIndex > 0) {
-								yield* Ref.set(selectedIndexRef, selectedIndex - 1);
+								const newIndex = selectedIndex - 1;
+								yield* Ref.set(selectedIndexRef, newIndex);
+								const newSelected = sessions[newIndex];
+								if (newSelected !== undefined) {
+									yield* Ref.update(unreadPaneIdsRef, (set) => {
+										const next = new Set(set);
+										next.delete(newSelected.paneId);
+										return next;
+									});
+								}
 								yield* refreshSessionListUI;
 								yield* refreshPreviewUI;
 							}
 						} else if (focus === 'preview') {
 							panePreview.scrollBy(-1);
+						}
+					} else if (key.name === 'r') {
+						if (sessions.length > 0 && selectedIndex < sessions.length) {
+							const selected = sessions[selectedIndex];
+							if (selected !== undefined) {
+								yield* Ref.update(unreadPaneIdsRef, (set) => {
+									const next = new Set(set);
+									next.delete(selected.paneId);
+									return next;
+								});
+								yield* refreshSessionListUI;
+							}
 						}
 					} else if (key.name === 'o') {
 						if (sessions.length > 0 && selectedIndex < sessions.length) {

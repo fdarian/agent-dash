@@ -1,6 +1,6 @@
 import { BoxRenderable, type CliRenderer, TextRenderable } from '@opentui/core';
 import type { ClaudeSession } from '../domain/session.ts';
-import { PRIMARY_COLOR, UNFOCUSED_COLOR } from './constants.ts';
+import { PRIMARY_COLOR, UNFOCUSED_COLOR, UNREAD_COLOR } from './constants.ts';
 
 export function createSessionList(renderer: CliRenderer) {
 	const box = new BoxRenderable(renderer, {
@@ -18,7 +18,7 @@ export function createSessionList(renderer: CliRenderer) {
 		box.borderColor = focused ? PRIMARY_COLOR : UNFOCUSED_COLOR;
 	}
 
-	function update(sessions: Array<ClaudeSession>, selectedIndex: number) {
+	function update(sessions: Array<ClaudeSession>, selectedIndex: number, unreadPaneIds: Set<string>) {
 		for (const id of childIds) {
 			box.remove(id);
 		}
@@ -29,13 +29,20 @@ export function createSessionList(renderer: CliRenderer) {
 			if (session === undefined) continue;
 
 			const isSelected = i === selectedIndex;
-			const icon = session.status === 'active' ? '●' : '○';
+			const isUnread = unreadPaneIds.has(session.paneId);
+
+			const iconInfo = session.status === 'active'
+				? { icon: '●', defaultFg: PRIMARY_COLOR }
+				: isUnread
+					? { icon: '◉', defaultFg: UNREAD_COLOR }
+					: { icon: '○', defaultFg: '#AAAAAA' };
+
 			const id = `session-item-${i}`;
 
 			const text = new TextRenderable(renderer, {
 				id,
-				content: `${icon} ${session.title || session.sessionName}`,
-				fg: isSelected ? '#FFFFFF' : '#AAAAAA',
+				content: `${iconInfo.icon} ${session.title || session.sessionName}`,
+				fg: isSelected ? '#FFFFFF' : iconInfo.defaultFg,
 				bg: isSelected ? '#444444' : undefined,
 			});
 
