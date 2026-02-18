@@ -315,6 +315,9 @@ export const App = Effect.gen(function* () {
 									yield* tmux.createWindow(sessionName).pipe(
 										Effect.catchAll(() => Effect.void),
 									);
+									yield* tmux.switchToPane(sessionName).pipe(
+										Effect.catchAll(() => Effect.void),
+									);
 								}
 							}
 						}
