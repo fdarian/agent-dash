@@ -47,6 +47,7 @@ export const App = Effect.gen(function* () {
 	const visibleItemsRef = yield* Ref.make<Array<VisibleItem>>([]);
 	const pipePaneFileRef = yield* Ref.make<string | null>(null);
 	const previousPaneTargetRef = yield* Ref.make<string | null>(null);
+	const restartFileWatcherRef = yield* Ref.make<(() => void) | null>(null);
 
 	const persistedState = yield* loadState;
 	yield* Ref.set(prevStatusMapRef, persistedState.prevStatusMap);
@@ -122,6 +123,8 @@ export const App = Effect.gen(function* () {
 			yield* Ref.set(pipePaneFileRef, tmpFile);
 			yield* Ref.set(previousPaneTargetRef, paneTarget);
 			yield* refreshPreviewUI;
+			const restartFileWatcher = yield* Ref.get(restartFileWatcherRef);
+			if (restartFileWatcher !== null) restartFileWatcher();
 		});
 
 	const cleanupPipePane = Effect.gen(function* () {
@@ -188,12 +191,7 @@ export const App = Effect.gen(function* () {
 		}
 	});
 
-	yield* startPreviewWatcher;
-
-	const sessionsFiber = yield* pollSessions.pipe(
-		Effect.repeat(Schedule.fixed('2 seconds')),
-		Effect.fork,
-	);
+	yield* pollSessions;
 
 	const fileWatcherFiber = yield* Effect.async<never>((resume) => {
 		let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -201,6 +199,12 @@ export const App = Effect.gen(function* () {
 		let watchedPath: string | null = null;
 
 		const startWatching = () => {
+			if (currentWatcher !== null) {
+				currentWatcher.close();
+				currentWatcher = null;
+				watchedPath = null;
+			}
+
 			const tmpFile = Effect.runSync(Ref.get(pipePaneFileRef));
 			if (tmpFile === null) return;
 
@@ -220,15 +224,14 @@ export const App = Effect.gen(function* () {
 			}
 		};
 
+		Effect.runSync(Ref.set(restartFileWatcherRef, startWatching));
+
 		startWatching();
 
 		const checkInterval = setInterval(() => {
 			const tmpFile = Effect.runSync(Ref.get(pipePaneFileRef));
 			if (currentWatcher !== null) {
 				if (watchedPath !== tmpFile) {
-					currentWatcher.close();
-					currentWatcher = null;
-					watchedPath = null;
 					startWatching();
 				}
 			} else if (tmpFile !== null) {
@@ -242,6 +245,13 @@ export const App = Effect.gen(function* () {
 			clearInterval(checkInterval);
 		});
 	}).pipe(Effect.fork);
+
+	yield* startPreviewWatcher;
+
+	const sessionsFiber = yield* pollSessions.pipe(
+		Effect.repeat(Schedule.fixed('2 seconds')),
+		Effect.fork,
+	);
 
 	const fallbackPreviewFiber = yield* refreshPreviewUI.pipe(
 		Effect.repeat(Schedule.fixed('5 seconds')),
