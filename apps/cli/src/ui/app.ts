@@ -359,11 +359,20 @@ export const App = Effect.gen(function* () {
 							);
 						}
 					} else if (key.name === 'o') {
-						const selected = yield* getSelectedSession;
-						if (selected !== undefined) {
-							yield* tmux.switchToPane(selected.paneTarget).pipe(
-								Effect.catchAll(() => Effect.void),
-							);
+						if (focus === 'sessions') {
+							const currentItem = visibleItems[selectedIndex];
+							if (currentItem !== undefined) {
+								const target = currentItem.kind === 'session'
+									? currentItem.session.paneTarget
+									: currentItem.kind === 'group-header'
+										? currentItem.sessionName
+										: undefined;
+								if (target !== undefined) {
+									yield* tmux.switchToPane(target).pipe(
+										Effect.catchAll(() => Effect.void),
+									);
+								}
+							}
 						}
 					} else if (key.name === 'c') {
 						if (focus === 'sessions') {
