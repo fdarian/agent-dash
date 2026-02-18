@@ -173,6 +173,7 @@ export const App = Effect.gen(function* () {
 								Effect.catchAll(() => Effect.void),
 							);
 							confirmDialog.hide();
+							yield* pollSessions;
 						} else if (key.name === 'escape') {
 							key.preventDefault();
 							confirmDialog.hide();
@@ -318,6 +319,7 @@ export const App = Effect.gen(function* () {
 									yield* tmux.switchToPane(sessionName).pipe(
 										Effect.catchAll(() => Effect.void),
 									);
+									yield* pollSessions;
 								}
 							}
 						}
