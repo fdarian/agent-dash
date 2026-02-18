@@ -34,7 +34,6 @@ export function createHelpOverlay(renderer: CliRenderer) {
 		flexDirection: 'column',
 		paddingX: 1,
 		paddingY: 1,
-		backgroundColor: '#1E1E1E',
 		visible: false,
 	});
 
@@ -43,9 +42,7 @@ export function createHelpOverlay(renderer: CliRenderer) {
 		placeholder: 'Type to filter...',
 		placeholderColor: '#666666',
 		width: '100%',
-		visible: false,
 	});
-	modal.add(filterInput);
 
 	const keybindList = new ScrollBoxRenderable(renderer, {
 		id: 'help-keybind-list',
@@ -104,7 +101,6 @@ export function createHelpOverlay(renderer: CliRenderer) {
 		backdrop.visible = true;
 		modal.visible = true;
 		filterActive = false;
-		filterInput.visible = false;
 		filterInput.value = '';
 		renderKeybinds('');
 	}
@@ -114,7 +110,7 @@ export function createHelpOverlay(renderer: CliRenderer) {
 		filterActive = false;
 		backdrop.visible = false;
 		modal.visible = false;
-		filterInput.visible = false;
+		modal.remove(filterInput.id);
 		filterInput.blur();
 	}
 
@@ -128,13 +124,13 @@ export function createHelpOverlay(renderer: CliRenderer) {
 
 	function showFilter() {
 		filterActive = true;
-		filterInput.visible = true;
+		modal.add(filterInput);
 		filterInput.focus();
 	}
 
 	function hideFilter() {
 		filterActive = false;
-		filterInput.visible = false;
+		modal.remove(filterInput.id);
 		filterInput.blur();
 		filterInput.value = '';
 		renderKeybinds('');
