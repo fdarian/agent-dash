@@ -12,10 +12,9 @@ type PersistedState = {
 };
 
 export const loadState = Effect.gen(function* () {
-	const raw = yield* Effect.tryPromise({
-		try: () => Bun.file(STATE_FILE).text(),
-		catch: () => null,
-	});
+	const raw = yield* Effect.tryPromise(() => Bun.file(STATE_FILE).text()).pipe(
+		Effect.catchAll(() => Effect.succeed(null)),
+	);
 
 	if (raw === null) {
 		return {
@@ -24,10 +23,9 @@ export const loadState = Effect.gen(function* () {
 		};
 	}
 
-	const parsed = yield* Effect.try({
-		try: () => JSON.parse(raw) as PersistedState,
-		catch: () => null,
-	});
+	const parsed = yield* Effect.try(() => JSON.parse(raw) as PersistedState).pipe(
+		Effect.catchAll(() => Effect.succeed(null)),
+	);
 
 	if (parsed === null) {
 		return {
@@ -52,13 +50,10 @@ export function saveState(
 			prevStatusMap: Object.fromEntries(prevStatusMap),
 		};
 
-		yield* Effect.tryPromise({
-			try: async () => {
-				const { mkdir } = await import('fs/promises');
-				await mkdir(STATE_DIR, { recursive: true });
-				await Bun.write(STATE_FILE, JSON.stringify(data));
-			},
-			catch: () => null,
-		});
+		yield* Effect.tryPromise(async () => {
+			const { mkdir } = await import('fs/promises');
+			await mkdir(STATE_DIR, { recursive: true });
+			await Bun.write(STATE_FILE, JSON.stringify(data));
+		}).pipe(Effect.catchAll(() => Effect.void));
 	});
 }
