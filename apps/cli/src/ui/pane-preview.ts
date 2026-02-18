@@ -28,6 +28,7 @@ export function createPanePreview(renderer: CliRenderer) {
 
 	function update(content: string) {
 		textContent.content = parseAnsiToStyledText(content);
+		scrollBox.scrollTop = scrollBox.scrollHeight;
 	}
 
 	function scrollBy(amount: number) {
