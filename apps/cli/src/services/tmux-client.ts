@@ -59,6 +59,12 @@ export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 
 		switchToPane: (paneTarget: string) =>
 			runCommand('tmux', ['switch-client', '-t', paneTarget]).pipe(Effect.asVoid),
+
+		createWindow: (sessionName: string) =>
+			runCommand('tmux', ['new-window', '-t', sessionName, 'claude']).pipe(Effect.asVoid),
+
+		killPane: (paneTarget: string) =>
+			runCommand('tmux', ['kill-pane', '-t', paneTarget]).pipe(Effect.asVoid),
 	},
 }) {}
 
