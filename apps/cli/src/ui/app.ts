@@ -1,6 +1,5 @@
 import { BoxRenderable, createCliRenderer, type KeyEvent } from '@opentui/core';
 import { Effect, Fiber, Ref, Schedule } from 'effect';
-import * as fs from 'node:fs';
 import { parseSessionStatus, type ClaudeSession, type SessionStatus } from '../domain/session.ts';
 import { TmuxClient, type CreatedPaneInfo } from '../services/tmux-client.ts';
 import { createPanePreview } from './pane-preview.ts';
@@ -49,9 +48,7 @@ export const App = Effect.gen(function* () {
 	const unreadPaneIdsRef = yield* Ref.make<Set<string>>(new Set());
 	const collapsedGroupsRef = yield* Ref.make<Set<string>>(new Set());
 	const visibleItemsRef = yield* Ref.make<Array<VisibleItem>>([]);
-	const pipePaneFileRef = yield* Ref.make<string | null>(null);
-	const previousPaneTargetRef = yield* Ref.make<string | null>(null);
-	const restartFileWatcherRef = yield* Ref.make<(() => void) | null>(null);
+	const previousContentRef = yield* Ref.make<string | null>(null);
 
 	const persistedState = yield* loadState;
 	yield* Ref.set(prevStatusMapRef, persistedState.prevStatusMap);
@@ -106,46 +103,14 @@ export const App = Effect.gen(function* () {
 				.pipe(
 					Effect.catchAll(() => Effect.succeed('(unable to capture pane)')),
 				);
-			panePreview.update(content);
+			const previousContent = yield* Ref.get(previousContentRef);
+			if (content !== previousContent) {
+				yield* Ref.set(previousContentRef, content);
+				panePreview.update(content);
+			}
 		} else {
 			panePreview.update('');
 		}
-	});
-
-	const setupPipePane = (paneTarget: string) =>
-		Effect.gen(function* () {
-			const previousTarget = yield* Ref.get(previousPaneTargetRef);
-			if (previousTarget !== null) {
-				yield* tmux.stopPipePane(previousTarget).pipe(
-					Effect.catchAll(() => Effect.void),
-				);
-			}
-
-			const tmpFile = yield* tmux.startPipePane(paneTarget).pipe(
-				Effect.catchAll(() => Effect.succeed(null as string | null)),
-			);
-			yield* Ref.set(pipePaneFileRef, tmpFile);
-			yield* Ref.set(previousPaneTargetRef, paneTarget);
-			yield* refreshPreviewUI;
-			const restartFileWatcher = yield* Ref.get(restartFileWatcherRef);
-			if (restartFileWatcher !== null) restartFileWatcher();
-		});
-
-	const cleanupPipePane = Effect.gen(function* () {
-		const previousTarget = yield* Ref.get(previousPaneTargetRef);
-		if (previousTarget !== null) {
-			yield* tmux.stopPipePane(previousTarget).pipe(
-				Effect.catchAll(() => Effect.void),
-			);
-		}
-		const tmpFile = yield* Ref.get(pipePaneFileRef);
-		if (tmpFile !== null) {
-			yield* Effect.try(() => fs.unlinkSync(tmpFile)).pipe(
-				Effect.catchAll(() => Effect.void),
-			);
-		}
-		yield* Ref.set(pipePaneFileRef, null);
-		yield* Ref.set(previousPaneTargetRef, null);
 	});
 
 	const pollSessions = Effect.gen(function* () {
@@ -247,77 +212,15 @@ export const App = Effect.gen(function* () {
 			yield* refreshSessionListUI;
 		});
 
-	const startPreviewWatcher = Effect.gen(function* () {
-		const selected = yield* getSelectedSession;
-		if (selected !== undefined) {
-			yield* setupPipePane(selected.paneTarget);
-		}
-	});
-
 	yield* pollSessions;
-
-	const fileWatcherFiber = yield* Effect.async<never>((resume) => {
-		let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-		let currentWatcher: fs.FSWatcher | null = null;
-		let watchedPath: string | null = null;
-
-		const startWatching = () => {
-			if (currentWatcher !== null) {
-				currentWatcher.close();
-				currentWatcher = null;
-				watchedPath = null;
-			}
-
-			const tmpFile = Effect.runSync(Ref.get(pipePaneFileRef));
-			if (tmpFile === null) return;
-
-			try {
-				if (!fs.existsSync(tmpFile)) {
-					fs.writeFileSync(tmpFile, '');
-				}
-				currentWatcher = fs.watch(tmpFile, () => {
-					if (debounceTimer !== null) clearTimeout(debounceTimer);
-					debounceTimer = setTimeout(() => {
-						Effect.runPromise(refreshPreviewUI).catch(() => {});
-					}, 100);
-				});
-				watchedPath = tmpFile;
-			} catch {
-				// File watch failed, fallback poll will handle it
-			}
-		};
-
-		Effect.runSync(Ref.set(restartFileWatcherRef, startWatching));
-
-		startWatching();
-
-		const checkInterval = setInterval(() => {
-			const tmpFile = Effect.runSync(Ref.get(pipePaneFileRef));
-			if (currentWatcher !== null) {
-				if (watchedPath !== tmpFile) {
-					startWatching();
-				}
-			} else if (tmpFile !== null) {
-				startWatching();
-			}
-		}, 500);
-
-		return Effect.sync(() => {
-			if (debounceTimer !== null) clearTimeout(debounceTimer);
-			if (currentWatcher !== null) currentWatcher.close();
-			clearInterval(checkInterval);
-		});
-	}).pipe(Effect.fork);
-
-	yield* startPreviewWatcher;
 
 	const sessionsFiber = yield* pollSessions.pipe(
 		Effect.repeat(Schedule.fixed('2 seconds')),
 		Effect.fork,
 	);
 
-	const fallbackPreviewFiber = yield* refreshPreviewUI.pipe(
-		Effect.repeat(Schedule.fixed('5 seconds')),
+	const previewPollFiber = yield* refreshPreviewUI.pipe(
+		Effect.repeat(Schedule.fixed('200 millis')),
 		Effect.fork,
 	);
 
@@ -375,10 +278,8 @@ export const App = Effect.gen(function* () {
 							if (selectedIndex < visibleItems.length - 1) {
 								yield* Ref.set(selectedIndexRef, selectedIndex + 1);
 								yield* refreshSessionListUI;
-								const selectedAfterJ = yield* getSelectedSession;
-								if (selectedAfterJ !== undefined) {
-									yield* setupPipePane(selectedAfterJ.paneTarget);
-								}
+								yield* Ref.set(previousContentRef, null);
+								yield* refreshPreviewUI;
 							}
 						} else if (focus === 'preview') {
 							panePreview.scrollBy(1);
@@ -388,10 +289,8 @@ export const App = Effect.gen(function* () {
 							if (selectedIndex > 0) {
 								yield* Ref.set(selectedIndexRef, selectedIndex - 1);
 								yield* refreshSessionListUI;
-								const selectedAfterK = yield* getSelectedSession;
-								if (selectedAfterK !== undefined) {
-									yield* setupPipePane(selectedAfterK.paneTarget);
-								}
+								yield* Ref.set(previousContentRef, null);
+								yield* refreshPreviewUI;
 							}
 						} else if (focus === 'preview') {
 							panePreview.scrollBy(-1);
@@ -522,7 +421,5 @@ export const App = Effect.gen(function* () {
 	});
 
 	yield* Fiber.interrupt(sessionsFiber);
-	yield* Fiber.interrupt(fileWatcherFiber);
-	yield* Fiber.interrupt(fallbackPreviewFiber);
-	yield* cleanupPipePane;
+	yield* Fiber.interrupt(previewPollFiber);
 });

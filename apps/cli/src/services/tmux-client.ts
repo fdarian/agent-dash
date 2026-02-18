@@ -79,20 +79,6 @@ export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 				`tmux capture-pane -S - -e -p -t ${paneTarget} | less -R`,
 			]).pipe(Effect.asVoid),
 
-		startPipePane: (paneTarget: string) => {
-			const tmpFile = `/tmp/agent-dash-pipe-${paneTarget.replace(/[^a-zA-Z0-9]/g, '-')}`;
-			return runCommand('tmux', [
-				'pipe-pane',
-				'-O',
-				'-t',
-				paneTarget,
-				`cat >> ${tmpFile}`,
-			]).pipe(Effect.as(tmpFile));
-		},
-
-		stopPipePane: (paneTarget: string) =>
-			runCommand('tmux', ['pipe-pane', '-t', paneTarget]).pipe(Effect.asVoid),
-
 		createWindow: (sessionName: string, cwd?: string) =>
 			Effect.gen(function* () {
 				const format = [
