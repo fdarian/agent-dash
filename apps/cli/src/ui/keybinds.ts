@@ -13,6 +13,8 @@ const keybinds: Array<KeybindEntry> = [
 	{ key: 'l', description: 'Expand group', context: 'sessions' },
 	{ key: 'o', description: 'Switch to tmux pane', context: 'global' },
 	{ key: 'r', description: 'Mark session as read', context: 'sessions' },
+	{ key: 'c', description: 'Create new session', context: 'sessions' },
+	{ key: 'x', description: 'Close session pane', context: 'sessions' },
 	{ key: '?', description: 'Toggle help', context: 'global' },
 	{ key: '/', description: 'Filter keybinds', context: 'global' },
 	{ key: 'q', description: 'Quit', context: 'global' },

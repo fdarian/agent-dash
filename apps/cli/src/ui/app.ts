@@ -5,6 +5,7 @@ import { TmuxClient } from '../services/tmux-client.ts';
 import { createPanePreview } from './pane-preview.ts';
 import { createSessionList } from './session-list.ts';
 import { createHelpOverlay } from './help-overlay.ts';
+import { createConfirmDialog } from './confirm-dialog.ts';
 import { loadState, saveState } from '../services/state.ts';
 import { detectTerminalBackground } from '../utils/terminal.ts';
 import { groupSessionsByName, buildVisibleItems, resolveSelectedIndex, type VisibleItem } from './session-groups.ts';
@@ -31,6 +32,9 @@ export const App = Effect.gen(function* () {
 
 	const helpOverlay = createHelpOverlay(renderer, terminalBg);
 	renderer.root.add(helpOverlay.modal);
+
+	const confirmDialog = createConfirmDialog(renderer, terminalBg);
+	renderer.root.add(confirmDialog.modal);
 
 	const sessionList = createSessionList(renderer);
 	const panePreview = createPanePreview(renderer);
@@ -162,6 +166,20 @@ export const App = Effect.gen(function* () {
 			'keypress',
 			(key: KeyEvent) => {
 				const handler = Effect.gen(function* () {
+					if (confirmDialog.getIsVisible()) {
+						if (key.name === 'return') {
+							key.preventDefault();
+							yield* tmux.killPane(confirmDialog.getPendingPaneTarget()).pipe(
+								Effect.catchAll(() => Effect.void),
+							);
+							confirmDialog.hide();
+						} else if (key.name === 'escape') {
+							key.preventDefault();
+							confirmDialog.hide();
+						}
+						return;
+					}
+
 					if (helpOverlay.getIsVisible()) {
 						if (helpOverlay.getIsFilterActive()) {
 							if (key.name === 'escape') {
@@ -283,6 +301,29 @@ export const App = Effect.gen(function* () {
 							yield* tmux.switchToPane(selected.paneTarget).pipe(
 								Effect.catchAll(() => Effect.void),
 							);
+						}
+					} else if (key.name === 'c') {
+						if (focus === 'sessions') {
+							const currentItem = visibleItems[selectedIndex];
+							if (currentItem !== undefined) {
+								const sessionName = currentItem.kind === 'session'
+									? currentItem.session.sessionName
+									: currentItem.kind === 'group-header'
+										? currentItem.sessionName
+										: undefined;
+								if (sessionName !== undefined) {
+									yield* tmux.createWindow(sessionName).pipe(
+										Effect.catchAll(() => Effect.void),
+									);
+								}
+							}
+						}
+					} else if (key.name === 'x') {
+						if (focus === 'sessions') {
+							const selected = yield* getSelectedSession;
+							if (selected !== undefined) {
+								confirmDialog.show(selected.paneTarget, selected.paneTarget);
+							}
 						}
 					} else if (key.name === '?') {
 						helpOverlay.toggle();
