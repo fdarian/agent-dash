@@ -11,7 +11,7 @@ export const App = Effect.gen(function* () {
 	const renderer = yield* Effect.promise(() =>
 		createCliRenderer({
 			exitOnCtrlC: true,
-			targetFps: 30,
+			targetFps: 60,
 		}),
 	);
 
@@ -32,7 +32,7 @@ export const App = Effect.gen(function* () {
 	const selectedIndexRef = yield* Ref.make(0);
 	const focusRef = yield* Ref.make<'sessions' | 'preview'>('sessions');
 
-	const refreshUI = Effect.gen(function* () {
+	const refreshSessionListUI = Effect.gen(function* () {
 		const sessions = yield* Ref.get(sessionsRef);
 		const selectedIndex = yield* Ref.get(selectedIndexRef);
 		const focus = yield* Ref.get(focusRef);
@@ -52,6 +52,11 @@ export const App = Effect.gen(function* () {
 		panePreview.setFocused(previewFocused);
 
 		sessionList.update(sessions, selectedIndex);
+	});
+
+	const refreshPreviewUI = Effect.gen(function* () {
+		const sessions = yield* Ref.get(sessionsRef);
+		const selectedIndex = yield* Ref.get(selectedIndexRef);
 
 		if (sessions.length > 0 && selectedIndex < sessions.length) {
 			const selected = sessions[selectedIndex];
@@ -70,7 +75,7 @@ export const App = Effect.gen(function* () {
 		}
 	});
 
-	const poll = Effect.gen(function* () {
+	const pollSessions = Effect.gen(function* () {
 		const sessions = yield* tmux.discoverSessions.pipe(
 			Effect.catchAll(() => Effect.succeed([] as Array<ClaudeSession>)),
 		);
@@ -81,11 +86,19 @@ export const App = Effect.gen(function* () {
 			yield* Ref.set(selectedIndexRef, sessions.length - 1);
 		}
 
-		yield* refreshUI;
+		yield* refreshSessionListUI;
 	});
 
-	const pollingFiber = yield* poll.pipe(
+	const pollPreview = Effect.gen(function* () {
+		yield* refreshPreviewUI;
+	});
+
+	const sessionsFiber = yield* pollSessions.pipe(
 		Effect.repeat(Schedule.fixed('2 seconds')),
+		Effect.fork,
+	);
+	const previewFiber = yield* pollPreview.pipe(
+		Effect.repeat(Schedule.fixed('200 millis')),
 		Effect.fork,
 	);
 
@@ -100,15 +113,16 @@ export const App = Effect.gen(function* () {
 
 					if (key.name === '1') {
 						yield* Ref.set(focusRef, 'sessions');
-						yield* refreshUI;
+						yield* refreshSessionListUI;
 					} else if (key.name === '0') {
 						yield* Ref.set(focusRef, 'preview');
-						yield* refreshUI;
+						yield* refreshSessionListUI;
 					} else if (key.name === 'j' || key.name === 'down') {
 						if (focus === 'sessions') {
 							if (selectedIndex < sessions.length - 1) {
 								yield* Ref.set(selectedIndexRef, selectedIndex + 1);
-								yield* refreshUI;
+								yield* refreshSessionListUI;
+								yield* refreshPreviewUI;
 							}
 						} else if (focus === 'preview') {
 							panePreview.scrollBy(1);
@@ -117,7 +131,8 @@ export const App = Effect.gen(function* () {
 						if (focus === 'sessions') {
 							if (selectedIndex > 0) {
 								yield* Ref.set(selectedIndexRef, selectedIndex - 1);
-								yield* refreshUI;
+								yield* refreshSessionListUI;
+								yield* refreshPreviewUI;
 							}
 						} else if (focus === 'preview') {
 							panePreview.scrollBy(-1);
@@ -140,5 +155,6 @@ export const App = Effect.gen(function* () {
 		});
 	});
 
-	yield* Fiber.interrupt(pollingFiber);
+	yield* Fiber.interrupt(sessionsFiber);
+	yield* Fiber.interrupt(previewFiber);
 });
