@@ -1,5 +1,6 @@
 import { Data, Effect } from 'effect';
 import { type ClaudeSession, parseSessionStatus } from '../domain/session.ts';
+import { AppConfig } from './config.ts';
 
 export class TmuxError extends Data.TaggedError('TmuxError')<{
 	message: string;
@@ -15,72 +16,11 @@ export interface CreatedPaneInfo {
 }
 
 export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
-	succeed: {
-		discoverSessions: Effect.gen(function* () {
-			const format = [
-				'#{pane_id}',
-				'#{pane_pid}',
-				'#{pane_title}',
-				'#{session_name}:#{window_index}.#{pane_index}',
-			].join('\t');
+	effect: Effect.gen(function* () {
+		const config = yield* AppConfig;
 
-			const output = yield* runCommand('tmux', [
-				'list-panes',
-				'-a',
-				'-F',
-				format,
-			]);
-
-			const lines = output.trim().split('\n').filter(Boolean);
-			const sessions: Array<ClaudeSession> = [];
-
-			for (const line of lines) {
-				const parts = line.split('\t');
-				if (parts.length < 4) continue;
-
-				const paneId = parts[0];
-				const panePid = parts[1];
-				const paneTitle = parts[2];
-				const paneTarget = parts[3];
-				if (!paneId || !panePid || !paneTitle || !paneTarget) continue;
-
-				const sessionName = paneTarget.split(':')[0];
-				if (!sessionName) continue;
-
-				const isClaude = yield* checkForClaudeProcess(panePid);
-				if (!isClaude) continue;
-
-				sessions.push({
-					paneId,
-					paneTarget,
-					title: paneTitle,
-					sessionName,
-					status: parseSessionStatus(paneTitle),
-				});
-			}
-
-			return sessions;
-		}),
-
-		capturePaneContent: (paneTarget: string) =>
-			runCommand('tmux', ['capture-pane', '-e', '-t', paneTarget, '-p', '-S', '-']),
-
-		switchToPane: (paneTarget: string) =>
-			runCommand('tmux', ['switch-client', '-t', paneTarget]).pipe(Effect.asVoid),
-
-		openPopup: (paneTarget: string) =>
-			runCommand('tmux', [
-				'display-popup',
-				'-E',
-				'-w',
-				'80%',
-				'-h',
-				'80%',
-				`tmux capture-pane -S - -e -p -t ${paneTarget} | less -R`,
-			]).pipe(Effect.asVoid),
-
-		createWindow: (sessionName: string, cwd?: string) =>
-			Effect.gen(function* () {
+		return {
+			discoverSessions: Effect.gen(function* () {
 				const format = [
 					'#{pane_id}',
 					'#{pane_pid}',
@@ -88,51 +28,116 @@ export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 					'#{session_name}:#{window_index}.#{pane_index}',
 				].join('\t');
 
-				const args = [
-					'new-window',
-					'-d',
-					'-P',
+				const output = yield* runCommand('tmux', [
+					'list-panes',
+					'-a',
 					'-F',
 					format,
-					'-t',
-					sessionName,
-				];
-				if (cwd !== undefined) {
-					args.push('-c', cwd);
+				]);
+
+				const lines = output.trim().split('\n').filter(Boolean);
+				const sessions: Array<ClaudeSession> = [];
+
+				for (const line of lines) {
+					const parts = line.split('\t');
+					if (parts.length < 4) continue;
+
+					const paneId = parts[0];
+					const panePid = parts[1];
+					const paneTitle = parts[2];
+					const paneTarget = parts[3];
+					if (!paneId || !panePid || !paneTitle || !paneTarget) continue;
+
+					const sessionName = paneTarget.split(':')[0];
+					if (!sessionName) continue;
+
+					const isClaude = yield* checkForClaudeProcess(panePid);
+					if (!isClaude) continue;
+
+					sessions.push({
+						paneId,
+						paneTarget,
+						title: paneTitle,
+						sessionName,
+						status: parseSessionStatus(paneTitle),
+					});
 				}
-				args.push('claude');
 
-				const output = yield* runCommand('tmux', args);
-
-				const parts = output.trim().split('\t');
-				if (parts.length < 4) return undefined;
-
-				const paneId = parts[0];
-				const panePid = parts[1];
-				const paneTitle = parts[2];
-				const paneTarget = parts[3];
-				if (!paneId || !panePid || !paneTarget) return undefined;
-
-				const parsedSessionName = paneTarget.split(':')[0];
-				if (!parsedSessionName) return undefined;
-
-				return {
-					paneId,
-					panePid,
-					paneTitle: paneTitle ?? '',
-					paneTarget,
-					sessionName: parsedSessionName,
-				} satisfies CreatedPaneInfo;
+				return sessions;
 			}),
 
-		getPaneCwd: (target: string) =>
-			runCommand('tmux', [
-				'display-message', '-p', '-t', target, '#{pane_current_path}',
-			]).pipe(Effect.map((output) => output.trim())),
+			capturePaneContent: (paneTarget: string) =>
+				runCommand('tmux', ['capture-pane', '-e', '-t', paneTarget, '-p', '-S', '-']),
 
-		killPane: (paneTarget: string) =>
-			runCommand('tmux', ['kill-pane', '-t', paneTarget]).pipe(Effect.asVoid),
-	},
+			switchToPane: (paneTarget: string) =>
+				runCommand('tmux', ['switch-client', '-t', paneTarget]).pipe(Effect.asVoid),
+
+			openPopup: (paneTarget: string) =>
+				runCommand('tmux', [
+					'display-popup',
+					'-E',
+					'-w',
+					'80%',
+					'-h',
+					'80%',
+					`tmux capture-pane -S - -e -p -t ${paneTarget} | less -R`,
+				]).pipe(Effect.asVoid),
+
+			createWindow: (sessionName: string, cwd?: string) =>
+				Effect.gen(function* () {
+					const format = [
+						'#{pane_id}',
+						'#{pane_pid}',
+						'#{pane_title}',
+						'#{session_name}:#{window_index}.#{pane_index}',
+					].join('\t');
+
+					const args = [
+						'new-window',
+						'-d',
+						'-P',
+						'-F',
+						format,
+						'-t',
+						sessionName,
+					];
+					if (cwd !== undefined) {
+						args.push('-c', cwd);
+					}
+					args.push(config.command);
+
+					const output = yield* runCommand('tmux', args);
+
+					const parts = output.trim().split('\t');
+					if (parts.length < 4) return undefined;
+
+					const paneId = parts[0];
+					const panePid = parts[1];
+					const paneTitle = parts[2];
+					const paneTarget = parts[3];
+					if (!paneId || !panePid || !paneTarget) return undefined;
+
+					const parsedSessionName = paneTarget.split(':')[0];
+					if (!parsedSessionName) return undefined;
+
+					return {
+						paneId,
+						panePid,
+						paneTitle: paneTitle ?? '',
+						paneTarget,
+						sessionName: parsedSessionName,
+					} satisfies CreatedPaneInfo;
+				}),
+
+			getPaneCwd: (target: string) =>
+				runCommand('tmux', [
+					'display-message', '-p', '-t', target, '#{pane_current_path}',
+				]).pipe(Effect.map((output) => output.trim())),
+
+			killPane: (paneTarget: string) =>
+				runCommand('tmux', ['kill-pane', '-t', paneTarget]).pipe(Effect.asVoid),
+		};
+	}),
 }) {}
 
 function runCommand(

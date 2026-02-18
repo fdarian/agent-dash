@@ -37,7 +37,7 @@ export function createSessionList(renderer: CliRenderer) {
 
 				const text = new TextRenderable(renderer, {
 					id,
-					content: `${arrow} ${statusIcon} ${item.sessionName} (${item.sessionCount})`,
+					content: `${arrow} ${statusIcon} ${item.displayName} (${item.sessionCount})`,
 					fg: isSelected ? '#FFFFFF' : '#CCCCCC',
 					bg: isSelected ? '#444444' : undefined,
 				});
@@ -53,7 +53,7 @@ export function createSessionList(renderer: CliRenderer) {
 
 				const text = new TextRenderable(renderer, {
 					id,
-					content: `  ${iconInfo.icon} ${item.session.title || item.session.sessionName}`,
+					content: `  ${iconInfo.icon} ${item.session.title || item.displayName}`,
 					fg: isSelected ? '#FFFFFF' : iconInfo.defaultFg,
 					bg: isSelected ? '#444444' : undefined,
 				});

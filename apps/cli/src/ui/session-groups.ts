@@ -6,8 +6,8 @@ export type SessionGroup = {
 };
 
 export type VisibleItem =
-	| { kind: 'group-header'; sessionName: string; sessionCount: number; hasActive: boolean; hasUnread: boolean; isCollapsed: boolean }
-	| { kind: 'session'; session: ClaudeSession; groupSessionName: string; isUnread: boolean };
+	| { kind: 'group-header'; sessionName: string; displayName: string; sessionCount: number; hasActive: boolean; hasUnread: boolean; isCollapsed: boolean }
+	| { kind: 'session'; session: ClaudeSession; groupSessionName: string; displayName: string; isUnread: boolean };
 
 export function groupSessionsByName(sessions: Array<ClaudeSession>): Array<SessionGroup> {
 	const map = new Map<string, SessionGroup>();
@@ -26,15 +26,18 @@ export function buildVisibleItems(
 	groups: Array<SessionGroup>,
 	collapsedGroups: Set<string>,
 	unreadPaneIds: Set<string>,
+	displayNameMap: Map<string, string>,
 ): Array<VisibleItem> {
 	const items: Array<VisibleItem> = [];
 	for (const group of groups) {
 		const hasActive = group.sessions.some((s) => s.status === 'active');
 		const hasUnread = group.sessions.some((s) => unreadPaneIds.has(s.paneId));
 		const isCollapsed = collapsedGroups.has(group.sessionName);
+		const displayName = displayNameMap.get(group.sessionName) ?? group.sessionName;
 		items.push({
 			kind: 'group-header',
 			sessionName: group.sessionName,
+			displayName,
 			sessionCount: group.sessions.length,
 			hasActive,
 			hasUnread,
@@ -46,6 +49,7 @@ export function buildVisibleItems(
 					kind: 'session',
 					session,
 					groupSessionName: group.sessionName,
+					displayName,
 					isUnread: unreadPaneIds.has(session.paneId),
 				});
 			}
