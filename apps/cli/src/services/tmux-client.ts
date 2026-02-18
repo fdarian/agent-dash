@@ -56,6 +56,9 @@ export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 
 		capturePaneContent: (paneTarget: string) =>
 			runCommand('tmux', ['capture-pane', '-e', '-t', paneTarget, '-p']),
+
+		switchToPane: (paneTarget: string) =>
+			runCommand('tmux', ['switch-client', '-t', paneTarget]).pipe(Effect.asVoid),
 	},
 }) {}
 

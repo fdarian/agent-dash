@@ -137,6 +137,15 @@ export const App = Effect.gen(function* () {
 						} else if (focus === 'preview') {
 							panePreview.scrollBy(-1);
 						}
+					} else if (key.name === 'o') {
+						if (sessions.length > 0 && selectedIndex < sessions.length) {
+							const selected = sessions[selectedIndex];
+							if (selected !== undefined) {
+								yield* tmux.switchToPane(selected.paneTarget).pipe(
+									Effect.catchAll(() => Effect.void),
+								);
+							}
+						}
 					} else if (key.name === 'q') {
 						renderer.destroy();
 					}
