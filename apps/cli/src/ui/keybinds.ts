@@ -9,6 +9,8 @@ const keybinds: Array<KeybindEntry> = [
 	{ key: '1', description: 'Focus session list', context: 'global' },
 	{ key: 'j / ↓', description: 'Next session / Scroll down', context: 'sessions' },
 	{ key: 'k / ↑', description: 'Previous session / Scroll up', context: 'sessions' },
+	{ key: 'h', description: 'Collapse group', context: 'sessions' },
+	{ key: 'l', description: 'Expand group', context: 'sessions' },
 	{ key: 'o', description: 'Switch to tmux pane', context: 'global' },
 	{ key: 'r', description: 'Mark session as read', context: 'sessions' },
 	{ key: '?', description: 'Toggle help', context: 'global' },

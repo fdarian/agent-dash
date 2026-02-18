@@ -1,5 +1,5 @@
 import { BoxRenderable, type CliRenderer, TextRenderable } from '@opentui/core';
-import type { ClaudeSession } from '../domain/session.ts';
+import type { VisibleItem } from './session-groups.ts';
 import { PRIMARY_COLOR, UNFOCUSED_COLOR, UNREAD_COLOR } from './constants.ts';
 
 export function createSessionList(renderer: CliRenderer) {
@@ -18,39 +18,52 @@ export function createSessionList(renderer: CliRenderer) {
 		box.borderColor = focused ? PRIMARY_COLOR : UNFOCUSED_COLOR;
 	}
 
-	function update(sessions: Array<ClaudeSession>, selectedIndex: number, unreadPaneIds: Set<string>) {
+	function update(visibleItems: Array<VisibleItem>, selectedIndex: number) {
 		for (const id of childIds) {
 			box.remove(id);
 		}
 		childIds = [];
 
-		for (let i = 0; i < sessions.length; i++) {
-			const session = sessions[i];
-			if (session === undefined) continue;
+		for (let i = 0; i < visibleItems.length; i++) {
+			const item = visibleItems[i];
+			if (item === undefined) continue;
 
 			const isSelected = i === selectedIndex;
-			const isUnread = unreadPaneIds.has(session.paneId);
-
-			const iconInfo = session.status === 'active'
-				? { icon: '●', defaultFg: PRIMARY_COLOR }
-				: isUnread
-					? { icon: '◉', defaultFg: UNREAD_COLOR }
-					: { icon: '○', defaultFg: '#AAAAAA' };
-
 			const id = `session-item-${i}`;
 
-			const text = new TextRenderable(renderer, {
-				id,
-				content: `${iconInfo.icon} ${session.title || session.sessionName}`,
-				fg: isSelected ? '#FFFFFF' : iconInfo.defaultFg,
-				bg: isSelected ? '#444444' : undefined,
-			});
+			if (item.kind === 'group-header') {
+				const arrow = item.isCollapsed ? '▶' : '▼';
+				const statusIcon = item.hasActive ? '●' : item.hasUnread ? '◉' : '○';
 
-			box.add(text);
-			childIds.push(id);
+				const text = new TextRenderable(renderer, {
+					id,
+					content: `${arrow} ${statusIcon} ${item.sessionName} (${item.sessionCount})`,
+					fg: isSelected ? '#FFFFFF' : '#CCCCCC',
+					bg: isSelected ? '#444444' : undefined,
+				});
+
+				box.add(text);
+				childIds.push(id);
+			} else {
+				const iconInfo = item.session.status === 'active'
+					? { icon: '●', defaultFg: PRIMARY_COLOR }
+					: item.isUnread
+						? { icon: '◉', defaultFg: UNREAD_COLOR }
+						: { icon: '○', defaultFg: '#AAAAAA' };
+
+				const text = new TextRenderable(renderer, {
+					id,
+					content: `  ${iconInfo.icon} ${item.session.title || item.session.sessionName}`,
+					fg: isSelected ? '#FFFFFF' : iconInfo.defaultFg,
+					bg: isSelected ? '#444444' : undefined,
+				});
+
+				box.add(text);
+				childIds.push(id);
+			}
 		}
 
-		if (sessions.length === 0) {
+		if (visibleItems.length === 0) {
 			const emptyId = 'session-empty';
 			const text = new TextRenderable(renderer, {
 				id: emptyId,
