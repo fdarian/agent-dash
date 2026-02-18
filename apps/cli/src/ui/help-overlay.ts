@@ -8,7 +8,7 @@ import {
 import { filterKeybinds } from './keybinds.ts';
 import { PRIMARY_COLOR } from './constants.ts';
 
-export function createHelpOverlay(renderer: CliRenderer) {
+export function createHelpOverlay(renderer: CliRenderer, backgroundColor: string) {
 	const modal = new BoxRenderable(renderer, {
 		id: 'help-modal',
 		position: 'absolute',
@@ -23,7 +23,7 @@ export function createHelpOverlay(renderer: CliRenderer) {
 		flexDirection: 'column',
 		paddingX: 1,
 		paddingY: 1,
-		backgroundColor: '#000000',
+		backgroundColor,
 		visible: false,
 	});
 

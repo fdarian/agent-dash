@@ -5,8 +5,12 @@ import { TmuxClient } from '../services/tmux-client.ts';
 import { createPanePreview } from './pane-preview.ts';
 import { createSessionList } from './session-list.ts';
 import { createHelpOverlay } from './help-overlay.ts';
+import { loadState, saveState } from '../services/state.ts';
+import { detectTerminalBackground } from '../utils/terminal.ts';
 
 export const App = Effect.gen(function* () {
+	const terminalBg = yield* detectTerminalBackground;
+
 	const tmux = yield* TmuxClient;
 
 	const renderer = yield* Effect.promise(() =>
@@ -24,7 +28,7 @@ export const App = Effect.gen(function* () {
 	});
 	renderer.root.add(root);
 
-	const helpOverlay = createHelpOverlay(renderer);
+	const helpOverlay = createHelpOverlay(renderer, terminalBg);
 	renderer.root.add(helpOverlay.modal);
 
 	const sessionList = createSessionList(renderer);
@@ -37,6 +41,10 @@ export const App = Effect.gen(function* () {
 	const focusRef = yield* Ref.make<'sessions' | 'preview'>('sessions');
 	const prevStatusMapRef = yield* Ref.make<Map<string, SessionStatus>>(new Map());
 	const unreadPaneIdsRef = yield* Ref.make<Set<string>>(new Set());
+
+	const persistedState = yield* loadState;
+	yield* Ref.set(prevStatusMapRef, persistedState.prevStatusMap);
+	yield* Ref.set(unreadPaneIdsRef, persistedState.unreadPaneIds);
 
 	const refreshSessionListUI = Effect.gen(function* () {
 		const sessions = yield* Ref.get(sessionsRef);
@@ -116,6 +124,7 @@ export const App = Effect.gen(function* () {
 
 		yield* Ref.set(prevStatusMapRef, nextStatusMap);
 		yield* Ref.set(unreadPaneIdsRef, nextUnreadPaneIds);
+		yield* saveState(nextUnreadPaneIds, nextStatusMap);
 
 		yield* refreshSessionListUI;
 	});
@@ -173,6 +182,9 @@ export const App = Effect.gen(function* () {
 									return next;
 								});
 							}
+							const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
+							const currentStatusMap = yield* Ref.get(prevStatusMapRef);
+							yield* saveState(updatedUnread, currentStatusMap);
 						}
 						yield* Ref.set(focusRef, 'preview');
 						yield* refreshSessionListUI;
@@ -205,6 +217,9 @@ export const App = Effect.gen(function* () {
 									next.delete(selected.paneId);
 									return next;
 								});
+								const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
+								const currentStatusMap = yield* Ref.get(prevStatusMapRef);
+								yield* saveState(updatedUnread, currentStatusMap);
 								yield* refreshSessionListUI;
 							}
 						}
