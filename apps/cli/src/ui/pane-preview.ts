@@ -59,11 +59,17 @@ export function createPanePreview(renderer: CliRenderer) {
 		if (text.length > 0) {
 			copyToClipboard(text);
 			showCopiedToast();
-			queueMicrotask(() => renderer.clearSelection());
+			queueMicrotask(() => {
+				renderer.clearSelection();
+				scrollBox.borderColor = isFocused ? PRIMARY_COLOR : UNFOCUSED_COLOR;
+			});
 		}
 	});
 
+	let isFocused = false;
+
 	function setFocused(focused: boolean) {
+		isFocused = focused;
 		scrollBox.borderColor = focused ? PRIMARY_COLOR : UNFOCUSED_COLOR;
 	}
 
