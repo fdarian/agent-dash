@@ -198,6 +198,7 @@ export const App = Effect.gen(function* () {
 	const fileWatcherFiber = yield* Effect.async<never>((resume) => {
 		let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 		let currentWatcher: fs.FSWatcher | null = null;
+		let watchedPath: string | null = null;
 
 		const startWatching = () => {
 			const tmpFile = Effect.runSync(Ref.get(pipePaneFileRef));
@@ -213,6 +214,7 @@ export const App = Effect.gen(function* () {
 						Effect.runPromise(refreshPreviewUI).catch(() => {});
 					}, 100);
 				});
+				watchedPath = tmpFile;
 			} catch {
 				// File watch failed, fallback poll will handle it
 			}
@@ -223,10 +225,10 @@ export const App = Effect.gen(function* () {
 		const checkInterval = setInterval(() => {
 			const tmpFile = Effect.runSync(Ref.get(pipePaneFileRef));
 			if (currentWatcher !== null) {
-				const watchedPath = (currentWatcher as unknown as { _filename?: string })._filename;
 				if (watchedPath !== tmpFile) {
 					currentWatcher.close();
 					currentWatcher = null;
+					watchedPath = null;
 					startWatching();
 				}
 			} else if (tmpFile !== null) {
@@ -277,6 +279,17 @@ export const App = Effect.gen(function* () {
 						yield* Ref.set(focusRef, 'sessions');
 						yield* refreshSessionListUI;
 					} else if (key.name === '0') {
+						const selected = yield* getSelectedSession;
+						if (selected !== undefined) {
+							yield* Ref.update(unreadPaneIdsRef, (set) => {
+								const next = new Set(set);
+								next.delete(selected.paneId);
+								return next;
+							});
+							const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
+							const currentStatusMap = yield* Ref.get(prevStatusMapRef);
+							yield* saveState(updatedUnread, currentStatusMap);
+						}
 						yield* Ref.set(focusRef, 'preview');
 						yield* refreshSessionListUI;
 					} else if (key.name === 'j' || key.name === 'down') {
@@ -284,7 +297,6 @@ export const App = Effect.gen(function* () {
 							if (selectedIndex < visibleItems.length - 1) {
 								yield* Ref.set(selectedIndexRef, selectedIndex + 1);
 								yield* refreshSessionListUI;
-								yield* refreshPreviewUI;
 								const selectedAfterJ = yield* getSelectedSession;
 								if (selectedAfterJ !== undefined) {
 									yield* setupPipePane(selectedAfterJ.paneTarget);
@@ -298,7 +310,6 @@ export const App = Effect.gen(function* () {
 							if (selectedIndex > 0) {
 								yield* Ref.set(selectedIndexRef, selectedIndex - 1);
 								yield* refreshSessionListUI;
-								yield* refreshPreviewUI;
 								const selectedAfterK = yield* getSelectedSession;
 								if (selectedAfterK !== undefined) {
 									yield* setupPipePane(selectedAfterK.paneTarget);
@@ -373,15 +384,6 @@ export const App = Effect.gen(function* () {
 					} else if (key.name === 'o') {
 						const selected = yield* getSelectedSession;
 						if (selected !== undefined) {
-							yield* Ref.update(unreadPaneIdsRef, (set) => {
-								const next = new Set(set);
-								next.delete(selected.paneId);
-								return next;
-							});
-							const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
-							const currentStatusMap = yield* Ref.get(prevStatusMapRef);
-							yield* saveState(updatedUnread, currentStatusMap);
-							yield* refreshSessionListUI;
 							yield* tmux.switchToPane(selected.paneTarget).pipe(
 								Effect.catchAll(() => Effect.void),
 							);
