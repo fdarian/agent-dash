@@ -1,7 +1,7 @@
 import { BoxRenderable, createCliRenderer, type KeyEvent } from '@opentui/core';
 import { Effect, Fiber, Ref, Schedule } from 'effect';
-import type { ClaudeSession, SessionStatus } from '../domain/session.ts';
-import { TmuxClient } from '../services/tmux-client.ts';
+import { parseSessionStatus, type ClaudeSession, type SessionStatus } from '../domain/session.ts';
+import { TmuxClient, type CreatedPaneInfo } from '../services/tmux-client.ts';
 import { createPanePreview } from './pane-preview.ts';
 import { createSessionList } from './session-list.ts';
 import { createHelpOverlay } from './help-overlay.ts';
@@ -148,6 +148,65 @@ export const App = Effect.gen(function* () {
 		yield* refreshSessionListUI;
 	});
 
+	const removeSession = (paneTarget: string) =>
+		Effect.gen(function* () {
+			const sessions = yield* Ref.get(sessionsRef);
+			const removed = sessions.find((s) => s.paneTarget === paneTarget);
+			const filtered = sessions.filter((s) => s.paneTarget !== paneTarget);
+			yield* Ref.set(sessionsRef, filtered);
+
+			if (removed !== undefined) {
+				const prevStatusMap = yield* Ref.get(prevStatusMapRef);
+				prevStatusMap.delete(removed.paneId);
+				yield* Ref.set(prevStatusMapRef, prevStatusMap);
+
+				const unreadPaneIds = yield* Ref.get(unreadPaneIdsRef);
+				unreadPaneIds.delete(removed.paneId);
+				yield* Ref.set(unreadPaneIdsRef, unreadPaneIds);
+			}
+
+			const unreadPaneIds = yield* Ref.get(unreadPaneIdsRef);
+			const prevStatusMap = yield* Ref.get(prevStatusMapRef);
+			yield* saveState(unreadPaneIds, prevStatusMap);
+
+			const oldVisibleItems = yield* Ref.get(visibleItemsRef);
+			const oldSelectedIndex = yield* Ref.get(selectedIndexRef);
+			const newVisibleItems = yield* getVisibleItems;
+			const newSelectedIndex = resolveSelectedIndex(newVisibleItems, oldVisibleItems, oldSelectedIndex);
+			yield* Ref.set(selectedIndexRef, newSelectedIndex);
+
+			yield* refreshSessionListUI;
+		});
+
+	const addSession = (paneInfo: CreatedPaneInfo) =>
+		Effect.gen(function* () {
+			const session: ClaudeSession = {
+				paneId: paneInfo.paneId,
+				paneTarget: paneInfo.paneTarget,
+				title: paneInfo.paneTitle,
+				sessionName: paneInfo.sessionName,
+				status: parseSessionStatus(paneInfo.paneTitle),
+			};
+
+			const sessions = yield* Ref.get(sessionsRef);
+			yield* Ref.set(sessionsRef, [...sessions, session]);
+
+			const prevStatusMap = yield* Ref.get(prevStatusMapRef);
+			prevStatusMap.set(session.paneId, session.status);
+			yield* Ref.set(prevStatusMapRef, prevStatusMap);
+
+			const unreadPaneIds = yield* Ref.get(unreadPaneIdsRef);
+			yield* saveState(unreadPaneIds, prevStatusMap);
+
+			const oldVisibleItems = yield* Ref.get(visibleItemsRef);
+			const oldSelectedIndex = yield* Ref.get(selectedIndexRef);
+			const newVisibleItems = yield* getVisibleItems;
+			const newSelectedIndex = resolveSelectedIndex(newVisibleItems, oldVisibleItems, oldSelectedIndex);
+			yield* Ref.set(selectedIndexRef, newSelectedIndex);
+
+			yield* refreshSessionListUI;
+		});
+
 	const pollPreview = Effect.gen(function* () {
 		yield* refreshPreviewUI;
 	});
@@ -169,11 +228,12 @@ export const App = Effect.gen(function* () {
 					if (confirmDialog.getIsVisible()) {
 						if (key.name === 'return') {
 							key.preventDefault();
-							yield* tmux.killPane(confirmDialog.getPendingPaneTarget()).pipe(
+							const paneTarget = confirmDialog.getPendingPaneTarget();
+							yield* tmux.killPane(paneTarget).pipe(
 								Effect.catchAll(() => Effect.void),
 							);
 							confirmDialog.hide();
-							yield* pollSessions;
+							yield* removeSession(paneTarget);
 						} else if (key.name === 'escape') {
 							key.preventDefault();
 							confirmDialog.hide();
@@ -313,13 +373,15 @@ export const App = Effect.gen(function* () {
 										? currentItem.sessionName
 										: undefined;
 								if (sessionName !== undefined) {
-									yield* tmux.createWindow(sessionName).pipe(
-										Effect.catchAll(() => Effect.void),
+									const paneInfo = yield* tmux.createWindow(sessionName).pipe(
+										Effect.catchAll(() => Effect.succeed(undefined)),
 									);
 									yield* tmux.switchToPane(sessionName).pipe(
 										Effect.catchAll(() => Effect.void),
 									);
-									yield* pollSessions;
+									if (paneInfo !== undefined) {
+										yield* addSession(paneInfo);
+									}
 								}
 							}
 						}
