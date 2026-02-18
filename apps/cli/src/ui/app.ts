@@ -4,6 +4,7 @@ import type { ClaudeSession, SessionStatus } from '../domain/session.ts';
 import { TmuxClient } from '../services/tmux-client.ts';
 import { createPanePreview } from './pane-preview.ts';
 import { createSessionList } from './session-list.ts';
+import { createHelpOverlay } from './help-overlay.ts';
 
 export const App = Effect.gen(function* () {
 	const tmux = yield* TmuxClient;
@@ -22,6 +23,10 @@ export const App = Effect.gen(function* () {
 		height: '100%',
 	});
 	renderer.root.add(root);
+
+	const helpOverlay = createHelpOverlay(renderer);
+	renderer.root.add(helpOverlay.backdrop);
+	renderer.root.add(helpOverlay.modal);
 
 	const sessionList = createSessionList(renderer);
 	const panePreview = createPanePreview(renderer);
@@ -134,6 +139,14 @@ export const App = Effect.gen(function* () {
 			'keypress',
 			(key: KeyEvent) => {
 				const handler = Effect.gen(function* () {
+					if (helpOverlay.getIsVisible()) {
+						if (key.name === '?' || key.name === 'escape') {
+							key.preventDefault();
+							helpOverlay.hide();
+						}
+						return;
+					}
+
 					const sessions = yield* Ref.get(sessionsRef);
 					const selectedIndex = yield* Ref.get(selectedIndexRef);
 					const focus = yield* Ref.get(focusRef);
@@ -203,6 +216,8 @@ export const App = Effect.gen(function* () {
 								);
 							}
 						}
+					} else if (key.name === '?') {
+						helpOverlay.toggle();
 					} else if (key.name === 'q') {
 						renderer.destroy();
 					}
