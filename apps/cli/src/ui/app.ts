@@ -204,19 +204,7 @@ export const App = Effect.gen(function* () {
 					} else if (key.name === 'j' || key.name === 'down') {
 						if (focus === 'sessions') {
 							if (selectedIndex < visibleItems.length - 1) {
-								const newIndex = selectedIndex + 1;
-								yield* Ref.set(selectedIndexRef, newIndex);
-								const newItem = visibleItems[newIndex];
-								if (newItem !== undefined && newItem.kind === 'session') {
-									yield* Ref.update(unreadPaneIdsRef, (set) => {
-										const next = new Set(set);
-										next.delete(newItem.session.paneId);
-										return next;
-									});
-									const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
-									const currentStatusMap = yield* Ref.get(prevStatusMapRef);
-									yield* saveState(updatedUnread, currentStatusMap);
-								}
+								yield* Ref.set(selectedIndexRef, selectedIndex + 1);
 								yield* refreshSessionListUI;
 								yield* refreshPreviewUI;
 							}
@@ -226,19 +214,7 @@ export const App = Effect.gen(function* () {
 					} else if (key.name === 'k' || key.name === 'up') {
 						if (focus === 'sessions') {
 							if (selectedIndex > 0) {
-								const newIndex = selectedIndex - 1;
-								yield* Ref.set(selectedIndexRef, newIndex);
-								const newItem = visibleItems[newIndex];
-								if (newItem !== undefined && newItem.kind === 'session') {
-									yield* Ref.update(unreadPaneIdsRef, (set) => {
-										const next = new Set(set);
-										next.delete(newItem.session.paneId);
-										return next;
-									});
-									const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
-									const currentStatusMap = yield* Ref.get(prevStatusMapRef);
-									yield* saveState(updatedUnread, currentStatusMap);
-								}
+								yield* Ref.set(selectedIndexRef, selectedIndex - 1);
 								yield* refreshSessionListUI;
 								yield* refreshPreviewUI;
 							}
