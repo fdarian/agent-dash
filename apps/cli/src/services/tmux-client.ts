@@ -98,6 +98,14 @@ function checkForClaudeProcess(
 	parentPid: string,
 ): Effect.Effect<boolean, TmuxError> {
 	return Effect.gen(function* () {
+		const selfComm = yield* runCommand('ps', [
+			'-o',
+			'comm=',
+			'-p',
+			parentPid,
+		]).pipe(Effect.catchAll(() => Effect.succeed('')));
+		if (selfComm.trim().endsWith('claude')) return true;
+
 		const pgrepOutput = yield* runCommand('pgrep', ['-P', parentPid]).pipe(
 			Effect.catchAll(() => Effect.succeed('')),
 		);
