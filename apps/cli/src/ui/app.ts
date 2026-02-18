@@ -279,17 +279,6 @@ export const App = Effect.gen(function* () {
 						yield* Ref.set(focusRef, 'sessions');
 						yield* refreshSessionListUI;
 					} else if (key.name === '0') {
-						const selected = yield* getSelectedSession;
-						if (selected !== undefined) {
-							yield* Ref.update(unreadPaneIdsRef, (set) => {
-								const next = new Set(set);
-								next.delete(selected.paneId);
-								return next;
-							});
-							const updatedUnread = yield* Ref.get(unreadPaneIdsRef);
-							const currentStatusMap = yield* Ref.get(prevStatusMapRef);
-							yield* saveState(updatedUnread, currentStatusMap);
-						}
 						yield* Ref.set(focusRef, 'preview');
 						yield* refreshSessionListUI;
 					} else if (key.name === 'j' || key.name === 'down') {
