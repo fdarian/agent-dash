@@ -476,13 +476,19 @@ export const App = Effect.gen(function* () {
 										? currentItem.sessionName
 										: undefined;
 								if (sessionName !== undefined) {
-									const paneInfo = yield* tmux.createWindow(sessionName).pipe(
+									const cwdTarget = currentItem.kind === 'session'
+										? currentItem.session.paneTarget
+										: sessionName;
+									const cwd = yield* tmux.getPaneCwd(cwdTarget).pipe(
 										Effect.catchAll(() => Effect.succeed(undefined)),
 									);
-									yield* tmux.switchToPane(sessionName).pipe(
-										Effect.catchAll(() => Effect.void),
+									const paneInfo = yield* tmux.createWindow(sessionName, cwd).pipe(
+										Effect.catchAll(() => Effect.succeed(undefined)),
 									);
 									if (paneInfo !== undefined) {
+										yield* tmux.switchToPane(paneInfo.paneTarget).pipe(
+											Effect.catchAll(() => Effect.void),
+										);
 										yield* addSession(paneInfo);
 									}
 								}
