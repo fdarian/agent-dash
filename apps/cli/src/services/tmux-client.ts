@@ -6,6 +6,14 @@ export class TmuxError extends Data.TaggedError('TmuxError')<{
 	command: string;
 }> {}
 
+export interface CreatedPaneInfo {
+	paneId: string;
+	panePid: string;
+	paneTitle: string;
+	paneTarget: string;
+	sessionName: string;
+}
+
 export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 	succeed: {
 		discoverSessions: Effect.gen(function* () {
@@ -61,7 +69,45 @@ export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 			runCommand('tmux', ['switch-client', '-t', paneTarget]).pipe(Effect.asVoid),
 
 		createWindow: (sessionName: string) =>
-			runCommand('tmux', ['new-window', '-t', sessionName, 'claude']).pipe(Effect.asVoid),
+			Effect.gen(function* () {
+				const format = [
+					'#{pane_id}',
+					'#{pane_pid}',
+					'#{pane_title}',
+					'#{session_name}:#{window_index}.#{pane_index}',
+				].join('\t');
+
+				const output = yield* runCommand('tmux', [
+					'new-window',
+					'-d',
+					'-P',
+					'-F',
+					format,
+					'-t',
+					sessionName,
+					'claude',
+				]);
+
+				const parts = output.trim().split('\t');
+				if (parts.length < 4) return undefined;
+
+				const paneId = parts[0];
+				const panePid = parts[1];
+				const paneTitle = parts[2];
+				const paneTarget = parts[3];
+				if (!paneId || !panePid || !paneTarget) return undefined;
+
+				const parsedSessionName = paneTarget.split(':')[0];
+				if (!parsedSessionName) return undefined;
+
+				return {
+					paneId,
+					panePid,
+					paneTitle: paneTitle ?? '',
+					paneTarget,
+					sessionName: parsedSessionName,
+				} satisfies CreatedPaneInfo;
+			}),
 
 		killPane: (paneTarget: string) =>
 			runCommand('tmux', ['kill-pane', '-t', paneTarget]).pipe(Effect.asVoid),
