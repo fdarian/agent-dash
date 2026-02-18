@@ -24,8 +24,8 @@ export function createHelpOverlay(renderer: CliRenderer) {
 		id: 'help-modal',
 		position: 'absolute',
 		zIndex: 100,
-		width: 50,
-		height: 20,
+		width: '50%',
+		height: '60%',
 		top: '20%',
 		left: '25%',
 		border: true,
@@ -43,6 +43,7 @@ export function createHelpOverlay(renderer: CliRenderer) {
 		placeholder: 'Type to filter...',
 		placeholderColor: '#666666',
 		width: '100%',
+		visible: false,
 	});
 	modal.add(filterInput);
 
@@ -50,7 +51,6 @@ export function createHelpOverlay(renderer: CliRenderer) {
 		id: 'help-keybind-list',
 		flexGrow: 1,
 		scrollY: true,
-		marginTop: 1,
 	});
 	modal.add(keybindList);
 
@@ -97,20 +97,24 @@ export function createHelpOverlay(renderer: CliRenderer) {
 	renderKeybinds('');
 
 	let visible = false;
+	let filterActive = false;
 
 	function show() {
 		visible = true;
 		backdrop.visible = true;
 		modal.visible = true;
+		filterActive = false;
+		filterInput.visible = false;
 		filterInput.value = '';
 		renderKeybinds('');
-		filterInput.focus();
 	}
 
 	function hide() {
 		visible = false;
+		filterActive = false;
 		backdrop.visible = false;
 		modal.visible = false;
+		filterInput.visible = false;
 		filterInput.blur();
 	}
 
@@ -122,9 +126,27 @@ export function createHelpOverlay(renderer: CliRenderer) {
 		}
 	}
 
+	function showFilter() {
+		filterActive = true;
+		filterInput.visible = true;
+		filterInput.focus();
+	}
+
+	function hideFilter() {
+		filterActive = false;
+		filterInput.visible = false;
+		filterInput.blur();
+		filterInput.value = '';
+		renderKeybinds('');
+	}
+
 	function getIsVisible() {
 		return visible;
 	}
 
-	return { backdrop, modal, show, hide, toggle, getIsVisible };
+	function getIsFilterActive() {
+		return filterActive;
+	}
+
+	return { backdrop, modal, show, hide, toggle, getIsVisible, showFilter, hideFilter, getIsFilterActive };
 }

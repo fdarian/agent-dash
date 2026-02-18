@@ -140,9 +140,19 @@ export const App = Effect.gen(function* () {
 			(key: KeyEvent) => {
 				const handler = Effect.gen(function* () {
 					if (helpOverlay.getIsVisible()) {
-						if (key.name === '?' || key.name === 'escape') {
-							key.preventDefault();
-							helpOverlay.hide();
+						if (helpOverlay.getIsFilterActive()) {
+							if (key.name === 'escape') {
+								key.preventDefault();
+								helpOverlay.hideFilter();
+							}
+						} else {
+							if (key.name === '?' || key.name === 'escape') {
+								key.preventDefault();
+								helpOverlay.hide();
+							} else if (key.name === '/') {
+								key.preventDefault();
+								helpOverlay.showFilter();
+							}
 						}
 						return;
 					}
