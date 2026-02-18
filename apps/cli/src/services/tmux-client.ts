@@ -93,7 +93,7 @@ export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 		stopPipePane: (paneTarget: string) =>
 			runCommand('tmux', ['pipe-pane', '-t', paneTarget]).pipe(Effect.asVoid),
 
-		createWindow: (sessionName: string) =>
+		createWindow: (sessionName: string, cwd?: string) =>
 			Effect.gen(function* () {
 				const format = [
 					'#{pane_id}',
@@ -102,7 +102,7 @@ export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 					'#{session_name}:#{window_index}.#{pane_index}',
 				].join('\t');
 
-				const output = yield* runCommand('tmux', [
+				const args = [
 					'new-window',
 					'-d',
 					'-P',
@@ -110,8 +110,13 @@ export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 					format,
 					'-t',
 					sessionName,
-					'claude',
-				]);
+				];
+				if (cwd !== undefined) {
+					args.push('-c', cwd);
+				}
+				args.push('claude');
+
+				const output = yield* runCommand('tmux', args);
 
 				const parts = output.trim().split('\t');
 				if (parts.length < 4) return undefined;
@@ -133,6 +138,11 @@ export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 					sessionName: parsedSessionName,
 				} satisfies CreatedPaneInfo;
 			}),
+
+		getPaneCwd: (target: string) =>
+			runCommand('tmux', [
+				'display-message', '-p', '-t', target, '#{pane_current_path}',
+			]).pipe(Effect.map((output) => output.trim())),
 
 		killPane: (paneTarget: string) =>
 			runCommand('tmux', ['kill-pane', '-t', paneTarget]).pipe(Effect.asVoid),
