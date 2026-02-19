@@ -1,9 +1,9 @@
-import { Cache as EffectCache } from 'effect/Cache';
-import { Clock } from 'effect/Clock';
-import { Duration } from 'effect/Duration';
-import { Effect } from 'effect/Effect';
-import { Exit } from 'effect/Exit';
-import { Option } from 'effect/Option';
+import * as EffectCache from 'effect/Cache';
+import * as Clock from 'effect/Clock';
+import * as Duration from 'effect/Duration';
+import * as Effect from 'effect/Effect';
+import * as Exit from 'effect/Exit';
+import * as Option from 'effect/Option';
 import type { CacheAdapter, CacheEntry } from './adapter.ts';
 
 // Bundles value with resolved TTL/SWR so the SWR check at read time uses per-entry durations

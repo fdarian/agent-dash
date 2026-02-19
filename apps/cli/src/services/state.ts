@@ -1,4 +1,4 @@
-import { Effect } from 'effect/Effect';
+import * as Effect from 'effect/Effect';
 import { join } from 'path';
 import { homedir } from 'os';
 import type { SessionStatus } from '../domain/session.ts';

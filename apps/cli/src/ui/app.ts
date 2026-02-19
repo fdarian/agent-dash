@@ -1,9 +1,9 @@
 import { BoxRenderable, createCliRenderer, type KeyEvent } from '@opentui/core';
-import { Duration } from 'effect/Duration';
-import { Effect } from 'effect/Effect';
-import { Fiber } from 'effect/Fiber';
-import { Ref } from 'effect/Ref';
-import { Schedule } from 'effect/Schedule';
+import * as Duration from 'effect/Duration';
+import * as Effect from 'effect/Effect';
+import * as Fiber from 'effect/Fiber';
+import * as Ref from 'effect/Ref';
+import * as Schedule from 'effect/Schedule';
 import { join } from 'path';
 import { homedir } from 'os';
 import { parseSessionStatus, type ClaudeSession, type SessionStatus } from '../domain/session.ts';

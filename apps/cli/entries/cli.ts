@@ -1,8 +1,8 @@
 import { Command, Options } from '@effect/cli';
-import { BunContext } from '@effect/platform-bun/BunContext';
-import { BunRuntime } from '@effect/platform-bun/BunRuntime';
-import { Effect } from 'effect/Effect';
-import { Layer } from 'effect/Layer';
+import * as BunContext from '@effect/platform-bun/BunContext';
+import * as BunRuntime from '@effect/platform-bun/BunRuntime';
+import * as Effect from 'effect/Effect';
+import * as Layer from 'effect/Layer';
 import pkg from '../package.json' with { type: 'json' };
 import { AppConfig } from '../src/services/config.ts';
 import { TmuxClient } from '../src/services/tmux-client.ts';

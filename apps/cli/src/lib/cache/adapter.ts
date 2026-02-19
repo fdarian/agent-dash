@@ -1,6 +1,6 @@
-import { Duration } from 'effect/Duration';
-import { Effect } from 'effect/Effect';
-import { Option } from 'effect/Option';
+import * as Duration from 'effect/Duration';
+import * as Effect from 'effect/Effect';
+import * as Option from 'effect/Option';
 import { mkdir, unlink, rm } from 'fs/promises';
 
 export type CacheEntry<Value> = {
