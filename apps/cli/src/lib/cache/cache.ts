@@ -52,13 +52,18 @@ export namespace Cache {
 				: 0;
 			const capacity = adapter?.capacity ?? Number.MAX_SAFE_INTEGER;
 
+			// Safe without synchronization — no yield points between has() and add() (cooperative scheduling)
+			const refreshingKeys = new Set<string>();
+
 			// makeWith uses `timeToLive: (exit) => Duration` — the lookup stores CacheValue
 			// so timeToLive can extract the total window (ttl + swr) from the exit result
 			const inner = yield* EffectCache.makeWith({
 				capacity,
 				lookup: (key: Key) =>
 					Effect.gen(function* () {
-						if (adapter) {
+						const isRefreshing = refreshingKeys.has(JSON.stringify(key));
+
+						if (adapter && !isRefreshing) {
 							const cached = yield* adapter.get(key);
 							if (Option.isSome(cached)) {
 								const now = yield* Clock.currentTimeMillis;
@@ -99,9 +104,6 @@ export namespace Cache {
 					return Duration.zero;
 				},
 			});
-
-			// Safe without synchronization — no yield points between has() and add() (cooperative scheduling)
-			const refreshingKeys = new Set<string>();
 
 			const get = (key: Key) =>
 				Effect.gen(function* () {
