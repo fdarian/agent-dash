@@ -36,7 +36,7 @@ export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 				]);
 
 				const lines = output.trim().split('\n').filter(Boolean);
-				const sessions: Array<ClaudeSession> = [];
+				const parsed = [];
 
 				for (const line of lines) {
 					const parts = line.split('\t');
@@ -51,15 +51,27 @@ export class TmuxClient extends Effect.Service<TmuxClient>()('TmuxClient', {
 					const sessionName = paneTarget.split(':')[0];
 					if (!sessionName) continue;
 
-					const isClaude = yield* checkForClaudeProcess(panePid);
-					if (!isClaude) continue;
+					parsed.push({ paneId, panePid, paneTitle, paneTarget, sessionName });
+				}
 
+				const checks = yield* Effect.all(
+					parsed.map((p) =>
+						checkForClaudeProcess(p.panePid).pipe(
+							Effect.map((isClaude) => (isClaude ? p : null)),
+						),
+					),
+					{ concurrency: 'unbounded' },
+				);
+
+				const sessions: Array<ClaudeSession> = [];
+				for (const result of checks) {
+					if (result === null) continue;
 					sessions.push({
-						paneId,
-						paneTarget,
-						title: paneTitle,
-						sessionName,
-						status: parseSessionStatus(paneTitle),
+						paneId: result.paneId,
+						paneTarget: result.paneTarget,
+						title: result.paneTitle,
+						sessionName: result.sessionName,
+						status: parseSessionStatus(result.paneTitle),
 					});
 				}
 

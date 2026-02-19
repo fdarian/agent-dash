@@ -1,5 +1,7 @@
 import { BoxRenderable, createCliRenderer, type KeyEvent } from '@opentui/core';
-import { Effect, Fiber, Ref, Schedule } from 'effect';
+import { Duration, Effect, Fiber, Ref, Schedule } from 'effect';
+import { join } from 'path';
+import { homedir } from 'os';
 import { parseSessionStatus, type ClaudeSession, type SessionStatus } from '../domain/session.ts';
 import { AppConfig } from '../services/config.ts';
 import { TmuxClient, type CreatedPaneInfo } from '../services/tmux-client.ts';
@@ -10,12 +12,20 @@ import { createConfirmDialog } from './confirm-dialog.ts';
 import { loadState, saveState } from '../services/state.ts';
 import { detectTerminalBackground } from '../utils/terminal.ts';
 import { groupSessionsByName, buildVisibleItems, resolveSelectedIndex, type VisibleItem } from './session-groups.ts';
+import { Cache } from '../lib/cache/cache.ts';
+import { CacheAdapter } from '../lib/cache/adapter.ts';
+
+type CachedSessionData = {
+	sessions: Array<ClaudeSession>;
+	displayNames: Record<string, string>;
+};
 
 export const App = Effect.gen(function* () {
-	const terminalBg = yield* detectTerminalBackground;
-
 	const config = yield* AppConfig;
 	const tmux = yield* TmuxClient;
+
+	// Fork terminal bg detection (non-blocking)
+	const terminalBgFiber = yield* Effect.fork(detectTerminalBackground);
 
 	const renderer = yield* Effect.promise(() =>
 		createCliRenderer({
@@ -32,16 +42,24 @@ export const App = Effect.gen(function* () {
 	});
 	renderer.root.add(root);
 
-	const helpOverlay = createHelpOverlay(renderer, terminalBg);
-	renderer.root.add(helpOverlay.modal);
-
-	const confirmDialog = createConfirmDialog(renderer, terminalBg);
-	renderer.root.add(confirmDialog.modal);
-
 	const sessionList = createSessionList(renderer);
 	const panePreview = createPanePreview(renderer);
 	root.add(sessionList.box);
 	root.add(panePreview.box);
+
+	// Lazy overlays
+	let helpOverlay: ReturnType<typeof createHelpOverlay> | null = null;
+	let confirmDialog: ReturnType<typeof createConfirmDialog> | null = null;
+	let overlaysReady = false;
+	const ensureOverlays = Effect.gen(function* () {
+		if (overlaysReady) return;
+		const terminalBg = yield* Fiber.join(terminalBgFiber);
+		helpOverlay = createHelpOverlay(renderer, terminalBg);
+		renderer.root.add(helpOverlay.modal);
+		confirmDialog = createConfirmDialog(renderer, terminalBg);
+		renderer.root.add(confirmDialog.modal);
+		overlaysReady = true;
+	});
 
 	const sessionsRef = yield* Ref.make<Array<ClaudeSession>>([]);
 	const selectedIndexRef = yield* Ref.make(0);
@@ -52,6 +70,31 @@ export const App = Effect.gen(function* () {
 	const visibleItemsRef = yield* Ref.make<Array<VisibleItem>>([]);
 	const previousContentRef = yield* Ref.make<string | null>(null);
 	const displayNameMapRef = yield* Ref.make<Map<string, string>>(new Map());
+
+	// Load persisted state + create sessions cache in parallel
+	const sessionsCache = yield* Cache.make<number, CachedSessionData>({
+		ttl: Duration.seconds(0),
+		swr: Duration.days(365),
+		adapter: CacheAdapter.fs<number, CachedSessionData>({
+			dir: join(homedir(), '.config', 'agent-dash', 'cache'),
+		}),
+		lookup: () =>
+			Effect.gen(function* () {
+				const sessions = yield* tmux.discoverSessions.pipe(
+					Effect.catchAll(() => Effect.succeed([] as Array<ClaudeSession>)),
+				);
+				const uniqueSessionNames = [...new Set(sessions.map((s) => s.sessionName))];
+				const formattedNames = yield* Effect.all(
+					uniqueSessionNames.map((name) => config.formatSessionName(name)),
+					{ concurrency: 'unbounded' },
+				);
+				const displayNames: Record<string, string> = {};
+				for (let i = 0; i < uniqueSessionNames.length; i++) {
+					displayNames[uniqueSessionNames[i]!] = formattedNames[i]!;
+				}
+				return { sessions, displayNames };
+			}),
+	});
 
 	const persistedState = yield* loadState;
 	yield* Ref.set(prevStatusMapRef, persistedState.prevStatusMap);
@@ -118,19 +161,12 @@ export const App = Effect.gen(function* () {
 	});
 
 	const pollSessions = Effect.gen(function* () {
-		const sessions = yield* tmux.discoverSessions.pipe(
-			Effect.catchAll(() => Effect.succeed([] as Array<ClaudeSession>)),
-		);
-		yield* Ref.set(sessionsRef, sessions);
+		const cached = yield* sessionsCache.get(0);
+		yield* Ref.set(sessionsRef, cached.sessions);
 
-		const uniqueSessionNames = [...new Set(sessions.map((s) => s.sessionName))];
-		const formattedNames = yield* Effect.all(
-			uniqueSessionNames.map((name) => config.formatSessionName(name)),
-			{ concurrency: 'unbounded' },
-		);
 		const nextDisplayNameMap = new Map<string, string>();
-		for (let i = 0; i < uniqueSessionNames.length; i++) {
-			nextDisplayNameMap.set(uniqueSessionNames[i]!, formattedNames[i]!);
+		for (const [name, displayName] of Object.entries(cached.displayNames)) {
+			nextDisplayNameMap.set(name, displayName);
 		}
 		yield* Ref.set(displayNameMapRef, nextDisplayNameMap);
 
@@ -140,7 +176,7 @@ export const App = Effect.gen(function* () {
 		const nextUnreadPaneIds = new Set(unreadPaneIds);
 		const currentPaneIds = new Set<string>();
 
-		for (const session of sessions) {
+		for (const session of cached.sessions) {
 			currentPaneIds.add(session.paneId);
 			nextStatusMap.set(session.paneId, session.status);
 			const prevStatus = prevStatusMap.get(session.paneId);
@@ -227,8 +263,20 @@ export const App = Effect.gen(function* () {
 			yield* refreshSessionListUI;
 		});
 
-	yield* pollSessions;
+	// Early render: get cached data, populate refs, start renderer
+	const initialData = yield* sessionsCache.get(0);
+	yield* Ref.set(sessionsRef, initialData.sessions);
+	const initialDisplayNameMap = new Map<string, string>();
+	for (const [name, displayName] of Object.entries(initialData.displayNames)) {
+		initialDisplayNameMap.set(name, displayName);
+	}
+	yield* Ref.set(displayNameMapRef, initialDisplayNameMap);
+	yield* refreshSessionListUI;
 
+	// Start renderer EARLY - user sees stale sessions immediately
+	renderer.start();
+
+	// Fork polling (don't await first poll - we already have cache data)
 	const sessionsFiber = yield* pollSessions.pipe(
 		Effect.repeat(Schedule.fixed('2 seconds')),
 		Effect.fork,
@@ -257,7 +305,7 @@ export const App = Effect.gen(function* () {
 			'keypress',
 			(key: KeyEvent) => {
 				const handler = Effect.gen(function* () {
-					if (confirmDialog.getIsVisible()) {
+					if (confirmDialog !== null && confirmDialog.getIsVisible()) {
 						if (key.name === 'return') {
 							key.preventDefault();
 							const paneTarget = confirmDialog.getPendingPaneTarget();
@@ -273,7 +321,7 @@ export const App = Effect.gen(function* () {
 						return;
 					}
 
-					if (helpOverlay.getIsVisible()) {
+					if (helpOverlay !== null && helpOverlay.getIsVisible()) {
 						if (helpOverlay.getIsFilterActive()) {
 							if (key.name === 'escape') {
 								key.preventDefault();
@@ -434,11 +482,13 @@ export const App = Effect.gen(function* () {
 						if (focus === 'sessions') {
 							const selected = yield* getSelectedSession;
 							if (selected !== undefined) {
-								confirmDialog.show(selected.paneTarget, selected.paneTarget);
+								yield* ensureOverlays;
+								confirmDialog!.show(selected.paneTarget, selected.paneTarget);
 							}
 						}
 					} else if (key.name === '?') {
-						helpOverlay.toggle();
+						yield* ensureOverlays;
+						helpOverlay!.toggle();
 					} else if (key.name === 'q') {
 						renderer.destroy();
 					}
@@ -449,8 +499,6 @@ export const App = Effect.gen(function* () {
 		);
 	});
 
-	renderer.start();
-
 	yield* Effect.async<void>((resume) => {
 		(renderer as unknown as NodeJS.EventEmitter).on('destroy', () => {
 			resume(Effect.void);
@@ -459,4 +507,5 @@ export const App = Effect.gen(function* () {
 
 	yield* Fiber.interrupt(sessionsFiber);
 	yield* Fiber.interrupt(previewPollFiber);
+	yield* Fiber.interrupt(terminalBgFiber);
 });

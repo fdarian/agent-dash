@@ -14,7 +14,6 @@ export const detectTerminalBackground = Effect.promise<string>(() => {
 			resolve(FALLBACK_COLOR);
 		}, 300);
 
-		const wasRaw = process.stdin.isRaw;
 		process.stdin.setRawMode(true);
 		process.stdin.resume();
 
@@ -35,8 +34,6 @@ export const detectTerminalBackground = Effect.promise<string>(() => {
 
 		const cleanup = () => {
 			process.stdin.removeListener('data', onData);
-			process.stdin.setRawMode(wasRaw);
-			process.stdin.pause();
 		};
 
 		process.stdin.on('data', onData);
