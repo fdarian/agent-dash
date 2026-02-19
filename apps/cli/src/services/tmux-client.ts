@@ -1,4 +1,5 @@
-import { Data, Effect } from 'effect';
+import { Data } from 'effect/Data';
+import { Effect } from 'effect/Effect';
 import { type ClaudeSession, parseSessionStatus } from '../domain/session.ts';
 import { AppConfig } from './config.ts';
 

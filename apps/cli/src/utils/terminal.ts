@@ -1,4 +1,4 @@
-import { Effect } from 'effect';
+import { Effect } from 'effect/Effect';
 
 const FALLBACK_COLOR = '#000000';
 

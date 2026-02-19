@@ -1,5 +1,9 @@
 import { BoxRenderable, createCliRenderer, type KeyEvent } from '@opentui/core';
-import { Duration, Effect, Fiber, Ref, Schedule } from 'effect';
+import { Duration } from 'effect/Duration';
+import { Effect } from 'effect/Effect';
+import { Fiber } from 'effect/Fiber';
+import { Ref } from 'effect/Ref';
+import { Schedule } from 'effect/Schedule';
 import { join } from 'path';
 import { homedir } from 'os';
 import { parseSessionStatus, type ClaudeSession, type SessionStatus } from '../domain/session.ts';
@@ -277,6 +281,11 @@ export const App = Effect.gen(function* () {
 
 	// Start renderer EARLY - user sees stale sessions immediately
 	renderer.start();
+
+	if (process.argv.includes('--bench')) {
+		renderer.destroy();
+		return;
+	}
 
 	// Fork polling (don't await first poll - we already have cache data)
 	const sessionsFiber = yield* pollSessions.pipe(
