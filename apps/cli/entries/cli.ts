@@ -1,4 +1,4 @@
-import { Command } from '@effect/cli';
+import { Command, Options } from '@effect/cli';
 import { BunContext, BunRuntime } from '@effect/platform-bun';
 import { Effect, Layer } from 'effect';
 import pkg from '../package.json' with { type: 'json' };
@@ -10,7 +10,9 @@ const AppLayer = TmuxClient.Default.pipe(
 	Layer.provideMerge(AppConfig.Default),
 );
 
-const agentDashCmd = Command.make('agent-dash', {}, () =>
+const exit = Options.boolean('exit').pipe(Options.withDefault(false));
+
+const agentDashCmd = Command.make('agent-dash', { exit }, () =>
 	App.pipe(Effect.provide(AppLayer)),
 );
 

@@ -394,6 +394,7 @@ export const App = Effect.gen(function* () {
 									yield* tmux.switchToPane(target).pipe(
 										Effect.catchAll(() => Effect.void),
 									);
+									if (config.exitOnSwitch) renderer.destroy();
 								}
 							}
 						}
@@ -420,7 +421,11 @@ export const App = Effect.gen(function* () {
 										yield* tmux.switchToPane(paneInfo.paneTarget).pipe(
 											Effect.catchAll(() => Effect.void),
 										);
-										yield* addSession(paneInfo);
+										if (config.exitOnSwitch) {
+											renderer.destroy();
+										} else {
+											yield* addSession(paneInfo);
+										}
 									}
 								}
 							}

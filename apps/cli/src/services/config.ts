@@ -69,6 +69,8 @@ export class AppConfig extends Effect.Service<AppConfig>()('AppConfig', {
 			config?.sessionNameFormatter,
 		);
 
-		return { command, formatSessionName };
+		const exitOnSwitch = process.argv.includes('--exit');
+
+		return { command, formatSessionName, exitOnSwitch };
 	}),
 }) {}
