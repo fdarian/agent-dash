@@ -232,6 +232,7 @@ export const App = Effect.gen(function* () {
 			yield* Ref.set(selectedIndexRef, newSelectedIndex);
 
 			yield* refreshSessionListUI;
+			yield* sessionsCache.invalidate(0);
 		});
 
 	const addSession = (paneInfo: CreatedPaneInfo) =>
@@ -261,6 +262,7 @@ export const App = Effect.gen(function* () {
 			yield* Ref.set(selectedIndexRef, newSelectedIndex);
 
 			yield* refreshSessionListUI;
+			yield* sessionsCache.invalidate(0);
 		});
 
 	// Early render: get cached data, populate refs, start renderer
