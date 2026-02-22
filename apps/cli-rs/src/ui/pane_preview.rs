@@ -7,6 +7,8 @@ const PRIMARY: Color = Color::Rgb(0xD9, 0x77, 0x57);
 const UNFOCUSED: Color = Color::Rgb(0x66, 0x66, 0x66);
 
 pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool) {
+    state.preview_area_height = area.height;
+
     let border_color = if focused { PRIMARY } else { UNFOCUSED };
     let block = Block::default()
         .borders(Borders::ALL)

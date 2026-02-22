@@ -37,11 +37,21 @@ pub struct AppState {
     pub preview_scroll_offset: u16,
     pub preview_is_sticky_bottom: bool,
     pub preview_content_height: u16,
+    pub preview_area_height: u16,
+    pub pending_confirm_target: Option<String>,
+    pub show_help: bool,
 }
 
 pub enum Message {
     SessionsUpdated(Vec<ClaudeSession>, HashMap<String, String>),
     PreviewUpdated(String),
+}
+
+pub enum Action {
+    SwitchToPane(String),
+    OpenPopup(String),
+    CreateSession { session_name: String, cwd_target: String },
+    KillPane(String),
 }
 
 pub async fn run(
@@ -66,6 +76,9 @@ pub async fn run(
         preview_scroll_offset: 0,
         preview_is_sticky_bottom: true,
         preview_content_height: 0,
+        preview_area_height: 0,
+        pending_confirm_target: None,
+        show_help: false,
     };
 
     // Load cached sessions for instant first render
@@ -137,7 +150,10 @@ pub async fn run(
         tokio::select! {
             Some(Ok(event)) = event_stream.next() => {
                 if let Event::Key(key) = event {
-                    handle_key_event(&mut state, key, &selected_pane_target);
+                    let action = handle_key_event(&mut state, key, &selected_pane_target);
+                    if let Some(action) = action {
+                        process_action(&mut state, action, &selected_pane_target).await;
+                    }
                 }
             }
             Some(msg) = rx.recv() => {
@@ -153,6 +169,68 @@ pub async fn run(
     }
 
     Ok(())
+}
+
+async fn process_action(
+    state: &mut AppState,
+    action: Action,
+    selected_pane_target: &Arc<Mutex<Option<String>>>,
+) {
+    match action {
+        Action::SwitchToPane(target) => {
+            let config = crate::config::load_config(false);
+            let tmux = TmuxClient::new(&config);
+            let _ = tmux.switch_to_pane(&target).await;
+        }
+        Action::OpenPopup(target) => {
+            let config = crate::config::load_config(false);
+            let tmux = TmuxClient::new(&config);
+            let _ = tmux.open_popup(&target).await;
+        }
+        Action::CreateSession { session_name, cwd_target } => {
+            let config = crate::config::load_config(state.config.exit_on_switch);
+            let tmux = TmuxClient::new(&config);
+            if let Ok(cwd) = tmux.get_pane_cwd(&cwd_target).await {
+                if let Ok(Some(pane_info)) = tmux.create_window(&session_name, Some(&cwd)).await {
+                    let _ = tmux.switch_to_pane(&pane_info.pane_target).await;
+                    if state.config.exit_on_switch {
+                        state.should_quit = true;
+                    } else {
+                        let new_session = ClaudeSession {
+                            pane_id: pane_info.pane_id,
+                            pane_target: pane_info.pane_target,
+                            title: pane_info.pane_title.clone(),
+                            session_name: pane_info.session_name.clone(),
+                            status: crate::session::parse_session_status(&pane_info.pane_title),
+                        };
+                        state.prev_status_map.insert(new_session.pane_id.clone(), new_session.status.clone());
+                        state.sessions.push(new_session);
+                        state::save_state(&state.unread_pane_ids, &state.prev_status_map);
+                        let old_items = std::mem::take(&mut state.visible_items);
+                        refresh_visible_items(state);
+                        state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
+                        update_selected_target(state, selected_pane_target);
+                    }
+                }
+            }
+        }
+        Action::KillPane(target) => {
+            let config = crate::config::load_config(false);
+            let tmux = TmuxClient::new(&config);
+            let _ = tmux.kill_pane(&target).await;
+            if let Some(removed) = state.sessions.iter().find(|s| s.pane_target == target) {
+                let pane_id = removed.pane_id.clone();
+                state.prev_status_map.remove(&pane_id);
+                state.unread_pane_ids.remove(&pane_id);
+            }
+            state.sessions.retain(|s| s.pane_target != target);
+            state::save_state(&state.unread_pane_ids, &state.prev_status_map);
+            let old_items = std::mem::take(&mut state.visible_items);
+            refresh_visible_items(state);
+            state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
+            update_selected_target(state, selected_pane_target);
+        }
+    }
 }
 
 fn handle_message(
@@ -211,14 +289,162 @@ fn handle_message(
 fn handle_key_event(
     state: &mut AppState,
     key: KeyEvent,
-    _selected_pane_target: &Arc<Mutex<Option<String>>>,
-) {
+    selected_pane_target: &Arc<Mutex<Option<String>>>,
+) -> Option<Action> {
     match key.code {
-        KeyCode::Char('q') => state.should_quit = true,
+        KeyCode::Char('q') => {
+            state.should_quit = true;
+            None
+        }
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.should_quit = true;
+            None
         }
-        _ => {}
+        KeyCode::Char('1') => {
+            state.focus = Focus::Sessions;
+            None
+        }
+        KeyCode::Char('0') => {
+            state.focus = Focus::Preview;
+            None
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            match state.focus {
+                Focus::Sessions => {
+                    if state.selected_index < state.visible_items.len().saturating_sub(1) {
+                        state.selected_index += 1;
+                        state.preview_content.clear();
+                        update_selected_target(state, selected_pane_target);
+                    }
+                }
+                Focus::Preview => {
+                    let visible_height = state.preview_area_height.saturating_sub(2);
+                    state.preview_scroll_offset = state.preview_scroll_offset.saturating_add(1);
+                    if state.preview_scroll_offset >= state.preview_content_height.saturating_sub(visible_height) {
+                        state.preview_is_sticky_bottom = true;
+                    }
+                }
+            }
+            None
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            match state.focus {
+                Focus::Sessions => {
+                    if state.selected_index > 0 {
+                        state.selected_index -= 1;
+                        state.preview_content.clear();
+                        update_selected_target(state, selected_pane_target);
+                    }
+                }
+                Focus::Preview => {
+                    if state.preview_scroll_offset > 0 {
+                        state.preview_scroll_offset -= 1;
+                        state.preview_is_sticky_bottom = false;
+                    }
+                }
+            }
+            None
+        }
+        KeyCode::Char('h') => {
+            if matches!(state.focus, Focus::Sessions) {
+                if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
+                    match &item {
+                        VisibleItem::GroupHeader { session_name, .. } => {
+                            state.collapsed_groups.insert(session_name.clone());
+                            refresh_visible_items(state);
+                        }
+                        VisibleItem::Session { group_session_name, .. } => {
+                            let group_name = group_session_name.clone();
+                            state.collapsed_groups.insert(group_name.clone());
+                            refresh_visible_items(state);
+                            if let Some(idx) = state.visible_items.iter().position(|i| {
+                                matches!(i, VisibleItem::GroupHeader { session_name, .. } if session_name == &group_name)
+                            }) {
+                                state.selected_index = idx;
+                            }
+                        }
+                    }
+                    update_selected_target(state, selected_pane_target);
+                }
+            }
+            None
+        }
+        KeyCode::Char('l') => {
+            if matches!(state.focus, Focus::Sessions) {
+                if let Some(VisibleItem::GroupHeader { session_name, .. }) = state.visible_items.get(state.selected_index).cloned().as_ref() {
+                    let name = session_name.clone();
+                    state.collapsed_groups.remove(&name);
+                    refresh_visible_items(state);
+                    update_selected_target(state, selected_pane_target);
+                }
+            }
+            None
+        }
+        KeyCode::Char('O') => {
+            if let Some(target) = get_selected_pane_target(state) {
+                Some(Action::OpenPopup(target))
+            } else {
+                None
+            }
+        }
+        KeyCode::Char('o') => {
+            if matches!(state.focus, Focus::Sessions) {
+                if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
+                    if let VisibleItem::Session { ref session, .. } = item {
+                        state.unread_pane_ids.remove(&session.pane_id);
+                        state::save_state(&state.unread_pane_ids, &state.prev_status_map);
+                        refresh_visible_items(state);
+                    }
+                    let target = match &item {
+                        VisibleItem::Session { session, .. } => Some(session.pane_target.clone()),
+                        VisibleItem::GroupHeader { session_name, .. } => Some(session_name.clone()),
+                    };
+                    if let Some(target) = target {
+                        if state.config.exit_on_switch {
+                            state.should_quit = true;
+                        }
+                        return Some(Action::SwitchToPane(target));
+                    }
+                }
+            }
+            None
+        }
+        KeyCode::Char('r') => {
+            if matches!(state.focus, Focus::Sessions) {
+                if let Some(VisibleItem::Session { session, .. }) = state.visible_items.get(state.selected_index).cloned().as_ref() {
+                    let pane_id = session.pane_id.clone();
+                    state.unread_pane_ids.remove(&pane_id);
+                    state::save_state(&state.unread_pane_ids, &state.prev_status_map);
+                    refresh_visible_items(state);
+                }
+            }
+            None
+        }
+        KeyCode::Char('c') => {
+            if matches!(state.focus, Focus::Sessions) {
+                if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
+                    let (session_name, cwd_target) = match &item {
+                        VisibleItem::Session { session, .. } => (session.session_name.clone(), session.pane_target.clone()),
+                        VisibleItem::GroupHeader { session_name, .. } => (session_name.clone(), session_name.clone()),
+                    };
+                    return Some(Action::CreateSession { session_name, cwd_target });
+                }
+            }
+            None
+        }
+        KeyCode::Char('x') => {
+            if matches!(state.focus, Focus::Sessions) {
+                if let Some(VisibleItem::Session { session, .. }) = state.visible_items.get(state.selected_index).cloned().as_ref() {
+                    state.pending_confirm_target = Some(session.pane_target.clone());
+                }
+            }
+            None
+        }
+        KeyCode::Char('?') => {
+            state.show_help = !state.show_help;
+            None
+        }
+        _ => None,
     }
 }
 
