@@ -14,7 +14,7 @@ mod cache;
 mod config;
 mod session;
 mod state;
-mod terminal;
+
 mod tmux;
 
 #[derive(Parser)]

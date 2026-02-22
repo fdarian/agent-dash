@@ -41,7 +41,7 @@ pub struct AppState {
     pub preview_pane_area: Rect,
     pub pending_confirm_target: Option<String>,
     pub show_help: bool,
-    pub terminal_bg: (u8, u8, u8),
+
     pub help_filter_active: bool,
     pub help_filter_query: String,
     pub toast_message: Option<String>,
@@ -87,7 +87,7 @@ pub async fn run(
         preview_pane_area: Rect::default(),
         pending_confirm_target: None,
         show_help: false,
-        terminal_bg: (0, 0, 0),
+
         help_filter_active: false,
         help_filter_query: String::new(),
         toast_message: None,
@@ -104,9 +104,6 @@ pub async fn run(
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
 
     let selected_pane_target = Arc::new(Mutex::new(Option::<String>::None));
-
-    // Terminal background detection (synchronous, before EventStream takes over stdin)
-    state.terminal_bg = crate::terminal::detect_terminal_background_sync();
 
     // Session polling task (every 2s)
     let poll_tx = tx.clone();
