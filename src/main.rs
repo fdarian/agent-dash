@@ -22,6 +22,8 @@ mod tmux;
 struct Cli {
     #[arg(long, default_value_t = false)]
     exit: bool,
+    #[arg(long)]
+    exit_immediately: bool,
 }
 
 #[tokio::main]
@@ -36,7 +38,7 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Run app
-    let result = app::run(&mut terminal, cli.exit).await;
+    let result = app::run(&mut terminal, cli.exit, cli.exit_immediately).await;
 
     // Teardown
     disable_raw_mode()?;

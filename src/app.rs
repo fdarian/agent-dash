@@ -64,6 +64,7 @@ pub enum Action {
 pub async fn run(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     exit_on_switch: bool,
+    exit_immediately: bool,
 ) -> Result<()> {
     let config = crate::config::load_config(exit_on_switch);
     let formatter_path = config.session_name_formatter.clone();
@@ -192,6 +193,10 @@ pub async fn run(
 
     // Initial render
     terminal.draw(|frame| ui::render(frame, &mut state))?;
+
+    if exit_immediately {
+        return Ok(());
+    }
 
     loop {
         tokio::select! {
