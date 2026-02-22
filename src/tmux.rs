@@ -85,6 +85,17 @@ impl<'a> TmuxClient<'a> {
         run_command("tmux", &["capture-pane", "-e", "-t", pane_target, "-p", "-S", "-"]).await
     }
 
+    pub async fn start_pipe_pane(&self, pane_target: &str, fifo_path: &str) -> Result<()> {
+        let cmd = format!("cat >> {}", fifo_path);
+        run_command("tmux", &["pipe-pane", "-O", "-t", pane_target, &cmd]).await?;
+        Ok(())
+    }
+
+    pub async fn stop_pipe_pane(&self, pane_target: &str) -> Result<()> {
+        run_command("tmux", &["pipe-pane", "-t", pane_target]).await?;
+        Ok(())
+    }
+
     pub async fn switch_to_pane(&self, pane_target: &str) -> Result<()> {
         run_command("tmux", &["switch-client", "-t", pane_target]).await?;
         Ok(())
