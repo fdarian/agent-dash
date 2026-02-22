@@ -28,10 +28,6 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Detect terminal background BEFORE setting up the TUI
-    // (needs exclusive stdin access, can't run concurrently with EventStream)
-    let terminal_bg = terminal::detect_terminal_background();
-
     // Terminal setup
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -40,7 +36,7 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Run app
-    let result = app::run(&mut terminal, cli.exit, terminal_bg).await;
+    let result = app::run(&mut terminal, cli.exit).await;
 
     // Teardown
     disable_raw_mode()?;
