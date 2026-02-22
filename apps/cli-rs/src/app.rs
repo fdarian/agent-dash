@@ -3,7 +3,9 @@ use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers};
 use futures::StreamExt;
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio::sync::Mutex;
 
 use crate::cache::{load_cached_sessions, save_cached_sessions, CachedSessionData};
 use crate::config::AppConfig;
@@ -32,10 +34,14 @@ pub struct AppState {
     pub prev_status_map: HashMap<String, SessionStatus>,
     pub display_name_map: HashMap<String, String>,
     pub preview_content: String,
+    pub preview_scroll_offset: u16,
+    pub preview_is_sticky_bottom: bool,
+    pub preview_content_height: u16,
 }
 
 pub enum Message {
     SessionsUpdated(Vec<ClaudeSession>, HashMap<String, String>),
+    PreviewUpdated(String),
 }
 
 pub async fn run(
@@ -57,6 +63,9 @@ pub async fn run(
         prev_status_map: loaded_state.prev_status_map,
         display_name_map: HashMap::new(),
         preview_content: String::new(),
+        preview_scroll_offset: 0,
+        preview_is_sticky_bottom: true,
+        preview_content_height: 0,
     };
 
     // Load cached sessions for instant first render
@@ -67,6 +76,8 @@ pub async fn run(
     }
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+
+    let selected_pane_target = Arc::new(Mutex::new(Option::<String>::None));
 
     // Session polling task (every 2s)
     let poll_tx = tx.clone();
@@ -96,24 +107,45 @@ pub async fn run(
         }
     });
 
+    // Preview polling task (every 200ms)
+    let preview_tx = tx.clone();
+    let preview_target = Arc::clone(&selected_pane_target);
+    tokio::spawn(async move {
+        let config = crate::config::load_config(false);
+        let tmux = TmuxClient::new(&config);
+        let mut previous_content = String::new();
+        loop {
+            let target = preview_target.lock().await.clone();
+            if let Some(target) = target {
+                if let Ok(content) = tmux.capture_pane_content(&target).await {
+                    if content != previous_content {
+                        previous_content = content.clone();
+                        let _ = preview_tx.send(Message::PreviewUpdated(content));
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+    });
+
     let mut event_stream = EventStream::new();
 
     // Initial render
-    terminal.draw(|frame| ui::render(frame, &state))?;
+    terminal.draw(|frame| ui::render(frame, &mut state))?;
 
     loop {
         tokio::select! {
             Some(Ok(event)) = event_stream.next() => {
                 if let Event::Key(key) = event {
-                    handle_key_event(&mut state, key);
+                    handle_key_event(&mut state, key, &selected_pane_target);
                 }
             }
             Some(msg) = rx.recv() => {
-                handle_message(&mut state, msg);
+                handle_message(&mut state, msg, &selected_pane_target);
             }
         }
 
-        terminal.draw(|frame| ui::render(frame, &state))?;
+        terminal.draw(|frame| ui::render(frame, &mut state))?;
 
         if state.should_quit {
             break;
@@ -123,7 +155,11 @@ pub async fn run(
     Ok(())
 }
 
-fn handle_message(state: &mut AppState, msg: Message) {
+fn handle_message(
+    state: &mut AppState,
+    msg: Message,
+    selected_pane_target: &Arc<Mutex<Option<String>>>,
+) {
     match msg {
         Message::SessionsUpdated(sessions, display_names) => {
             // Update unread tracking
@@ -163,11 +199,20 @@ fn handle_message(state: &mut AppState, msg: Message) {
             refresh_visible_items(state);
             state.selected_index =
                 resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
+
+            update_selected_target(state, selected_pane_target);
+        }
+        Message::PreviewUpdated(content) => {
+            state.preview_content = content;
         }
     }
 }
 
-fn handle_key_event(state: &mut AppState, key: KeyEvent) {
+fn handle_key_event(
+    state: &mut AppState,
+    key: KeyEvent,
+    _selected_pane_target: &Arc<Mutex<Option<String>>>,
+) {
     match key.code {
         KeyCode::Char('q') => state.should_quit = true,
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -185,4 +230,21 @@ fn refresh_visible_items(state: &mut AppState) {
         &state.unread_pane_ids,
         &state.display_name_map,
     );
+}
+
+fn get_selected_pane_target(state: &AppState) -> Option<String> {
+    state
+        .visible_items
+        .get(state.selected_index)
+        .and_then(|item| match item {
+            VisibleItem::Session { session, .. } => Some(session.pane_target.clone()),
+            _ => None,
+        })
+}
+
+fn update_selected_target(state: &AppState, selected_pane_target: &Arc<Mutex<Option<String>>>) {
+    let target = get_selected_pane_target(state);
+    if let Ok(mut lock) = selected_pane_target.try_lock() {
+        *lock = target;
+    }
 }
