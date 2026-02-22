@@ -65,6 +65,7 @@ pub async fn run(
     exit_on_switch: bool,
 ) -> Result<()> {
     let config = crate::config::load_config(exit_on_switch);
+    let formatter_path = config.session_name_formatter.clone();
     let loaded_state = state::load_state();
 
     let mut state = AppState {
@@ -115,14 +116,40 @@ pub async fn run(
     tokio::spawn(async move {
         let config = crate::config::load_config(false);
         let tmux = TmuxClient::new(&config);
+        let mut formatter_cache: HashMap<String, String> = HashMap::new();
         loop {
             if let Ok(sessions) = tmux.discover_sessions().await {
-                // For now, display names = session names (formatter comes in Phase 10)
+                let unique_names: Vec<String> = sessions
+                    .iter()
+                    .map(|s| s.session_name.clone())
+                    .collect::<std::collections::HashSet<_>>()
+                    .into_iter()
+                    .collect();
+
                 let mut display_names = HashMap::new();
-                for s in &sessions {
-                    display_names
-                        .entry(s.session_name.clone())
-                        .or_insert_with(|| s.session_name.clone());
+                for name in &unique_names {
+                    let formatted = if let Some(ref path) = formatter_path {
+                        if let Some(cached) = formatter_cache.get(name) {
+                            cached.clone()
+                        } else {
+                            match tokio::process::Command::new(path)
+                                .arg(name)
+                                .output()
+                                .await
+                            {
+                                Ok(output) if output.status.success() => {
+                                    let result =
+                                        String::from_utf8_lossy(&output.stdout).trim().to_string();
+                                    formatter_cache.insert(name.clone(), result.clone());
+                                    result
+                                }
+                                _ => name.clone(),
+                            }
+                        }
+                    } else {
+                        name.clone()
+                    };
+                    display_names.insert(name.clone(), formatted);
                 }
 
                 // Save to cache
