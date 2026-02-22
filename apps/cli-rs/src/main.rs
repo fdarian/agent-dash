@@ -14,6 +14,7 @@ mod cache;
 mod config;
 mod session;
 mod state;
+mod tmux;
 
 #[derive(Parser)]
 #[command(name = "agent-dash", version)]
