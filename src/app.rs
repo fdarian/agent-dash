@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use futures::StreamExt;
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 use tokio::sync::watch;
 
 use crate::cache::{load_cached_sessions, save_cached_sessions, CachedSessionData};
+use crate::selection::{self, PreviewSelection, ContentPosition};
 use crate::config::AppConfig;
 use crate::session::{
     build_visible_items, group_sessions_by_name, resolve_selected_index, ClaudeSession,
@@ -38,6 +39,7 @@ pub struct AppState {
     pub preview_content_height: u16,
     pub preview_area_height: u16,
     pub preview_pane_area: Rect,
+    pub preview_selection: Option<PreviewSelection>,
     pub pending_confirm_target: Option<String>,
     pub show_help: bool,
 
@@ -86,6 +88,7 @@ pub async fn run(
         preview_content_height: 0,
         preview_area_height: 0,
         preview_pane_area: Rect::default(),
+        preview_selection: None,
         pending_confirm_target: None,
         show_help: false,
 
@@ -326,6 +329,9 @@ fn handle_message(
             update_selected_target(state, selected_pane_target);
         }
         Message::PreviewUpdated(content) => {
+            if !state.preview_selection.as_ref().is_some_and(|s| s.is_dragging) {
+                state.preview_selection = None;
+            }
             state.preview_content = content;
         }
     }
@@ -527,6 +533,7 @@ fn handle_key_event(
                     if state.selected_index < state.visible_items.len().saturating_sub(1) {
                         state.selected_index += 1;
                         state.preview_content.clear();
+                        state.preview_selection = None;
                         update_selected_target(state, selected_pane_target);
                     }
                 }
@@ -542,6 +549,7 @@ fn handle_key_event(
                     if state.selected_index > 0 {
                         state.selected_index -= 1;
                         state.preview_content.clear();
+                        state.preview_selection = None;
                         update_selected_target(state, selected_pane_target);
                     }
                 }
@@ -670,13 +678,57 @@ fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) {
         && mouse.row >= state.preview_pane_area.y
         && mouse.row < state.preview_pane_area.y + state.preview_pane_area.height;
 
-    if !in_preview {
-        return;
-    }
-
     match mouse.kind {
-        MouseEventKind::ScrollDown => scroll_preview_down(state),
-        MouseEventKind::ScrollUp => scroll_preview_up(state),
+        MouseEventKind::Down(MouseButton::Left) => {
+            if !in_preview {
+                state.preview_selection = None;
+                return;
+            }
+            if let Some(pos) = selection::mouse_to_content_position(
+                mouse.column, mouse.row, state.preview_pane_area, state.preview_scroll_offset,
+            ) {
+                state.preview_selection = Some(PreviewSelection {
+                    anchor: ContentPosition { row: pos.row, col: pos.col },
+                    cursor: ContentPosition { row: pos.row, col: pos.col },
+                    is_dragging: true,
+                });
+            }
+        }
+        MouseEventKind::Drag(MouseButton::Left) => {
+            if let Some(ref mut sel) = state.preview_selection {
+                // Clamp mouse coords to inner area bounds
+                let inner_x = state.preview_pane_area.x + 1;
+                let inner_y = state.preview_pane_area.y + 1;
+                let inner_right = state.preview_pane_area.x + state.preview_pane_area.width - 1;
+                let inner_bottom = state.preview_pane_area.y + state.preview_pane_area.height - 1;
+
+                let clamped_col = mouse.column.clamp(inner_x, inner_right.saturating_sub(1));
+                let clamped_row = mouse.row.clamp(inner_y, inner_bottom.saturating_sub(1));
+
+                sel.cursor.col = clamped_col - inner_x;
+                sel.cursor.row = (clamped_row - inner_y) + state.preview_scroll_offset;
+            }
+        }
+        MouseEventKind::Up(MouseButton::Left) => {
+            if let Some(ref mut sel) = state.preview_selection {
+                sel.is_dragging = false;
+                if sel.anchor.row == sel.cursor.row && sel.anchor.col == sel.cursor.col {
+                    state.preview_selection = None;
+                } else if !state.preview_content.is_empty() {
+                    let text = ansi_to_tui::IntoText::into_text(&state.preview_content).unwrap_or_default();
+                    let selected = selection::extract_selected_text(&text, sel);
+                    if !selected.is_empty() {
+                        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                            let _ = clipboard.set_text(&selected);
+                            state.toast_message = Some("Copied to clipboard!".to_string());
+                            state.toast_deadline = Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
+                        }
+                    }
+                }
+            }
+        }
+        MouseEventKind::ScrollDown if in_preview => scroll_preview_down(state),
+        MouseEventKind::ScrollUp if in_preview => scroll_preview_up(state),
         _ => {}
     }
 }
