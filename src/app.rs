@@ -9,8 +9,8 @@ use tokio::sync::watch;
 use crate::cache::{load_cached_sessions, save_cached_sessions, CachedSessionData};
 use crate::config::AppConfig;
 use crate::session::{
-    build_visible_items, group_sessions_by_name, resolve_selected_index, ClaudeSession,
-    SessionStatus, VisibleItem,
+    auto_select_index, build_visible_items, group_sessions_by_name, resolve_selected_index,
+    ClaudeSession, SessionStatus, VisibleItem,
 };
 use crate::state;
 use crate::tmux::TmuxClient;
@@ -46,6 +46,7 @@ pub struct AppState {
     pub help_filter_cursor: usize,
     pub toast_message: Option<String>,
     pub toast_deadline: Option<std::time::Instant>,
+    pub initial_focused_info: Option<(String, String)>,
 }
 
 pub enum Message {
@@ -68,6 +69,11 @@ pub async fn run(
     let config = crate::config::load_config(exit_on_switch);
     let formatter_path = config.session_name_formatter.clone();
     let loaded_state = state::load_state();
+
+    let focused_pane_info = {
+        let tmux = TmuxClient::new(&config);
+        tmux.get_focused_pane_info().await
+    };
 
     let mut state = AppState {
         should_quit: false,
@@ -94,6 +100,7 @@ pub async fn run(
         help_filter_cursor: 0,
         toast_message: None,
         toast_deadline: None,
+        initial_focused_info: focused_pane_info,
     };
 
     // Load cached sessions for instant first render
@@ -101,6 +108,9 @@ pub async fn run(
         state.sessions = cached.sessions;
         state.display_name_map = cached.display_names;
         refresh_visible_items(&mut state);
+        if let Some(info) = state.initial_focused_info.take() {
+            state.selected_index = auto_select_index(&state.visible_items, &info.0, &info.1);
+        }
     }
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
@@ -320,8 +330,12 @@ fn handle_message(
             // Resolve selected index
             let old_items = std::mem::take(&mut state.visible_items);
             refresh_visible_items(state);
-            state.selected_index =
-                resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
+            if let Some(info) = state.initial_focused_info.take() {
+                state.selected_index = auto_select_index(&state.visible_items, &info.0, &info.1);
+            } else {
+                state.selected_index =
+                    resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
+            }
 
             update_selected_target(state, selected_pane_target);
         }

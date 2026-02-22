@@ -142,3 +142,24 @@ pub fn resolve_selected_index(
         old_index.min(new_items.len() - 1)
     }
 }
+
+pub fn auto_select_index(
+    visible_items: &[VisibleItem],
+    focused_pane_id: &str,
+    focused_session_name: &str,
+) -> usize {
+    // Priority 1: focused pane is itself an agent session
+    if let Some(idx) = visible_items.iter().position(|item| {
+        matches!(item, VisibleItem::Session { session, .. } if session.pane_id == focused_pane_id)
+    }) {
+        return idx;
+    }
+    // Priority 2: first agent session in the focused tmux session
+    if let Some(idx) = visible_items.iter().position(|item| {
+        matches!(item, VisibleItem::Session { session, .. } if session.session_name == focused_session_name)
+    }) {
+        return idx;
+    }
+    // Priority 3: any first agent session (default)
+    0
+}
