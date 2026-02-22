@@ -40,11 +40,15 @@ pub struct AppState {
     pub preview_area_height: u16,
     pub pending_confirm_target: Option<String>,
     pub show_help: bool,
+    pub terminal_bg: (u8, u8, u8),
+    pub help_filter_active: bool,
+    pub help_filter_query: String,
 }
 
 pub enum Message {
     SessionsUpdated(Vec<ClaudeSession>, HashMap<String, String>),
     PreviewUpdated(String),
+    TerminalBgDetected((u8, u8, u8)),
 }
 
 pub enum Action {
@@ -79,6 +83,9 @@ pub async fn run(
         preview_area_height: 0,
         pending_confirm_target: None,
         show_help: false,
+        terminal_bg: (0, 0, 0),
+        help_filter_active: false,
+        help_filter_query: String::new(),
     };
 
     // Load cached sessions for instant first render
@@ -91,6 +98,13 @@ pub async fn run(
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
 
     let selected_pane_target = Arc::new(Mutex::new(Option::<String>::None));
+
+    // Terminal background detection (one-shot)
+    let bg_tx = tx.clone();
+    tokio::spawn(async move {
+        let bg = crate::terminal::detect_terminal_background().await;
+        let _ = bg_tx.send(Message::TerminalBgDetected(bg));
+    });
 
     // Session polling task (every 2s)
     let poll_tx = tx.clone();
@@ -283,6 +297,9 @@ fn handle_message(
         Message::PreviewUpdated(content) => {
             state.preview_content = content;
         }
+        Message::TerminalBgDetected(color) => {
+            state.terminal_bg = color;
+        }
     }
 }
 
@@ -291,6 +308,57 @@ fn handle_key_event(
     key: KeyEvent,
     selected_pane_target: &Arc<Mutex<Option<String>>>,
 ) -> Option<Action> {
+    // Confirm dialog takes priority over all other input
+    if state.pending_confirm_target.is_some() {
+        match key.code {
+            KeyCode::Enter => {
+                let target = state.pending_confirm_target.take().unwrap();
+                return Some(Action::KillPane(target));
+            }
+            KeyCode::Esc => {
+                state.pending_confirm_target = None;
+                return None;
+            }
+            _ => return None,
+        }
+    }
+
+    // Help overlay takes priority over main input
+    if state.show_help {
+        if state.help_filter_active {
+            match key.code {
+                KeyCode::Esc => {
+                    state.help_filter_active = false;
+                    state.help_filter_query.clear();
+                    return None;
+                }
+                KeyCode::Backspace => {
+                    state.help_filter_query.pop();
+                    return None;
+                }
+                KeyCode::Char(c) => {
+                    state.help_filter_query.push(c);
+                    return None;
+                }
+                _ => return None,
+            }
+        } else {
+            match key.code {
+                KeyCode::Char('?') | KeyCode::Esc => {
+                    state.show_help = false;
+                    state.help_filter_active = false;
+                    state.help_filter_query.clear();
+                    return None;
+                }
+                KeyCode::Char('/') => {
+                    state.help_filter_active = true;
+                    return None;
+                }
+                _ => return None,
+            }
+        }
+    }
+
     match key.code {
         KeyCode::Char('q') => {
             state.should_quit = true;
