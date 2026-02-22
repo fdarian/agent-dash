@@ -50,7 +50,6 @@ pub struct AppState {
 pub enum Message {
     SessionsUpdated(Vec<ClaudeSession>, HashMap<String, String>),
     PreviewUpdated(String),
-    TerminalBgDetected((u8, u8, u8)),
 }
 
 pub enum Action {
@@ -63,6 +62,7 @@ pub enum Action {
 pub async fn run(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     exit_on_switch: bool,
+    terminal_bg: (u8, u8, u8),
 ) -> Result<()> {
     let config = crate::config::load_config(exit_on_switch);
     let formatter_path = config.session_name_formatter.clone();
@@ -86,7 +86,7 @@ pub async fn run(
         preview_area_height: 0,
         pending_confirm_target: None,
         show_help: false,
-        terminal_bg: (0, 0, 0),
+        terminal_bg,
         help_filter_active: false,
         help_filter_query: String::new(),
         toast_message: None,
@@ -103,13 +103,6 @@ pub async fn run(
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
 
     let selected_pane_target = Arc::new(Mutex::new(Option::<String>::None));
-
-    // Terminal background detection (one-shot)
-    let bg_tx = tx.clone();
-    tokio::spawn(async move {
-        let bg = crate::terminal::detect_terminal_background().await;
-        let _ = bg_tx.send(Message::TerminalBgDetected(bg));
-    });
 
     // Session polling task (every 2s)
     let poll_tx = tx.clone();
@@ -335,9 +328,6 @@ fn handle_message(
         }
         Message::PreviewUpdated(content) => {
             state.preview_content = content;
-        }
-        Message::TerminalBgDetected(color) => {
-            state.terminal_bg = color;
         }
     }
 }

@@ -1,42 +1,52 @@
 use std::io::{Read, Write};
 use std::time::Duration;
-use tokio::time::timeout;
 
 const FALLBACK_COLOR: (u8, u8, u8) = (0, 0, 0);
 
-pub async fn detect_terminal_background() -> (u8, u8, u8) {
-    match timeout(Duration::from_millis(300), detect_bg_inner()).await {
-        Ok(color) => color,
-        Err(_) => FALLBACK_COLOR,
+/// Detect terminal background color via OSC 11 query.
+/// Must be called BEFORE crossterm's EventStream is created.
+pub fn detect_terminal_background() -> (u8, u8, u8) {
+    use crossterm::terminal;
+
+    // Temporarily enable raw mode for the query
+    if terminal::enable_raw_mode().is_err() {
+        return FALLBACK_COLOR;
     }
+
+    let result = detect_bg_inner();
+
+    let _ = terminal::disable_raw_mode();
+    result
 }
 
-async fn detect_bg_inner() -> (u8, u8, u8) {
+fn detect_bg_inner() -> (u8, u8, u8) {
     let mut stdout = std::io::stdout();
-    let _ = stdout.write_all(b"\x1b]11;?\x1b\\");
-    let _ = stdout.flush();
+    if stdout.write_all(b"\x1b]11;?\x1b\\").is_err() {
+        return FALLBACK_COLOR;
+    }
+    if stdout.flush().is_err() {
+        return FALLBACK_COLOR;
+    }
 
+    // Poll stdin with timeout using crossterm's poll
+    match crossterm::event::poll(Duration::from_millis(300)) {
+        Ok(true) => {}
+        _ => return FALLBACK_COLOR,
+    }
+
+    // Read available bytes
     let mut buf = [0u8; 64];
     let mut stdin = std::io::stdin();
-
-    match timeout(
-        Duration::from_millis(300),
-        tokio::task::spawn_blocking(move || {
-            stdin
-                .read(&mut buf)
-                .ok()
-                .map(|n| String::from_utf8_lossy(&buf[..n]).to_string())
-        }),
-    )
-    .await
-    {
-        Ok(Ok(Some(response))) => parse_osc11_response(&response),
+    match stdin.read(&mut buf) {
+        Ok(n) if n > 0 => {
+            let response = String::from_utf8_lossy(&buf[..n]);
+            parse_osc11_response(&response)
+        }
         _ => FALLBACK_COLOR,
     }
 }
 
 fn parse_osc11_response(response: &str) -> (u8, u8, u8) {
-    // Response format: ...\]11;rgb:RRRR/GGGG/BBBB...
     if let Some(idx) = response.find("]11;rgb:") {
         let rest = &response[idx + 8..];
         let parts: Vec<&str> = rest.splitn(4, '/').collect();
