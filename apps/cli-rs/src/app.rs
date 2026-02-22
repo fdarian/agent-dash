@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use futures::StreamExt;
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -196,11 +196,17 @@ pub async fn run(
     loop {
         tokio::select! {
             Some(Ok(event)) = event_stream.next() => {
-                if let Event::Key(key) = event {
-                    let action = handle_key_event(&mut state, key, &selected_pane_target);
-                    if let Some(action) = action {
-                        process_action(&mut state, action, &selected_pane_target).await;
+                match event {
+                    Event::Key(key) => {
+                        let action = handle_key_event(&mut state, key, &selected_pane_target);
+                        if let Some(action) = action {
+                            process_action(&mut state, action, &selected_pane_target).await;
+                        }
                     }
+                    Event::Mouse(mouse) => {
+                        handle_mouse_event(&mut state, mouse);
+                    }
+                    _ => {}
                 }
             }
             Some(msg) = rx.recv() => {
@@ -553,6 +559,27 @@ fn handle_key_event(
             None
         }
         _ => None,
+    }
+}
+
+fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) {
+    if state.pending_confirm_target.is_some() || state.show_help {
+        return;
+    }
+
+    let in_preview = mouse.column >= state.preview_pane_area.x
+        && mouse.column < state.preview_pane_area.x + state.preview_pane_area.width
+        && mouse.row >= state.preview_pane_area.y
+        && mouse.row < state.preview_pane_area.y + state.preview_pane_area.height;
+
+    if !in_preview {
+        return;
+    }
+
+    match mouse.kind {
+        MouseEventKind::ScrollDown => scroll_preview_down(state),
+        MouseEventKind::ScrollUp => scroll_preview_up(state),
+        _ => {}
     }
 }
 
