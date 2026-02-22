@@ -1,5 +1,5 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 
 use crate::app::AppState;
 
@@ -36,4 +36,21 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool
         .scroll((state.preview_scroll_offset, 0));
 
     frame.render_widget(paragraph, area);
+
+    if content_height > inner_area.height {
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None);
+        let mut scrollbar_state =
+            ScrollbarState::new(content_height.saturating_sub(inner_area.height) as usize)
+                .position(state.preview_scroll_offset as usize);
+        frame.render_stateful_widget(
+            scrollbar,
+            area.inner(Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
+            &mut scrollbar_state,
+        );
+    }
 }

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use futures::StreamExt;
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -38,6 +38,7 @@ pub struct AppState {
     pub preview_is_sticky_bottom: bool,
     pub preview_content_height: u16,
     pub preview_area_height: u16,
+    pub preview_pane_area: Rect,
     pub pending_confirm_target: Option<String>,
     pub show_help: bool,
     pub terminal_bg: (u8, u8, u8),
@@ -84,6 +85,7 @@ pub async fn run(
         preview_is_sticky_bottom: true,
         preview_content_height: 0,
         preview_area_height: 0,
+        preview_pane_area: Rect::default(),
         pending_confirm_target: None,
         show_help: false,
         terminal_bg: (0, 0, 0),
@@ -194,11 +196,17 @@ pub async fn run(
     loop {
         tokio::select! {
             Some(Ok(event)) = event_stream.next() => {
-                if let Event::Key(key) = event {
-                    let action = handle_key_event(&mut state, key, &selected_pane_target);
-                    if let Some(action) = action {
-                        process_action(&mut state, action, &selected_pane_target).await;
+                match event {
+                    Event::Key(key) => {
+                        let action = handle_key_event(&mut state, key, &selected_pane_target);
+                        if let Some(action) = action {
+                            process_action(&mut state, action, &selected_pane_target).await;
+                        }
                     }
+                    Event::Mouse(mouse) => {
+                        handle_mouse_event(&mut state, mouse);
+                    }
+                    _ => {}
                 }
             }
             Some(msg) = rx.recv() => {
@@ -425,11 +433,7 @@ fn handle_key_event(
                     }
                 }
                 Focus::Preview => {
-                    let visible_height = state.preview_area_height.saturating_sub(2);
-                    state.preview_scroll_offset = state.preview_scroll_offset.saturating_add(1);
-                    if state.preview_scroll_offset >= state.preview_content_height.saturating_sub(visible_height) {
-                        state.preview_is_sticky_bottom = true;
-                    }
+                    scroll_preview_down(state);
                 }
             }
             None
@@ -444,10 +448,7 @@ fn handle_key_event(
                     }
                 }
                 Focus::Preview => {
-                    if state.preview_scroll_offset > 0 {
-                        state.preview_scroll_offset -= 1;
-                        state.preview_is_sticky_bottom = false;
-                    }
+                    scroll_preview_up(state);
                 }
             }
             None
@@ -561,6 +562,27 @@ fn handle_key_event(
     }
 }
 
+fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) {
+    if state.pending_confirm_target.is_some() || state.show_help {
+        return;
+    }
+
+    let in_preview = mouse.column >= state.preview_pane_area.x
+        && mouse.column < state.preview_pane_area.x + state.preview_pane_area.width
+        && mouse.row >= state.preview_pane_area.y
+        && mouse.row < state.preview_pane_area.y + state.preview_pane_area.height;
+
+    if !in_preview {
+        return;
+    }
+
+    match mouse.kind {
+        MouseEventKind::ScrollDown => scroll_preview_down(state),
+        MouseEventKind::ScrollUp => scroll_preview_up(state),
+        _ => {}
+    }
+}
+
 fn refresh_visible_items(state: &mut AppState) {
     let groups = group_sessions_by_name(&state.sessions);
     state.visible_items = build_visible_items(
@@ -585,5 +607,20 @@ fn update_selected_target(state: &AppState, selected_pane_target: &Arc<Mutex<Opt
     let target = get_selected_pane_target(state);
     if let Ok(mut lock) = selected_pane_target.try_lock() {
         *lock = target;
+    }
+}
+
+fn scroll_preview_down(state: &mut AppState) {
+    let visible_height = state.preview_area_height.saturating_sub(2);
+    state.preview_scroll_offset = state.preview_scroll_offset.saturating_add(1);
+    if state.preview_scroll_offset >= state.preview_content_height.saturating_sub(visible_height) {
+        state.preview_is_sticky_bottom = true;
+    }
+}
+
+fn scroll_preview_up(state: &mut AppState) {
+    if state.preview_scroll_offset > 0 {
+        state.preview_scroll_offset -= 1;
+        state.preview_is_sticky_bottom = false;
     }
 }

@@ -15,9 +15,11 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
             let chunks = Layout::horizontal([Constraint::Length(40), Constraint::Min(1)])
                 .split(frame.area());
             session_list::render(frame, chunks[0], state, true);
+            state.preview_pane_area = chunks[1];
             pane_preview::render(frame, chunks[1], state, false);
         }
         Focus::Preview => {
+            state.preview_pane_area = frame.area();
             pane_preview::render(frame, frame.area(), state, true);
         }
     }
