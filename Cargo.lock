@@ -20,6 +20,7 @@ dependencies = [
  "dirs",
  "futures",
  "indexmap",
+ "libc",
  "ratatui",
  "serde",
  "serde_json",

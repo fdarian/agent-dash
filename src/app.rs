@@ -3,9 +3,8 @@ use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers, Mous
 use futures::StreamExt;
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use tokio::sync::mpsc;
-use tokio::sync::Mutex;
+use tokio::sync::watch;
 
 use crate::cache::{load_cached_sessions, save_cached_sessions, CachedSessionData};
 use crate::config::AppConfig;
@@ -104,7 +103,7 @@ pub async fn run(
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
 
-    let selected_pane_target = Arc::new(Mutex::new(Option::<String>::None));
+    let (target_tx, target_rx) = watch::channel(Option::<String>::None);
 
     // Session polling task (every 2s)
     let poll_tx = tx.clone();
@@ -160,26 +159,10 @@ pub async fn run(
         }
     });
 
-    // Preview polling task (every 200ms)
-    let preview_tx = tx.clone();
-    let preview_target = Arc::clone(&selected_pane_target);
-    tokio::spawn(async move {
-        let config = crate::config::load_config(false);
-        let tmux = TmuxClient::new(&config);
-        let mut previous_content = String::new();
-        loop {
-            let target = preview_target.lock().await.clone();
-            if let Some(target) = target {
-                if let Ok(content) = tmux.capture_pane_content(&target).await {
-                    if content != previous_content {
-                        previous_content = content.clone();
-                        let _ = preview_tx.send(Message::PreviewUpdated(content));
-                    }
-                }
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        }
-    });
+    // Preview task — pipe-pane notification with fallback polling
+    let mut pipe_watcher = crate::pipe_pane::PipePaneWatcher::new();
+    let fifo_path = pipe_watcher.fifo_path().to_string();
+    crate::pipe_pane::spawn_preview_task(tx.clone(), target_rx, fifo_path);
 
     let mut event_stream = EventStream::new();
 
@@ -195,9 +178,9 @@ pub async fn run(
             Some(Ok(event)) = event_stream.next() => {
                 match event {
                     Event::Key(key) => {
-                        let action = handle_key_event(&mut state, key, &selected_pane_target);
+                        let action = handle_key_event(&mut state, key, &target_tx);
                         if let Some(action) = action {
-                            process_action(&mut state, action, &selected_pane_target).await;
+                            process_action(&mut state, action, &target_tx).await;
                         }
                     }
                     Event::Mouse(mouse) => {
@@ -207,7 +190,7 @@ pub async fn run(
                 }
             }
             Some(msg) = rx.recv() => {
-                handle_message(&mut state, msg, &selected_pane_target);
+                handle_message(&mut state, msg, &target_tx);
             }
         }
 
@@ -226,13 +209,15 @@ pub async fn run(
         }
     }
 
+    pipe_watcher.cleanup();
+
     Ok(())
 }
 
 async fn process_action(
     state: &mut AppState,
     action: Action,
-    selected_pane_target: &Arc<Mutex<Option<String>>>,
+    selected_pane_target: &watch::Sender<Option<String>>,
 ) {
     match action {
         Action::SwitchToPane(target) => {
@@ -294,7 +279,7 @@ async fn process_action(
 fn handle_message(
     state: &mut AppState,
     msg: Message,
-    selected_pane_target: &Arc<Mutex<Option<String>>>,
+    selected_pane_target: &watch::Sender<Option<String>>,
 ) {
     match msg {
         Message::SessionsUpdated(sessions, display_names) => {
@@ -347,7 +332,7 @@ fn handle_message(
 fn handle_key_event(
     state: &mut AppState,
     key: KeyEvent,
-    selected_pane_target: &Arc<Mutex<Option<String>>>,
+    selected_pane_target: &watch::Sender<Option<String>>,
 ) -> Option<Action> {
     // Confirm dialog takes priority over all other input
     if state.pending_confirm_target.is_some() {
@@ -597,11 +582,9 @@ fn get_selected_pane_target(state: &AppState) -> Option<String> {
         })
 }
 
-fn update_selected_target(state: &AppState, selected_pane_target: &Arc<Mutex<Option<String>>>) {
+fn update_selected_target(state: &AppState, selected_pane_target: &watch::Sender<Option<String>>) {
     let target = get_selected_pane_target(state);
-    if let Ok(mut lock) = selected_pane_target.try_lock() {
-        *lock = target;
-    }
+    let _ = selected_pane_target.send(target);
 }
 
 fn scroll_preview_down(state: &mut AppState) {
