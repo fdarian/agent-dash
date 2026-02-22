@@ -1,4 +1,5 @@
 use ratatui::prelude::*;
+use ratatui::widgets::Paragraph;
 
 use crate::app::{AppState, Focus};
 
@@ -27,5 +28,19 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     }
     if state.show_help {
         help_overlay::render(frame, state);
+    }
+
+    if let Some(ref msg) = state.toast_message {
+        let area = frame.area();
+        let toast_width = (msg.len() + 2) as u16;
+        let toast_area = Rect::new(
+            area.width.saturating_sub(toast_width + 1),
+            1,
+            toast_width,
+            1,
+        );
+        let toast = Paragraph::new(format!(" {} ", msg))
+            .style(Style::default().fg(Color::Black).bg(Color::Rgb(0xD9, 0x77, 0x57)));
+        frame.render_widget(toast, toast_area);
     }
 }

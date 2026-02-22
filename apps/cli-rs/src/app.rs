@@ -43,6 +43,8 @@ pub struct AppState {
     pub terminal_bg: (u8, u8, u8),
     pub help_filter_active: bool,
     pub help_filter_query: String,
+    pub toast_message: Option<String>,
+    pub toast_deadline: Option<std::time::Instant>,
 }
 
 pub enum Message {
@@ -86,6 +88,8 @@ pub async fn run(
         terminal_bg: (0, 0, 0),
         help_filter_active: false,
         help_filter_query: String::new(),
+        toast_message: None,
+        toast_deadline: None,
     };
 
     // Load cached sessions for instant first render
@@ -176,6 +180,14 @@ pub async fn run(
         }
 
         terminal.draw(|frame| ui::render(frame, &mut state))?;
+
+        // Check toast expiry
+        if let Some(deadline) = state.toast_deadline {
+            if std::time::Instant::now() >= deadline {
+                state.toast_message = None;
+                state.toast_deadline = None;
+            }
+        }
 
         if state.should_quit {
             break;
@@ -510,6 +522,16 @@ fn handle_key_event(
         }
         KeyCode::Char('?') => {
             state.show_help = !state.show_help;
+            None
+        }
+        KeyCode::Char('y') => {
+            if matches!(state.focus, Focus::Preview) && !state.preview_content.is_empty() {
+                if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                    let _ = clipboard.set_text(&state.preview_content);
+                    state.toast_message = Some("Copied!".to_string());
+                    state.toast_deadline = Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
+                }
+            }
             None
         }
         _ => None,
