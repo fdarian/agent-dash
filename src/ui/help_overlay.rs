@@ -38,12 +38,21 @@ pub fn render(frame: &mut Frame, state: &AppState) {
             inner.height.saturating_sub(filter_height + 1),
         );
 
-        let filter_text = if state.help_filter_query.is_empty() {
-            Line::from("Type to filter...").fg(Color::Rgb(0x66, 0x66, 0x66))
+        if state.help_filter_query.is_empty() {
+            let spans = vec![
+                Span::styled("/", Style::default().fg(Color::Rgb(0x88, 0x88, 0x88))),
+                Span::styled("Type to filter...", Style::default().fg(Color::Rgb(0x66, 0x66, 0x66))),
+            ];
+            frame.render_widget(Line::from(spans), filter_area);
         } else {
-            Line::from(format!("/{}", state.help_filter_query)).fg(Color::White)
-        };
-        frame.render_widget(filter_text, filter_area);
+            let spans = vec![
+                Span::styled("/", Style::default().fg(Color::Rgb(0x88, 0x88, 0x88))),
+                Span::styled(state.help_filter_query.as_str(), Style::default().fg(Color::White)),
+            ];
+            frame.render_widget(Line::from(spans), filter_area);
+        }
+        let cursor_x = filter_area.x + 1 + state.help_filter_cursor as u16;
+        frame.set_cursor_position((cursor_x, filter_area.y));
 
         (list_area, state.help_filter_query.as_str())
     } else {

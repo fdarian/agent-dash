@@ -43,6 +43,7 @@ pub struct AppState {
 
     pub help_filter_active: bool,
     pub help_filter_query: String,
+    pub help_filter_cursor: usize,
     pub toast_message: Option<String>,
     pub toast_deadline: Option<std::time::Instant>,
 }
@@ -90,6 +91,7 @@ pub async fn run(
 
         help_filter_active: false,
         help_filter_query: String::new(),
+        help_filter_cursor: 0,
         toast_message: None,
         toast_deadline: None,
     };
@@ -352,18 +354,134 @@ fn handle_key_event(
     // Help overlay takes priority over main input
     if state.show_help {
         if state.help_filter_active {
-            match key.code {
-                KeyCode::Esc => {
+            match (key.code, key.modifiers) {
+                (KeyCode::Esc, _) => {
                     state.help_filter_active = false;
                     state.help_filter_query.clear();
+                    state.help_filter_cursor = 0;
                     return None;
                 }
-                KeyCode::Backspace => {
-                    state.help_filter_query.pop();
+                (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                    state.help_filter_cursor = 0;
                     return None;
                 }
-                KeyCode::Char(c) => {
-                    state.help_filter_query.push(c);
+                (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
+                    state.help_filter_cursor = state.help_filter_query.chars().count();
+                    return None;
+                }
+                (KeyCode::Char('u'), KeyModifiers::CONTROL) | (KeyCode::Backspace, KeyModifiers::SUPER) => {
+                    let byte_offset = state.help_filter_query.char_indices()
+                        .nth(state.help_filter_cursor)
+                        .map(|(i, _)| i)
+                        .unwrap_or(state.help_filter_query.len());
+                    state.help_filter_query.drain(..byte_offset);
+                    state.help_filter_cursor = 0;
+                    return None;
+                }
+                (KeyCode::Char('k'), KeyModifiers::CONTROL) => {
+                    let byte_offset = state.help_filter_query.char_indices()
+                        .nth(state.help_filter_cursor)
+                        .map(|(i, _)| i)
+                        .unwrap_or(state.help_filter_query.len());
+                    state.help_filter_query.truncate(byte_offset);
+                    return None;
+                }
+                (KeyCode::Char('b'), KeyModifiers::CONTROL) | (KeyCode::Left, KeyModifiers::NONE) => {
+                    if state.help_filter_cursor > 0 {
+                        state.help_filter_cursor -= 1;
+                    }
+                    return None;
+                }
+                (KeyCode::Char('f'), KeyModifiers::CONTROL) | (KeyCode::Right, KeyModifiers::NONE) => {
+                    let len = state.help_filter_query.chars().count();
+                    if state.help_filter_cursor < len {
+                        state.help_filter_cursor += 1;
+                    }
+                    return None;
+                }
+                (KeyCode::Left, KeyModifiers::ALT) => {
+                    let chars: Vec<char> = state.help_filter_query.chars().collect();
+                    let mut pos = state.help_filter_cursor;
+                    while pos > 0 && chars[pos - 1].is_whitespace() {
+                        pos -= 1;
+                    }
+                    while pos > 0 && !chars[pos - 1].is_whitespace() {
+                        pos -= 1;
+                    }
+                    state.help_filter_cursor = pos;
+                    return None;
+                }
+                (KeyCode::Right, KeyModifiers::ALT) => {
+                    let chars: Vec<char> = state.help_filter_query.chars().collect();
+                    let len = chars.len();
+                    let mut pos = state.help_filter_cursor;
+                    while pos < len && !chars[pos].is_whitespace() {
+                        pos += 1;
+                    }
+                    while pos < len && chars[pos].is_whitespace() {
+                        pos += 1;
+                    }
+                    state.help_filter_cursor = pos;
+                    return None;
+                }
+                (KeyCode::Backspace, KeyModifiers::ALT) => {
+                    let chars: Vec<char> = state.help_filter_query.chars().collect();
+                    let mut pos = state.help_filter_cursor;
+                    while pos > 0 && chars[pos - 1].is_whitespace() {
+                        pos -= 1;
+                    }
+                    while pos > 0 && !chars[pos - 1].is_whitespace() {
+                        pos -= 1;
+                    }
+                    let start_byte = state.help_filter_query.char_indices()
+                        .nth(pos)
+                        .map(|(i, _)| i)
+                        .unwrap_or(state.help_filter_query.len());
+                    let end_byte = state.help_filter_query.char_indices()
+                        .nth(state.help_filter_cursor)
+                        .map(|(i, _)| i)
+                        .unwrap_or(state.help_filter_query.len());
+                    state.help_filter_query.drain(start_byte..end_byte);
+                    state.help_filter_cursor = pos;
+                    return None;
+                }
+                (KeyCode::Backspace, _) => {
+                    if state.help_filter_cursor > 0 {
+                        let byte_at_cursor = state.help_filter_query.char_indices()
+                            .nth(state.help_filter_cursor - 1)
+                            .map(|(i, _)| i)
+                            .unwrap_or(state.help_filter_query.len());
+                        let next_byte = state.help_filter_query.char_indices()
+                            .nth(state.help_filter_cursor)
+                            .map(|(i, _)| i)
+                            .unwrap_or(state.help_filter_query.len());
+                        state.help_filter_query.drain(byte_at_cursor..next_byte);
+                        state.help_filter_cursor -= 1;
+                    }
+                    return None;
+                }
+                (KeyCode::Delete, _) => {
+                    let len = state.help_filter_query.chars().count();
+                    if state.help_filter_cursor < len {
+                        let byte_at_cursor = state.help_filter_query.char_indices()
+                            .nth(state.help_filter_cursor)
+                            .map(|(i, _)| i)
+                            .unwrap_or(state.help_filter_query.len());
+                        let next_byte = state.help_filter_query.char_indices()
+                            .nth(state.help_filter_cursor + 1)
+                            .map(|(i, _)| i)
+                            .unwrap_or(state.help_filter_query.len());
+                        state.help_filter_query.drain(byte_at_cursor..next_byte);
+                    }
+                    return None;
+                }
+                (KeyCode::Char(c), _) => {
+                    let byte_offset = state.help_filter_query.char_indices()
+                        .nth(state.help_filter_cursor)
+                        .map(|(i, _)| i)
+                        .unwrap_or(state.help_filter_query.len());
+                    state.help_filter_query.insert(byte_offset, c);
+                    state.help_filter_cursor += 1;
                     return None;
                 }
                 _ => return None,
@@ -374,6 +492,7 @@ fn handle_key_event(
                     state.show_help = false;
                     state.help_filter_active = false;
                     state.help_filter_query.clear();
+                    state.help_filter_cursor = 0;
                     return None;
                 }
                 KeyCode::Char('/') => {
