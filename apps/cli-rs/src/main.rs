@@ -10,6 +10,10 @@ use std::io;
 
 mod app;
 mod ui;
+mod cache;
+mod config;
+mod session;
+mod state;
 
 #[derive(Parser)]
 #[command(name = "agent-dash", version)]
