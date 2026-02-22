@@ -1,36 +1,31 @@
 use std::io::{Read, Write};
-use std::time::Duration;
-use tokio::time::timeout;
 
 const FALLBACK_COLOR: (u8, u8, u8) = (0, 0, 0);
 
-pub async fn detect_terminal_background() -> (u8, u8, u8) {
-    match timeout(Duration::from_millis(300), detect_bg_inner()).await {
-        Ok(color) => color,
-        Err(_) => FALLBACK_COLOR,
-    }
-}
-
-async fn detect_bg_inner() -> (u8, u8, u8) {
+pub fn detect_terminal_background_sync() -> (u8, u8, u8) {
     let mut stdout = std::io::stdout();
-    let _ = stdout.write_all(b"\x1b]11;?\x1b\\");
-    let _ = stdout.flush();
+    if stdout.write_all(b"\x1b]11;?\x1b\\").is_err() || stdout.flush().is_err() {
+        return FALLBACK_COLOR;
+    }
+
+    let mut pollfd = libc::pollfd {
+        fd: libc::STDIN_FILENO,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+
+    let ready = unsafe { libc::poll(&mut pollfd, 1, 300) };
+    if ready <= 0 {
+        return FALLBACK_COLOR;
+    }
 
     let mut buf = [0u8; 64];
     let mut stdin = std::io::stdin();
-
-    match timeout(
-        Duration::from_millis(300),
-        tokio::task::spawn_blocking(move || {
-            stdin
-                .read(&mut buf)
-                .ok()
-                .map(|n| String::from_utf8_lossy(&buf[..n]).to_string())
-        }),
-    )
-    .await
-    {
-        Ok(Ok(Some(response))) => parse_osc11_response(&response),
+    match stdin.read(&mut buf) {
+        Ok(n) if n > 0 => {
+            let response = String::from_utf8_lossy(&buf[..n]);
+            parse_osc11_response(&response)
+        }
         _ => FALLBACK_COLOR,
     }
 }

@@ -51,7 +51,6 @@ pub struct AppState {
 pub enum Message {
     SessionsUpdated(Vec<ClaudeSession>, HashMap<String, String>),
     PreviewUpdated(String),
-    TerminalBgDetected((u8, u8, u8)),
 }
 
 pub enum Action {
@@ -106,12 +105,8 @@ pub async fn run(
 
     let selected_pane_target = Arc::new(Mutex::new(Option::<String>::None));
 
-    // Terminal background detection (one-shot)
-    let bg_tx = tx.clone();
-    tokio::spawn(async move {
-        let bg = crate::terminal::detect_terminal_background().await;
-        let _ = bg_tx.send(Message::TerminalBgDetected(bg));
-    });
+    // Terminal background detection (synchronous, before EventStream takes over stdin)
+    state.terminal_bg = crate::terminal::detect_terminal_background_sync();
 
     // Session polling task (every 2s)
     let poll_tx = tx.clone();
@@ -343,9 +338,6 @@ fn handle_message(
         }
         Message::PreviewUpdated(content) => {
             state.preview_content = content;
-        }
-        Message::TerminalBgDetected(color) => {
-            state.terminal_bg = color;
         }
     }
 }
