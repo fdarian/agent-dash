@@ -145,6 +145,25 @@ impl<'a> TmuxClient<'a> {
         run_command("tmux", &["kill-pane", "-t", pane_target]).await?;
         Ok(())
     }
+
+    pub async fn get_focused_pane_info(&self) -> Option<(String, String)> {
+        let output = run_command(
+            "tmux",
+            &["display-message", "-p", "#{pane_id}\t#{session_name}"],
+        )
+        .await
+        .ok()?;
+
+        let line = output.trim();
+        let mut parts = line.splitn(2, '\t');
+        let pane_id = parts.next()?.trim().to_string();
+        let session_name = parts.next()?.trim().to_string();
+
+        if pane_id.is_empty() || session_name.is_empty() {
+            return None;
+        }
+        Some((pane_id, session_name))
+    }
 }
 
 pub struct CreatedPaneInfo {
