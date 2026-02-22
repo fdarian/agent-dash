@@ -16,6 +16,7 @@ mod session;
 mod state;
 
 mod tmux;
+mod pipe_pane;
 
 #[derive(Parser)]
 #[command(name = "agent-dash", version)]

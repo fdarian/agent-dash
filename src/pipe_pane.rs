@@ -3,12 +3,10 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::{mpsc, watch};
 
 use crate::app::Message;
-use crate::config::AppConfig;
 use crate::tmux::TmuxClient;
 
 pub struct PipePaneWatcher {
     fifo_path: String,
-    current_target: Option<String>,
 }
 
 impl PipePaneWatcher {
@@ -24,10 +22,7 @@ impl PipePaneWatcher {
             .arg(&fifo_path)
             .status();
 
-        Self {
-            fifo_path,
-            current_target: None,
-        }
+        Self { fifo_path }
     }
 
     pub fn fifo_path(&self) -> &str {
@@ -35,12 +30,6 @@ impl PipePaneWatcher {
     }
 
     pub fn cleanup(&mut self) {
-        if let Some(target) = self.current_target.take() {
-            // Best-effort stop pipe-pane (sync, for use in Drop)
-            let _ = std::process::Command::new("tmux")
-                .args(["pipe-pane", "-t", &target])
-                .status();
-        }
         let _ = std::fs::remove_file(&self.fifo_path);
     }
 }
