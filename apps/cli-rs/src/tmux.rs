@@ -97,7 +97,7 @@ impl<'a> TmuxClient<'a> {
     }
 
     pub async fn create_window(&self, session_name: &str, cwd: Option<&str>) -> Result<Option<CreatedPaneInfo>> {
-        let format = "#{pane_id}\t#{pane_pid}\t#{pane_title}\t#{session_name}:#{window_index}.#{pane_index}";
+        let format = "#{pane_id}\t#{pane_title}\t#{session_name}:#{window_index}.#{pane_index}";
         let mut args = vec!["new-window", "-d", "-P", "-F", format, "-t", session_name];
         if let Some(cwd) = cwd {
             args.push("-c");
@@ -107,11 +107,11 @@ impl<'a> TmuxClient<'a> {
 
         let output = run_command("tmux", &args).await?;
         let parts: Vec<&str> = output.trim().split('\t').collect();
-        if parts.len() < 4 {
+        if parts.len() < 3 {
             return Ok(None);
         }
 
-        let pane_target = parts[3];
+        let pane_target = parts[2];
         let session_name = match pane_target.split(':').next() {
             Some(s) if !s.is_empty() => s.to_string(),
             _ => return Ok(None),
@@ -119,8 +119,7 @@ impl<'a> TmuxClient<'a> {
 
         Ok(Some(CreatedPaneInfo {
             pane_id: parts[0].to_string(),
-            pane_pid: parts[1].to_string(),
-            pane_title: parts[2].to_string(),
+            pane_title: parts[1].to_string(),
             pane_target: pane_target.to_string(),
             session_name,
         }))
@@ -139,7 +138,6 @@ impl<'a> TmuxClient<'a> {
 
 pub struct CreatedPaneInfo {
     pub pane_id: String,
-    pub pane_pid: String,
     pub pane_title: String,
     pub pane_target: String,
     pub session_name: String,

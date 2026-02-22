@@ -24,7 +24,7 @@ pub fn parse_session_status(pane_title: &str) -> SessionStatus {
     match pane_title.chars().next() {
         Some(ch) => {
             let code = ch as u32;
-            if code >= BRAILLE_START && code <= BRAILLE_END {
+            if (BRAILLE_START..=BRAILLE_END).contains(&code) {
                 SessionStatus::Active
             } else {
                 SessionStatus::Idle

@@ -488,11 +488,7 @@ fn handle_key_event(
             None
         }
         KeyCode::Char('O') => {
-            if let Some(target) = get_selected_pane_target(state) {
-                Some(Action::OpenPopup(target))
-            } else {
-                None
-            }
+            get_selected_pane_target(state).map(Action::OpenPopup)
         }
         KeyCode::Char('o') => {
             if matches!(state.focus, Focus::Sessions) {
