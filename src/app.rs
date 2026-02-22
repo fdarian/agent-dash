@@ -41,7 +41,7 @@ pub struct AppState {
     pub preview_pane_area: Rect,
     pub pending_confirm_target: Option<String>,
     pub show_help: bool,
-    pub terminal_bg: (u8, u8, u8),
+
     pub help_filter_active: bool,
     pub help_filter_query: String,
     pub toast_message: Option<String>,
@@ -51,7 +51,6 @@ pub struct AppState {
 pub enum Message {
     SessionsUpdated(Vec<ClaudeSession>, HashMap<String, String>),
     PreviewUpdated(String),
-    TerminalBgDetected((u8, u8, u8)),
 }
 
 pub enum Action {
@@ -89,7 +88,7 @@ pub async fn run(
         preview_pane_area: Rect::default(),
         pending_confirm_target: None,
         show_help: false,
-        terminal_bg: (0, 0, 0),
+
         help_filter_active: false,
         help_filter_query: String::new(),
         toast_message: None,
@@ -106,13 +105,6 @@ pub async fn run(
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
 
     let selected_pane_target = Arc::new(Mutex::new(Option::<String>::None));
-
-    // Terminal background detection (one-shot)
-    let bg_tx = tx.clone();
-    tokio::spawn(async move {
-        let bg = crate::terminal::detect_terminal_background().await;
-        let _ = bg_tx.send(Message::TerminalBgDetected(bg));
-    });
 
     // Session polling task (every 2s)
     let poll_tx = tx.clone();
@@ -348,9 +340,6 @@ fn handle_message(
         }
         Message::PreviewUpdated(content) => {
             state.preview_content = content;
-        }
-        Message::TerminalBgDetected(color) => {
-            state.terminal_bg = color;
         }
     }
 }

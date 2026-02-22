@@ -14,7 +14,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     let y = (area.height.saturating_sub(height)) / 2;
     let popup_area = Rect::new(x, y, width, height);
 
-    let bg_color = Color::Rgb(state.terminal_bg.0, state.terminal_bg.1, state.terminal_bg.2);
+    let bg_color = Color::Reset;
 
     frame.render_widget(Clear, popup_area);
 
