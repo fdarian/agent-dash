@@ -22,13 +22,17 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool
         return;
     }
 
-    let text = ansi_to_tui::IntoText::into_text(&state.preview_content).unwrap_or_default();
+    let mut text = ansi_to_tui::IntoText::into_text(&state.preview_content).unwrap_or_default();
     let content_height = text.lines.len() as u16;
     state.preview_content_height = content_height;
 
     if state.preview_is_sticky_bottom {
         let visible_height = inner_area.height;
         state.preview_scroll_offset = content_height.saturating_sub(visible_height);
+    }
+
+    if let Some(ref sel) = state.preview_selection {
+        crate::selection::apply_selection_highlight(&mut text, sel, state.preview_scroll_offset, inner_area.height);
     }
 
     let paragraph = Paragraph::new(text)

@@ -14,6 +14,7 @@ mod cache;
 mod config;
 mod session;
 mod state;
+mod selection;
 
 mod tmux;
 mod pipe_pane;
