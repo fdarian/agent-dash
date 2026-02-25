@@ -143,6 +143,77 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
                 copy.cursor.col = clamp_col(&text, copy.cursor.row, copy.cursor.col);
             }
         }
+        KeyCode::Char('0') => {
+            let copy = state.copy_mode.as_mut().unwrap();
+            copy.pending_g = false;
+            copy.cursor.col = 0;
+        }
+        KeyCode::Char('w') => {
+            let copy = state.copy_mode.as_mut().unwrap();
+            copy.pending_g = false;
+            let row = copy.cursor.row as usize;
+            if row < text.lines.len() {
+                let plain: String = text.lines[row].spans.iter().map(|s| s.content.as_ref()).collect();
+                let chars: Vec<char> = plain.chars().collect();
+                let mut pos = copy.cursor.col as usize;
+                // Skip current word (non-whitespace)
+                while pos < chars.len() && !chars[pos].is_whitespace() {
+                    pos += 1;
+                }
+                // Skip whitespace
+                while pos < chars.len() && chars[pos].is_whitespace() {
+                    pos += 1;
+                }
+                if pos < chars.len() {
+                    copy.cursor.col = pos as u16;
+                } else if height > 0 && copy.cursor.row < height.saturating_sub(1) {
+                    copy.cursor.row += 1;
+                    copy.cursor.col = 0;
+                }
+            }
+        }
+        KeyCode::Char('e') => {
+            let copy = state.copy_mode.as_mut().unwrap();
+            copy.pending_g = false;
+            let row = copy.cursor.row as usize;
+            if row < text.lines.len() {
+                let plain: String = text.lines[row].spans.iter().map(|s| s.content.as_ref()).collect();
+                let chars: Vec<char> = plain.chars().collect();
+                let mut pos = copy.cursor.col as usize;
+                if pos + 1 < chars.len() {
+                    pos += 1;
+                    // Skip whitespace
+                    while pos < chars.len() && chars[pos].is_whitespace() {
+                        pos += 1;
+                    }
+                    // Skip non-whitespace (the word)
+                    while pos + 1 < chars.len() && !chars[pos + 1].is_whitespace() {
+                        pos += 1;
+                    }
+                    copy.cursor.col = pos as u16;
+                } else if height > 0 && copy.cursor.row < height.saturating_sub(1) {
+                    // Move to next line, find end of first word
+                    copy.cursor.row += 1;
+                    let next_row = copy.cursor.row as usize;
+                    if next_row < text.lines.len() {
+                        let next_plain: String = text.lines[next_row].spans.iter().map(|s| s.content.as_ref()).collect();
+                        let next_chars: Vec<char> = next_plain.chars().collect();
+                        let mut npos = 0usize;
+                        // Skip leading whitespace
+                        while npos < next_chars.len() && next_chars[npos].is_whitespace() {
+                            npos += 1;
+                        }
+                        // Skip to end of word
+                        while npos + 1 < next_chars.len() && !next_chars[npos + 1].is_whitespace() {
+                            npos += 1;
+                        }
+                        copy.cursor.col = npos as u16;
+                    } else {
+                        copy.cursor.col = 0;
+                    }
+                }
+            }
+        }
         KeyCode::Char('H') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
