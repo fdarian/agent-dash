@@ -148,6 +148,12 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
             copy.pending_g = false;
             copy.cursor.col = 0;
         }
+        KeyCode::Char('$') => {
+            let copy = state.copy_mode.as_mut().unwrap();
+            copy.pending_g = false;
+            let line_len = line_char_count(&text, copy.cursor.row);
+            copy.cursor.col = if line_len > 0 { line_len.saturating_sub(1) } else { 0 };
+        }
         KeyCode::Char('w') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
@@ -214,6 +220,32 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
                 }
             }
         }
+        KeyCode::Char('b') => {
+            let copy = state.copy_mode.as_mut().unwrap();
+            copy.pending_g = false;
+            let row = copy.cursor.row as usize;
+            if row < text.lines.len() {
+                let plain: String = text.lines[row].spans.iter().map(|s| s.content.as_ref()).collect();
+                let chars: Vec<char> = plain.chars().collect();
+                let mut pos = copy.cursor.col as usize;
+                if pos > 0 {
+                    pos -= 1;
+                    // Skip whitespace going left
+                    while pos > 0 && chars[pos].is_whitespace() {
+                        pos -= 1;
+                    }
+                    // Skip non-whitespace going left (the word)
+                    while pos > 0 && !chars[pos - 1].is_whitespace() {
+                        pos -= 1;
+                    }
+                    copy.cursor.col = pos as u16;
+                } else if copy.cursor.row > 0 {
+                    copy.cursor.row -= 1;
+                    let prev_len = line_char_count(&text, copy.cursor.row);
+                    copy.cursor.col = if prev_len > 0 { prev_len.saturating_sub(1) } else { 0 };
+                }
+            }
+        }
         KeyCode::Char('H') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
@@ -250,7 +282,7 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
                 copy.cursor.col = clamp_col(&text, copy.cursor.row, copy.cursor.col);
             }
         }
-        KeyCode::Char(' ') => {
+        KeyCode::Char('v') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
             if copy.anchor.is_some() {
@@ -262,7 +294,7 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
                 });
             }
         }
-        KeyCode::Enter => {
+        KeyCode::Char('y') => {
             let has_selection = state.preview_selection.is_some();
             let has_anchor = state.copy_mode.as_ref().map_or(false, |c| c.anchor.is_some());
 
