@@ -9,8 +9,6 @@ const UNFOCUSED: Color = Color::Rgb(0x66, 0x66, 0x66);
 const UNREAD: Color = Color::Rgb(0xE5, 0xC0, 0x7B);
 const IDLE: Color = Color::Rgb(0xAA, 0xAA, 0xAA);
 const SELECTED_BG: Color = Color::Rgb(0x44, 0x44, 0x44);
-const BADGE_PLAN: Color = Color::Rgb(0x61, 0xAF, 0xEF);
-const BADGE_ASK: Color = Color::Rgb(0xE5, 0xC0, 0x7B);
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool) {
     let border_color = if focused { PRIMARY } else { UNFOCUSED };
@@ -93,18 +91,19 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool) {
                     if *prompt_state == PromptState::None {
                         ListItem::new(Line::from(left_text).style(base_style))
                     } else {
-                        let (badge_text, badge_color) = match prompt_state {
-                            PromptState::Plan => (" plan ", BADGE_PLAN),
-                            PromptState::Ask => (" ask ", BADGE_ASK),
+                        let (badge_text, badge_fg) = match prompt_state {
+                            PromptState::Plan => ("plan", Color::Rgb(0x61, 0xAF, 0xEF)),
+                            PromptState::Ask => ("ask", Color::Rgb(0xE5, 0xC0, 0x7B)),
                             PromptState::None => unreachable!(),
                         };
                         let badge_width = badge_text.len();
-                        let left_width = inner_width.saturating_sub(badge_width);
+                        let left_width = inner_width.saturating_sub(badge_width + 1);
                         let left_padded = truncate_or_pad(&left_text, left_width);
 
-                        let badge_style = Style::default()
-                            .fg(Color::Rgb(0x1e, 0x1e, 0x1e))
-                            .bg(badge_color);
+                        let mut badge_style = Style::default().fg(badge_fg);
+                        if is_selected {
+                            badge_style = badge_style.bg(SELECTED_BG);
+                        }
 
                         ListItem::new(Line::from(vec![
                             Span::styled(left_padded, base_style),
