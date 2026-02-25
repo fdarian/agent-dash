@@ -42,13 +42,12 @@ pub fn parse_session_status(pane_title: &str) -> SessionStatus {
 }
 
 pub fn detect_prompt_state(visible_text: &str) -> PromptState {
-    if visible_text.contains("Ready to code?") {
-        return PromptState::Plan;
+    let last_line = visible_text.lines().rev().find(|l| !l.trim().is_empty());
+    match last_line {
+        Some(line) if line.contains("ctrl-g to edit") => PromptState::Plan,
+        Some(line) if line.contains("Enter to select") => PromptState::Ask,
+        _ => PromptState::None,
     }
-    if visible_text.contains("Enter to select") {
-        return PromptState::Ask;
-    }
-    PromptState::None
 }
 
 // -- Session grouping --
