@@ -10,7 +10,7 @@ use crate::cache::{load_cached_sessions, save_cached_sessions, CachedSessionData
 use crate::selection::{self, PreviewSelection, ContentPosition};
 use crate::config::AppConfig;
 use crate::session::{
-    auto_select_index, build_visible_items, group_sessions_by_name, resolve_selected_index,
+    auto_select_index, build_visible_items, build_flat_visible_items, group_sessions_by_name, resolve_selected_index,
     ClaudeSession, PromptState, SessionStatus, VisibleItem,
 };
 use crate::state;
@@ -50,6 +50,9 @@ pub struct AppState {
     pub toast_message: Option<String>,
     pub toast_deadline: Option<std::time::Instant>,
     pub initial_focused_info: Option<(String, String)>,
+    pub flat_view: bool,
+    pub unread_order: HashMap<String, u64>,
+    pub unread_counter: u64,
 }
 
 pub enum Message {
@@ -106,6 +109,9 @@ pub async fn run(
         toast_message: None,
         toast_deadline: None,
         initial_focused_info: focused_pane_info,
+        flat_view: false,
+        unread_order: loaded_state.unread_order,
+        unread_counter: loaded_state.unread_counter,
     };
 
     // Load cached sessions for instant first render
@@ -285,7 +291,7 @@ async fn process_action(
                         };
                         state.prev_status_map.insert(new_session.pane_id.clone(), new_session.status.clone());
                         state.sessions.push(new_session);
-                        state::save_state(&state.unread_pane_ids, &state.prev_status_map);
+                        state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter);
                         let old_items = std::mem::take(&mut state.visible_items);
                         refresh_visible_items(state);
                         state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
@@ -302,9 +308,10 @@ async fn process_action(
                 let pane_id = removed.pane_id.clone();
                 state.prev_status_map.remove(&pane_id);
                 state.unread_pane_ids.remove(&pane_id);
+                state.unread_order.remove(&pane_id);
             }
             state.sessions.retain(|s| s.pane_target != target);
-            state::save_state(&state.unread_pane_ids, &state.prev_status_map);
+            state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter);
             let old_items = std::mem::take(&mut state.visible_items);
             refresh_visible_items(state);
             state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
@@ -331,12 +338,15 @@ fn handle_message(
                         && session.status == SessionStatus::Idle
                     {
                         next_unread.insert(session.pane_id.clone());
+                        state.unread_counter += 1;
+                        state.unread_order.insert(session.pane_id.clone(), state.unread_counter);
                     }
                 }
             }
 
             // Remove unread for panes that no longer exist
             next_unread.retain(|id| current_pane_ids.contains(id));
+            state.unread_order.retain(|id, _| current_pane_ids.contains(id));
 
             // Update prev status map
             let mut next_status_map = HashMap::new();
@@ -351,7 +361,7 @@ fn handle_message(
             state.unread_pane_ids = next_unread;
 
             // Persist state
-            state::save_state(&state.unread_pane_ids, &state.prev_status_map);
+            state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter);
 
             // Resolve selected index
             let old_items = std::mem::take(&mut state.visible_items);
@@ -639,7 +649,8 @@ fn handle_key_event(
                 if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
                     if let VisibleItem::Session { ref session, .. } = item {
                         state.unread_pane_ids.remove(&session.pane_id);
-                        state::save_state(&state.unread_pane_ids, &state.prev_status_map);
+                        state.unread_order.remove(&session.pane_id);
+                        state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter);
                         refresh_visible_items(state);
                     }
                     let target = match &item {
@@ -661,7 +672,8 @@ fn handle_key_event(
                 if let Some(VisibleItem::Session { session, .. }) = state.visible_items.get(state.selected_index).cloned().as_ref() {
                     let pane_id = session.pane_id.clone();
                     state.unread_pane_ids.remove(&pane_id);
-                    state::save_state(&state.unread_pane_ids, &state.prev_status_map);
+                    state.unread_order.remove(&pane_id);
+                    state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter);
                     refresh_visible_items(state);
                 }
             }
@@ -699,6 +711,14 @@ fn handle_key_event(
                     state.toast_deadline = Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
                 }
             }
+            None
+        }
+        KeyCode::Char('`') => {
+            state.flat_view = !state.flat_view;
+            let old_items = std::mem::take(&mut state.visible_items);
+            refresh_visible_items(state);
+            state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
+            update_selected_target(state, selected_pane_target);
             None
         }
         _ => None,
@@ -771,13 +791,23 @@ fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) {
 }
 
 fn refresh_visible_items(state: &mut AppState) {
-    let groups = group_sessions_by_name(&state.sessions);
-    state.visible_items = build_visible_items(
-        &groups,
-        &state.collapsed_groups,
-        &state.unread_pane_ids,
-        &state.display_name_map,
-    );
+    if state.flat_view {
+        state.visible_items = build_flat_visible_items(
+            &state.sessions,
+            &state.unread_pane_ids,
+            &state.unread_order,
+            &state.prompt_states,
+            &state.display_name_map,
+        );
+    } else {
+        let groups = group_sessions_by_name(&state.sessions);
+        state.visible_items = build_visible_items(
+            &groups,
+            &state.collapsed_groups,
+            &state.unread_pane_ids,
+            &state.display_name_map,
+        );
+    }
 }
 
 fn get_selected_pane_target(state: &AppState) -> Option<String> {
