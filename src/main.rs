@@ -15,6 +15,7 @@ mod config;
 mod session;
 mod state;
 mod selection;
+mod copy_mode;
 
 mod tmux;
 mod pipe_pane;

@@ -21,6 +21,14 @@ pub const KEYBINDS: &[KeybindEntry] = &[
     KeybindEntry { key: "`", description: "Toggle flat view", context: "sessions" },
     KeybindEntry { key: "?", description: "Toggle help", context: "global" },
     KeybindEntry { key: "/", description: "Filter keybinds", context: "global" },
+    KeybindEntry { key: "v", description: "Enter copy mode", context: "global" },
+    KeybindEntry { key: "Esc", description: "Exit copy mode", context: "copy" },
+    KeybindEntry { key: "h j k l", description: "Move cursor", context: "copy" },
+    KeybindEntry { key: "H / L", description: "Top / bottom of screen", context: "copy" },
+    KeybindEntry { key: "gg / G", description: "Top / bottom of content", context: "copy" },
+    KeybindEntry { key: "Space", description: "Toggle selection", context: "copy" },
+    KeybindEntry { key: "Enter", description: "Copy selection", context: "copy" },
+    KeybindEntry { key: "/ n N", description: "Search / next / prev match", context: "copy" },
     KeybindEntry { key: "q", description: "Quit", context: "global" },
 ];
 

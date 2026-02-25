@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 use tokio::sync::watch;
 
 use crate::cache::{load_cached_sessions, save_cached_sessions, CachedSessionData};
+use crate::copy_mode;
 use crate::selection::{self, PreviewSelection, ContentPosition};
 use crate::config::AppConfig;
 use crate::session::{
@@ -41,6 +42,7 @@ pub struct AppState {
     pub preview_area_height: u16,
     pub preview_pane_area: Rect,
     pub preview_selection: Option<PreviewSelection>,
+    pub copy_mode: Option<copy_mode::CopyModeState>,
     pub pending_confirm_target: Option<String>,
     pub show_help: bool,
     pub sessions_expanded: bool,
@@ -101,6 +103,7 @@ pub async fn run(
         preview_area_height: 0,
         preview_pane_area: Rect::default(),
         preview_selection: None,
+        copy_mode: None,
         pending_confirm_target: None,
         show_help: false,
         sessions_expanded: false,
@@ -378,10 +381,18 @@ fn handle_message(
             update_selected_target(state, selected_pane_target);
         }
         Message::PreviewUpdated(content) => {
-            if !state.preview_selection.as_ref().is_some_and(|s| s.is_dragging) {
+            state.preview_content = content;
+            if state.copy_mode.is_some() {
+                let text = ansi_to_tui::IntoText::into_text(&state.preview_content).unwrap_or_default();
+                let height = text.lines.len() as u16;
+                let copy = state.copy_mode.as_mut().unwrap();
+                if height > 0 && copy.cursor.row >= height {
+                    copy.cursor.row = height - 1;
+                }
+                copy_mode::sync_selection(state);
+            } else if !state.preview_selection.as_ref().is_some_and(|s| s.is_dragging) {
                 state.preview_selection = None;
             }
-            state.preview_content = content;
         }
     }
 }
@@ -559,6 +570,14 @@ fn handle_key_event(
         }
     }
 
+    if state.copy_mode.is_some() {
+        if state.copy_mode.as_ref().unwrap().search_active {
+            return copy_mode::handle_copy_mode_search_input(state, key);
+        } else {
+            return copy_mode::handle_copy_mode_key(state, key);
+        }
+    }
+
     match key.code {
         KeyCode::Char('q') => {
             state.should_quit = true;
@@ -706,6 +725,19 @@ fn handle_key_event(
             state.show_help = !state.show_help;
             None
         }
+        KeyCode::Char('v') => {
+            if !state.preview_content.is_empty() {
+                state.focus = Focus::Preview;
+                state.sessions_expanded = false;
+                state.preview_is_sticky_bottom = false;
+                state.preview_selection = None;
+                let visible_height = state.preview_area_height.saturating_sub(2);
+                let bottom_row = (state.preview_scroll_offset + visible_height).saturating_sub(1)
+                    .min(state.preview_content_height.saturating_sub(1));
+                state.copy_mode = Some(copy_mode::CopyModeState::new(bottom_row, 0));
+            }
+            None
+        }
         KeyCode::Char('y') => {
             if matches!(state.focus, Focus::Preview) && !state.preview_content.is_empty() {
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
@@ -743,6 +775,11 @@ fn handle_key_event(
 fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) {
     if state.pending_confirm_target.is_some() || state.show_help {
         return;
+    }
+
+    if state.copy_mode.is_some() && matches!(mouse.kind, MouseEventKind::Down(_)) {
+        state.copy_mode = None;
+        state.preview_selection = None;
     }
 
     let in_preview = mouse.column >= state.preview_pane_area.x
