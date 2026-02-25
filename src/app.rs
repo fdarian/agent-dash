@@ -82,6 +82,7 @@ pub async fn run(
         tmux.get_focused_pane_info().await
     };
 
+    let default_flat_view = config.default_flat_view;
     let mut state = AppState {
         should_quit: false,
         config,
@@ -111,7 +112,7 @@ pub async fn run(
         toast_message: None,
         toast_deadline: None,
         initial_focused_info: focused_pane_info,
-        flat_view: false,
+        flat_view: default_flat_view,
         unread_order: loaded_state.unread_order,
         unread_counter: loaded_state.unread_counter,
     };
