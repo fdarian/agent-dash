@@ -635,23 +635,21 @@ fn handle_key_event(
             get_selected_pane_target(state).map(Action::OpenPopup)
         }
         KeyCode::Char('o') => {
-            if matches!(state.focus, Focus::Sessions) {
-                if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
-                    if let VisibleItem::Session { ref session, .. } = item {
-                        state.unread_pane_ids.remove(&session.pane_id);
-                        state::save_state(&state.unread_pane_ids, &state.prev_status_map);
-                        refresh_visible_items(state);
+            if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
+                if let VisibleItem::Session { ref session, .. } = item {
+                    state.unread_pane_ids.remove(&session.pane_id);
+                    state::save_state(&state.unread_pane_ids, &state.prev_status_map);
+                    refresh_visible_items(state);
+                }
+                let target = match &item {
+                    VisibleItem::Session { session, .. } => Some(session.pane_target.clone()),
+                    VisibleItem::GroupHeader { session_name, .. } => Some(session_name.clone()),
+                };
+                if let Some(target) = target {
+                    if state.config.exit_on_switch {
+                        state.should_quit = true;
                     }
-                    let target = match &item {
-                        VisibleItem::Session { session, .. } => Some(session.pane_target.clone()),
-                        VisibleItem::GroupHeader { session_name, .. } => Some(session_name.clone()),
-                    };
-                    if let Some(target) = target {
-                        if state.config.exit_on_switch {
-                            state.should_quit = true;
-                        }
-                        return Some(Action::SwitchToPane(target));
-                    }
+                    return Some(Action::SwitchToPane(target));
                 }
             }
             None
