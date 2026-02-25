@@ -76,6 +76,7 @@ pub enum VisibleItem {
 }
 
 use std::collections::{HashMap, HashSet};
+use std::cmp::Ordering;
 
 pub fn group_sessions_by_name(sessions: &[ClaudeSession]) -> Vec<SessionGroup> {
     let mut map: indexmap::IndexMap<String, Vec<ClaudeSession>> = indexmap::IndexMap::new();
@@ -178,4 +179,80 @@ pub fn auto_select_index(
     }
     // Priority 3: any first agent session (default)
     0
+}
+
+fn session_priority_tier(
+    session: &ClaudeSession,
+    unread_pane_ids: &HashSet<String>,
+    prompt_states: &HashMap<String, PromptState>,
+) -> u8 {
+    let is_unread = unread_pane_ids.contains(&session.pane_id);
+    if is_unread {
+        let prompt_state = prompt_states.get(&session.pane_id);
+        match prompt_state {
+            Some(PromptState::Plan) | Some(PromptState::Ask) => 1,
+            _ => 0,
+        }
+    } else if session.status == SessionStatus::Active {
+        2
+    } else {
+        match prompt_states.get(&session.pane_id) {
+            Some(PromptState::Plan) | Some(PromptState::Ask) => 3,
+            _ => 4,
+        }
+    }
+}
+
+pub fn build_flat_visible_items(
+    sessions: &[ClaudeSession],
+    unread_pane_ids: &HashSet<String>,
+    unread_order: &HashMap<String, u64>,
+    prompt_states: &HashMap<String, PromptState>,
+    display_name_map: &HashMap<String, String>,
+) -> Vec<VisibleItem> {
+    let mut items: Vec<VisibleItem> = sessions
+        .iter()
+        .map(|session| {
+            let is_unread = unread_pane_ids.contains(&session.pane_id);
+            let display_name = display_name_map
+                .get(&session.session_name)
+                .cloned()
+                .unwrap_or_else(|| session.session_name.clone());
+            VisibleItem::Session {
+                session: session.clone(),
+                group_session_name: session.session_name.clone(),
+                display_name,
+                is_unread,
+            }
+        })
+        .collect();
+
+    items.sort_by(|a, b| {
+        let session_a = match a {
+            VisibleItem::Session { session, .. } => session,
+            VisibleItem::GroupHeader { .. } => return Ordering::Equal,
+        };
+        let session_b = match b {
+            VisibleItem::Session { session, .. } => session,
+            VisibleItem::GroupHeader { .. } => return Ordering::Equal,
+        };
+
+        let tier_a = session_priority_tier(session_a, unread_pane_ids, prompt_states);
+        let tier_b = session_priority_tier(session_b, unread_pane_ids, prompt_states);
+
+        if tier_a != tier_b {
+            return tier_a.cmp(&tier_b);
+        }
+
+        // Within tiers 0 and 1, sort by unread_order descending (higher counter = more recent = first)
+        if tier_a <= 1 {
+            let order_a = unread_order.get(&session_a.pane_id).copied().unwrap_or(0);
+            let order_b = unread_order.get(&session_b.pane_id).copied().unwrap_or(0);
+            return order_b.cmp(&order_a);
+        }
+
+        Ordering::Equal
+    });
+
+    items
 }

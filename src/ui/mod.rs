@@ -13,12 +13,12 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     match state.focus {
         Focus::Sessions => {
             if state.sessions_expanded {
-                session_list::render(frame, frame.area(), state, true);
+                session_list::render(frame, frame.area(), state, true, state.flat_view);
                 state.preview_pane_area = Rect::default();
             } else {
                 let chunks = Layout::horizontal([Constraint::Length(40), Constraint::Min(1)])
                     .split(frame.area());
-                session_list::render(frame, chunks[0], state, true);
+                session_list::render(frame, chunks[0], state, true, state.flat_view);
                 state.preview_pane_area = chunks[1];
                 pane_preview::render(frame, chunks[1], state, false);
             }

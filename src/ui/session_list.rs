@@ -10,7 +10,7 @@ const UNREAD: Color = Color::Rgb(0xE5, 0xC0, 0x7B);
 const IDLE: Color = Color::Rgb(0xAA, 0xAA, 0xAA);
 const SELECTED_BG: Color = Color::Rgb(0x44, 0x44, 0x44);
 
-pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool) {
+pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, flat_view: bool) {
     let border_color = if focused { PRIMARY } else { UNFOCUSED };
     let block = Block::default()
         .borders(Borders::ALL)
@@ -81,7 +81,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool) {
                         Style::default().fg(default_fg)
                     };
 
-                    let left_text = format!("  {} {}", icon, label);
+                    let indent = if flat_view { " " } else { "  " };
+                    let left_text = format!("{}{} {}", indent, icon, label);
                     let prompt_state = state
                         .prompt_states
                         .get(&session.pane_id)
