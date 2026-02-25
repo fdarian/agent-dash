@@ -166,6 +166,10 @@ impl<'a> TmuxClient<'a> {
     }
 }
 
+pub async fn capture_pane_visible(pane_target: &str) -> Result<String> {
+    run_command("tmux", &["capture-pane", "-p", "-t", pane_target]).await
+}
+
 pub struct CreatedPaneInfo {
     pub pane_id: String,
     pub pane_title: String,

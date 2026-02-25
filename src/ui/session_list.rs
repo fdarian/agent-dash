@@ -2,13 +2,15 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem};
 
 use crate::app::AppState;
-use crate::session::{SessionStatus, VisibleItem};
+use crate::session::{PromptState, SessionStatus, VisibleItem};
 
 const PRIMARY: Color = Color::Rgb(0xD9, 0x77, 0x57);
 const UNFOCUSED: Color = Color::Rgb(0x66, 0x66, 0x66);
 const UNREAD: Color = Color::Rgb(0xE5, 0xC0, 0x7B);
 const IDLE: Color = Color::Rgb(0xAA, 0xAA, 0xAA);
 const SELECTED_BG: Color = Color::Rgb(0x44, 0x44, 0x44);
+const BADGE_PLAN: Color = Color::Rgb(0x61, 0xAF, 0xEF);
+const BADGE_ASK: Color = Color::Rgb(0xE5, 0xC0, 0x7B);
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool) {
     let border_color = if focused { PRIMARY } else { UNFOCUSED };
@@ -75,13 +77,40 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool) {
                     } else {
                         session.title.as_str()
                     };
-                    let text = format!("  {} {}", icon, label);
-                    let style = if is_selected {
+                    let base_style = if is_selected {
                         Style::default().fg(Color::White).bg(SELECTED_BG)
                     } else {
                         Style::default().fg(default_fg)
                     };
-                    ListItem::new(Line::from(text).style(style))
+
+                    let left_text = format!("  {} {}", icon, label);
+                    let prompt_state = state
+                        .prompt_states
+                        .get(&session.pane_id)
+                        .unwrap_or(&PromptState::None);
+                    let inner_width = area.width.saturating_sub(2) as usize;
+
+                    if *prompt_state == PromptState::None {
+                        ListItem::new(Line::from(left_text).style(base_style))
+                    } else {
+                        let (badge_text, badge_color) = match prompt_state {
+                            PromptState::Plan => (" plan ", BADGE_PLAN),
+                            PromptState::Ask => (" ask ", BADGE_ASK),
+                            PromptState::None => unreachable!(),
+                        };
+                        let badge_width = badge_text.len();
+                        let left_width = inner_width.saturating_sub(badge_width);
+                        let left_padded = truncate_or_pad(&left_text, left_width);
+
+                        let badge_style = Style::default()
+                            .fg(Color::Rgb(0x1e, 0x1e, 0x1e))
+                            .bg(badge_color);
+
+                        ListItem::new(Line::from(vec![
+                            Span::styled(left_padded, base_style),
+                            Span::styled(badge_text, badge_style),
+                        ]))
+                    }
                 }
             }
         })
@@ -89,4 +118,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool) {
 
     let list = List::new(items).block(block);
     frame.render_widget(list, area);
+}
+
+fn truncate_or_pad(text: &str, width: usize) -> String {
+    let char_count = text.chars().count();
+    if char_count > width {
+        let truncated: String = text.chars().take(width.saturating_sub(1)).collect();
+        format!("{}~", truncated)
+    } else {
+        format!("{:width$}", text, width = width)
+    }
 }

@@ -11,7 +11,7 @@ use crate::selection::{self, PreviewSelection, ContentPosition};
 use crate::config::AppConfig;
 use crate::session::{
     auto_select_index, build_visible_items, group_sessions_by_name, resolve_selected_index,
-    ClaudeSession, SessionStatus, VisibleItem,
+    ClaudeSession, PromptState, SessionStatus, VisibleItem,
 };
 use crate::state;
 use crate::tmux::TmuxClient;
@@ -33,6 +33,7 @@ pub struct AppState {
     pub unread_pane_ids: HashSet<String>,
     pub prev_status_map: HashMap<String, SessionStatus>,
     pub display_name_map: HashMap<String, String>,
+    pub prompt_states: HashMap<String, PromptState>,
     pub preview_content: String,
     pub preview_scroll_offset: u16,
     pub preview_is_sticky_bottom: bool,
@@ -52,7 +53,7 @@ pub struct AppState {
 }
 
 pub enum Message {
-    SessionsUpdated(Vec<ClaudeSession>, HashMap<String, String>),
+    SessionsUpdated(Vec<ClaudeSession>, HashMap<String, String>, HashMap<String, PromptState>),
     PreviewUpdated(String),
 }
 
@@ -88,6 +89,7 @@ pub async fn run(
         unread_pane_ids: loaded_state.unread_pane_ids,
         prev_status_map: loaded_state.prev_status_map,
         display_name_map: HashMap::new(),
+        prompt_states: HashMap::new(),
         preview_content: String::new(),
         preview_scroll_offset: 0,
         preview_is_sticky_bottom: true,
@@ -161,6 +163,26 @@ pub async fn run(
                     display_names.insert(name.clone(), formatted);
                 }
 
+                // Detect prompt states for idle sessions
+                let mut prompt_set = tokio::task::JoinSet::new();
+                for session in sessions.iter().filter(|s| s.status == SessionStatus::Idle) {
+                    let target = session.pane_target.clone();
+                    let pane_id = session.pane_id.clone();
+                    prompt_set.spawn(async move {
+                        let state = match crate::tmux::capture_pane_visible(&target).await {
+                            Ok(text) => crate::session::detect_prompt_state(&text),
+                            Err(_) => crate::session::PromptState::None,
+                        };
+                        (pane_id, state)
+                    });
+                }
+                let mut prompt_states = HashMap::new();
+                while let Some(result) = prompt_set.join_next().await {
+                    if let Ok((pane_id, state)) = result {
+                        prompt_states.insert(pane_id, state);
+                    }
+                }
+
                 // Save to cache
                 let cached_data = CachedSessionData {
                     sessions: sessions.clone(),
@@ -168,7 +190,7 @@ pub async fn run(
                 };
                 save_cached_sessions(&cached_data);
 
-                let _ = poll_tx.send(Message::SessionsUpdated(sessions, display_names));
+                let _ = poll_tx.send(Message::SessionsUpdated(sessions, display_names, prompt_states));
             }
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }
@@ -297,7 +319,7 @@ fn handle_message(
     selected_pane_target: &watch::Sender<Option<String>>,
 ) {
     match msg {
-        Message::SessionsUpdated(sessions, display_names) => {
+        Message::SessionsUpdated(sessions, display_names, prompt_states) => {
             // Update unread tracking
             let mut next_unread = state.unread_pane_ids.clone();
             let current_pane_ids: HashSet<String> =
@@ -324,6 +346,7 @@ fn handle_message(
 
             state.sessions = sessions;
             state.display_name_map = display_names;
+            state.prompt_states = prompt_states;
             state.prev_status_map = next_status_map;
             state.unread_pane_ids = next_unread;
 

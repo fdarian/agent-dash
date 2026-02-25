@@ -7,6 +7,13 @@ pub enum SessionStatus {
     Idle,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PromptState {
+    None,
+    Plan,
+    Ask,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeSession {
@@ -32,6 +39,16 @@ pub fn parse_session_status(pane_title: &str) -> SessionStatus {
         }
         None => SessionStatus::Idle,
     }
+}
+
+pub fn detect_prompt_state(visible_text: &str) -> PromptState {
+    if visible_text.contains("Ready to code?") {
+        return PromptState::Plan;
+    }
+    if visible_text.contains("Enter to select") {
+        return PromptState::Ask;
+    }
+    PromptState::None
 }
 
 // -- Session grouping --
