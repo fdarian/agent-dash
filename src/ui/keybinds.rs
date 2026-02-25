@@ -16,6 +16,8 @@ pub const KEYBINDS: &[KeybindEntry] = &[
     KeybindEntry { key: "r", description: "Mark session as read", context: "sessions" },
     KeybindEntry { key: "c", description: "Create new session", context: "sessions" },
     KeybindEntry { key: "x", description: "Close session pane", context: "sessions" },
+    KeybindEntry { key: "+", description: "Maximize session list", context: "sessions" },
+    KeybindEntry { key: "_", description: "Minimize session list", context: "sessions" },
     KeybindEntry { key: "?", description: "Toggle help", context: "global" },
     KeybindEntry { key: "/", description: "Filter keybinds", context: "global" },
     KeybindEntry { key: "q", description: "Quit", context: "global" },

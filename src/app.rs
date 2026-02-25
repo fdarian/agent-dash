@@ -43,6 +43,7 @@ pub struct AppState {
     pub preview_selection: Option<PreviewSelection>,
     pub pending_confirm_target: Option<String>,
     pub show_help: bool,
+    pub sessions_expanded: bool,
 
     pub help_filter_active: bool,
     pub help_filter_query: String,
@@ -99,6 +100,7 @@ pub async fn run(
         preview_selection: None,
         pending_confirm_target: None,
         show_help: false,
+        sessions_expanded: false,
 
         help_filter_active: false,
         help_filter_query: String::new(),
@@ -561,6 +563,7 @@ fn handle_key_event(
             None
         }
         KeyCode::Char('0') => {
+            state.sessions_expanded = false;
             state.focus = Focus::Preview;
             None
         }
@@ -698,6 +701,18 @@ fn handle_key_event(
                     state.toast_message = Some("Copied!".to_string());
                     state.toast_deadline = Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
                 }
+            }
+            None
+        }
+        KeyCode::Char('+') => {
+            if matches!(state.focus, Focus::Sessions) && !state.sessions_expanded {
+                state.sessions_expanded = true;
+            }
+            None
+        }
+        KeyCode::Char('_') => {
+            if matches!(state.focus, Focus::Sessions) && state.sessions_expanded {
+                state.sessions_expanded = false;
             }
             None
         }
