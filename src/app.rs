@@ -381,18 +381,13 @@ fn handle_message(
             update_selected_target(state, selected_pane_target);
         }
         Message::PreviewUpdated(content) => {
-            state.preview_content = content;
             if state.copy_mode.is_some() {
-                let text = ansi_to_tui::IntoText::into_text(&state.preview_content).unwrap_or_default();
-                let height = text.lines.len() as u16;
-                let copy = state.copy_mode.as_mut().unwrap();
-                if height > 0 && copy.cursor.row >= height {
-                    copy.cursor.row = height - 1;
-                }
-                copy_mode::sync_selection(state);
-            } else if !state.preview_selection.as_ref().is_some_and(|s| s.is_dragging) {
+                return;
+            }
+            if !state.preview_selection.as_ref().is_some_and(|s| s.is_dragging) {
                 state.preview_selection = None;
             }
+            state.preview_content = content;
         }
     }
 }
