@@ -4,6 +4,12 @@ use ratatui::prelude::*;
 use crate::app::{Action, AppState};
 use crate::selection::{self, ContentPosition, PreviewSelection};
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum SearchDirection {
+    Forward,
+    Backward,
+}
+
 pub struct SearchMatch {
     pub row: u16,
     pub col: u16,
@@ -14,11 +20,13 @@ pub struct CopyModeState {
     pub cursor: ContentPosition,
     pub anchor: Option<ContentPosition>,
     pub pending_g: bool,
+    pub pending_z: bool,
     pub search_active: bool,
     pub search_query: String,
     pub search_cursor: usize,
     pub search_matches: Vec<SearchMatch>,
     pub current_match_index: Option<usize>,
+    pub search_direction: SearchDirection,
 }
 
 impl CopyModeState {
@@ -30,11 +38,13 @@ impl CopyModeState {
             },
             anchor: None,
             pending_g: false,
+            pending_z: false,
             search_active: false,
             search_query: String::new(),
             search_cursor: 0,
             search_matches: Vec::new(),
             current_match_index: None,
+            search_direction: SearchDirection::Forward,
         }
     }
 }
@@ -117,11 +127,13 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
         KeyCode::Char('h') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             copy.cursor.col = copy.cursor.col.saturating_sub(1);
         }
         KeyCode::Char('l') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             let line_len = line_char_count(&text, copy.cursor.row);
             if line_len > 0 && copy.cursor.col < line_len.saturating_sub(1) {
                 copy.cursor.col += 1;
@@ -130,6 +142,7 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
         KeyCode::Char('j') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             if height > 0 && copy.cursor.row < height.saturating_sub(1) {
                 copy.cursor.row += 1;
                 copy.cursor.col = clamp_col(&text, copy.cursor.row, copy.cursor.col);
@@ -138,6 +151,7 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
         KeyCode::Char('k') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             if copy.cursor.row > 0 {
                 copy.cursor.row -= 1;
                 copy.cursor.col = clamp_col(&text, copy.cursor.row, copy.cursor.col);
@@ -146,17 +160,20 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
         KeyCode::Char('0') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             copy.cursor.col = 0;
         }
         KeyCode::Char('$') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             let line_len = line_char_count(&text, copy.cursor.row);
             copy.cursor.col = if line_len > 0 { line_len.saturating_sub(1) } else { 0 };
         }
         KeyCode::Char('w') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             let row = copy.cursor.row as usize;
             if row < text.lines.len() {
                 let plain: String = text.lines[row].spans.iter().map(|s| s.content.as_ref()).collect();
@@ -181,6 +198,7 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
         KeyCode::Char('e') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             let row = copy.cursor.row as usize;
             if row < text.lines.len() {
                 let plain: String = text.lines[row].spans.iter().map(|s| s.content.as_ref()).collect();
@@ -223,6 +241,7 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
         KeyCode::Char('b') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             let row = copy.cursor.row as usize;
             if row < text.lines.len() {
                 let plain: String = text.lines[row].spans.iter().map(|s| s.content.as_ref()).collect();
@@ -249,12 +268,14 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
         KeyCode::Char('H') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             copy.cursor.row = scroll_offset;
             copy.cursor.col = clamp_col(&text, copy.cursor.row, copy.cursor.col);
         }
         KeyCode::Char('L') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             let last_visible = if height > 0 {
                 (scroll_offset + visible_height.saturating_sub(1)).min(height.saturating_sub(1))
             } else {
@@ -267,6 +288,7 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
             let copy = state.copy_mode.as_mut().unwrap();
             if copy.pending_g {
                 copy.pending_g = false;
+                copy.pending_z = false;
                 copy.cursor.row = 0;
                 copy.cursor.col = clamp_col(&text, 0, copy.cursor.col);
             } else {
@@ -277,6 +299,7 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
         KeyCode::Char('G') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             if height > 0 {
                 copy.cursor.row = height.saturating_sub(1);
                 copy.cursor.col = clamp_col(&text, copy.cursor.row, copy.cursor.col);
@@ -285,6 +308,7 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
         KeyCode::Char('v') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             if copy.anchor.is_some() {
                 copy.anchor = None;
             } else {
@@ -316,15 +340,35 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
         KeyCode::Char('/') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             copy.search_active = true;
+            copy.search_direction = SearchDirection::Forward;
+            return None;
+        }
+        KeyCode::Char('?') => {
+            let copy = state.copy_mode.as_mut().unwrap();
+            copy.pending_g = false;
+            copy.pending_z = false;
+            copy.search_active = true;
+            copy.search_direction = SearchDirection::Backward;
             return None;
         }
         KeyCode::Char('n') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             if !copy.search_matches.is_empty() {
+                let forward = copy.search_direction == SearchDirection::Forward;
                 let next_index = match copy.current_match_index {
-                    Some(i) => (i + 1) % copy.search_matches.len(),
+                    Some(i) => {
+                        if forward {
+                            (i + 1) % copy.search_matches.len()
+                        } else if i == 0 {
+                            copy.search_matches.len() - 1
+                        } else {
+                            i - 1
+                        }
+                    }
                     None => 0,
                 };
                 copy.current_match_index = Some(next_index);
@@ -335,13 +379,15 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
         KeyCode::Char('N') => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             if !copy.search_matches.is_empty() {
+                let forward = copy.search_direction == SearchDirection::Forward;
                 let prev_index = match copy.current_match_index {
                     Some(i) => {
-                        if i == 0 {
-                            copy.search_matches.len() - 1
+                        if forward {
+                            if i == 0 { copy.search_matches.len() - 1 } else { i - 1 }
                         } else {
-                            i - 1
+                            (i + 1) % copy.search_matches.len()
                         }
                     }
                     None => copy.search_matches.len() - 1,
@@ -351,9 +397,24 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
                 copy.cursor.col = copy.search_matches[prev_index].col;
             }
         }
+        KeyCode::Char('z') => {
+            let copy = state.copy_mode.as_mut().unwrap();
+            copy.pending_g = false;
+            if copy.pending_z {
+                copy.pending_z = false;
+                let visible_height = state.preview_area_height.saturating_sub(2);
+                state.preview_scroll_offset = copy.cursor.row.saturating_sub(visible_height / 2);
+                state.preview_is_sticky_bottom = false;
+                return None;
+            } else {
+                copy.pending_z = true;
+                return None;
+            }
+        }
         _ => {
             let copy = state.copy_mode.as_mut().unwrap();
             copy.pending_g = false;
+            copy.pending_z = false;
             return None;
         }
     }
@@ -383,10 +444,19 @@ pub fn handle_copy_mode_search_input(state: &mut AppState, key: KeyEvent) -> Opt
                 let matches = find_matches(&text, &query);
                 let cursor_row = state.copy_mode.as_ref().unwrap().cursor.row;
                 let cursor_col = state.copy_mode.as_ref().unwrap().cursor.col;
-                let found_index = matches.iter().position(|m| {
-                    m.row > cursor_row || (m.row == cursor_row && m.col >= cursor_col)
+                let search_direction = state.copy_mode.as_ref().unwrap().search_direction;
+                let found_index = if search_direction == SearchDirection::Forward {
+                    matches.iter().position(|m| {
+                        m.row > cursor_row || (m.row == cursor_row && m.col >= cursor_col)
+                    })
+                } else {
+                    matches.iter().rposition(|m| {
+                        m.row < cursor_row || (m.row == cursor_row && m.col <= cursor_col)
+                    })
+                };
+                let match_index = found_index.or_else(|| if matches.is_empty() { None } else {
+                    if search_direction == SearchDirection::Forward { Some(0) } else { Some(matches.len() - 1) }
                 });
-                let match_index = found_index.or_else(|| if matches.is_empty() { None } else { Some(0) });
                 let copy = state.copy_mode.as_mut().unwrap();
                 copy.search_matches = matches;
                 copy.current_match_index = match_index;

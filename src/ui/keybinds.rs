@@ -19,6 +19,7 @@ pub const KEYBINDS: &[KeybindEntry] = &[
     KeybindEntry { key: "+", description: "Maximize session list", context: "sessions" },
     KeybindEntry { key: "_", description: "Minimize session list", context: "sessions" },
     KeybindEntry { key: "`", description: "Toggle flat view", context: "sessions" },
+    KeybindEntry { key: "/ ?", description: "Search forward / backward", context: "preview" },
     KeybindEntry { key: "?", description: "Toggle help", context: "global" },
     KeybindEntry { key: "/", description: "Filter keybinds", context: "global" },
     KeybindEntry { key: "v", description: "Enter copy mode", context: "global" },
@@ -31,9 +32,10 @@ pub const KEYBINDS: &[KeybindEntry] = &[
     KeybindEntry { key: "b", description: "Previous word", context: "copy" },
     KeybindEntry { key: "H / L", description: "Top / bottom of screen", context: "copy" },
     KeybindEntry { key: "gg / G", description: "Top / bottom of content", context: "copy" },
+    KeybindEntry { key: "zz", description: "Center cursor in viewport", context: "copy" },
     KeybindEntry { key: "v", description: "Toggle selection", context: "copy" },
     KeybindEntry { key: "y", description: "Yank selection", context: "copy" },
-    KeybindEntry { key: "/ n N", description: "Search / next / prev match", context: "copy" },
+    KeybindEntry { key: "/ ? n N", description: "Search fwd / bwd / next / prev", context: "copy" },
     KeybindEntry { key: "q", description: "Quit", context: "global" },
 ];
 

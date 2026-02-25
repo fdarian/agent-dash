@@ -716,8 +716,34 @@ fn handle_key_event(
             }
             None
         }
+        KeyCode::Char('/') => {
+            if matches!(state.focus, Focus::Preview) && !state.preview_content.is_empty() {
+                state.preview_is_sticky_bottom = false;
+                state.preview_selection = None;
+                let visible_height = state.preview_area_height.saturating_sub(2);
+                let bottom_row = (state.preview_scroll_offset + visible_height).saturating_sub(1)
+                    .min(state.preview_content_height.saturating_sub(1));
+                let mut copy = copy_mode::CopyModeState::new(bottom_row, 0);
+                copy.search_active = true;
+                copy.search_direction = copy_mode::SearchDirection::Forward;
+                state.copy_mode = Some(copy);
+            }
+            None
+        }
         KeyCode::Char('?') => {
-            state.show_help = !state.show_help;
+            if matches!(state.focus, Focus::Preview) && !state.preview_content.is_empty() {
+                state.preview_is_sticky_bottom = false;
+                state.preview_selection = None;
+                let visible_height = state.preview_area_height.saturating_sub(2);
+                let bottom_row = (state.preview_scroll_offset + visible_height).saturating_sub(1)
+                    .min(state.preview_content_height.saturating_sub(1));
+                let mut copy = copy_mode::CopyModeState::new(bottom_row, 0);
+                copy.search_active = true;
+                copy.search_direction = copy_mode::SearchDirection::Backward;
+                state.copy_mode = Some(copy);
+            } else {
+                state.show_help = !state.show_help;
+            }
             None
         }
         KeyCode::Char('v') => {
