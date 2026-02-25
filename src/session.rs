@@ -196,7 +196,10 @@ fn session_priority_tier(
     } else if session.status == SessionStatus::Active {
         2
     } else {
-        3
+        match prompt_states.get(&session.pane_id) {
+            Some(PromptState::Plan) | Some(PromptState::Ask) => 3,
+            _ => 4,
+        }
     }
 }
 
