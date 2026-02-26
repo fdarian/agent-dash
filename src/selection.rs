@@ -114,11 +114,11 @@ pub fn apply_selection_highlight(
         let sel_start = if content_row == start_row { start_col } else { 0 };
         let sel_end = if content_row == end_row { end_col } else { u16::MAX };
 
-        highlight_spans_in_range(&mut text.lines[content_row as usize].spans, sel_start, sel_end);
+        highlight_spans_in_range(&mut text.lines[content_row as usize].spans, sel_start, sel_end, SELECTION_BG);
     }
 }
 
-fn highlight_spans_in_range(spans: &mut Vec<Span>, sel_start: u16, sel_end: u16) {
+pub fn highlight_spans_in_range(spans: &mut Vec<Span>, sel_start: u16, sel_end: u16, style: Style) {
     let mut col: u16 = 0;
     let mut i = 0;
 
@@ -134,7 +134,7 @@ fn highlight_spans_in_range(spans: &mut Vec<Span>, sel_start: u16, sel_end: u16)
         }
 
         if span_start >= sel_start && span_end <= sel_end {
-            spans[i].style = spans[i].style.patch(SELECTION_BG);
+            spans[i].style = spans[i].style.patch(style);
             col = span_end;
             i += 1;
             continue;
@@ -154,7 +154,7 @@ fn highlight_spans_in_range(spans: &mut Vec<Span>, sel_start: u16, sel_end: u16)
         }
 
         let selected = chars_slice(&content, overlap_start as usize, overlap_end as usize);
-        parts.push(Span::styled(selected, original_style.patch(SELECTION_BG)));
+        parts.push(Span::styled(selected, original_style.patch(style)));
 
         if overlap_end < span_char_count {
             let after = chars_slice(&content, overlap_end as usize, span_char_count as usize);
