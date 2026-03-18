@@ -12,7 +12,7 @@ pub const KEYBINDS: &[KeybindEntry] = &[
     KeybindEntry { key: "h", description: "Collapse group", context: "sessions" },
     KeybindEntry { key: "l", description: "Expand group", context: "sessions" },
     KeybindEntry { key: "o", description: "Switch to tmux pane", context: "global" },
-    KeybindEntry { key: "O", description: "Open pane scrollback in popup", context: "global" },
+    KeybindEntry { key: "O", description: "Attach session in popup", context: "global" },
     KeybindEntry { key: "r", description: "Mark session as read", context: "sessions" },
     KeybindEntry { key: "c", description: "Create new session", context: "sessions" },
     KeybindEntry { key: "x", description: "Close session pane", context: "sessions" },
