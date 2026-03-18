@@ -102,8 +102,10 @@ impl<'a> TmuxClient<'a> {
     }
 
     pub async fn open_popup(&self, pane_target: &str) -> Result<()> {
-        let cmd = format!("tmux capture-pane -S - -e -p -t {} | less -R", pane_target);
-        run_command("tmux", &["display-popup", "-E", "-w", "80%", "-h", "80%", &cmd]).await?;
+        // Extract session name from target (format: "session:window.pane")
+        let session = pane_target.split(':').next().unwrap_or(pane_target);
+        let cmd = format!("env -u TMUX tmux attach-session -t '{}'", session);
+        run_command("tmux", &["display-popup", "-E", "-w", "90%", "-h", "90%", &cmd]).await?;
         Ok(())
     }
 
