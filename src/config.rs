@@ -1,17 +1,45 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutDirection {
+    Vertical,
+    Horizontal,
+}
+
+impl Default for LayoutDirection {
+    fn default() -> Self {
+        LayoutDirection::Vertical
+    }
+}
+
+impl<'de> Deserialize<'de> for LayoutDirection {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "horizontal" => Ok(LayoutDirection::Horizontal),
+            "vertical" => Ok(LayoutDirection::Vertical),
+            _ => Err(serde::de::Error::unknown_variant(&s, &["vertical", "horizontal"])),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ConfigFile {
     session_name_formatter: Option<String>,
     command: Option<String>,
+    layout: Option<LayoutDirection>,
 }
 
 pub struct AppConfig {
     pub command: String,
     pub exit_on_switch: bool,
     pub session_name_formatter: Option<PathBuf>,
+    pub layout: LayoutDirection,
 }
 
 fn config_path() -> PathBuf {
@@ -31,10 +59,16 @@ pub fn load_config(exit_on_switch: bool) -> AppConfig {
         .and_then(|c| c.session_name_formatter.as_ref())
         .map(|p| expand_tilde(p));
 
+    let layout = config_file
+        .as_ref()
+        .and_then(|c| c.layout)
+        .unwrap_or_default();
+
     AppConfig {
         command,
         exit_on_switch,
         session_name_formatter,
+        layout,
     }
 }
 
