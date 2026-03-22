@@ -73,6 +73,10 @@ pub enum VisibleItem {
         display_name: String,
         is_unread: bool,
     },
+    HiddenHeader {
+        count: usize,
+        is_collapsed: bool,
+    },
 }
 
 use std::collections::{HashMap, HashSet};
@@ -98,11 +102,25 @@ pub fn build_visible_items(
     collapsed_groups: &HashSet<String>,
     unread_pane_ids: &HashSet<String>,
     display_name_map: &HashMap<String, String>,
+    hidden_pane_ids: &HashSet<String>,
+    hidden_groups: &HashSet<String>,
+    hidden_section_collapsed: bool,
 ) -> Vec<VisibleItem> {
     let mut items = Vec::new();
     for group in groups {
-        let has_active = group.sessions.iter().any(|s| s.status == SessionStatus::Active);
-        let has_unread = group.sessions.iter().any(|s| unread_pane_ids.contains(&s.pane_id));
+        if hidden_groups.contains(&group.session_name) {
+            continue;
+        }
+        let visible_sessions: Vec<&ClaudeSession> = group
+            .sessions
+            .iter()
+            .filter(|s| !hidden_pane_ids.contains(&s.pane_id))
+            .collect();
+        if visible_sessions.is_empty() {
+            continue;
+        }
+        let has_active = visible_sessions.iter().any(|s| s.status == SessionStatus::Active);
+        let has_unread = visible_sessions.iter().any(|s| unread_pane_ids.contains(&s.pane_id));
         let is_collapsed = collapsed_groups.contains(&group.session_name);
         let display_name = display_name_map
             .get(&group.session_name)
@@ -111,15 +129,15 @@ pub fn build_visible_items(
         items.push(VisibleItem::GroupHeader {
             session_name: group.session_name.clone(),
             display_name: display_name.clone(),
-            session_count: group.sessions.len(),
+            session_count: visible_sessions.len(),
             has_active,
             has_unread,
             is_collapsed,
         });
         if !is_collapsed {
-            for session in &group.sessions {
+            for session in &visible_sessions {
                 items.push(VisibleItem::Session {
-                    session: session.clone(),
+                    session: (*session).clone(),
                     group_session_name: group.session_name.clone(),
                     display_name: display_name.clone(),
                     is_unread: unread_pane_ids.contains(&session.pane_id),
@@ -127,6 +145,67 @@ pub fn build_visible_items(
             }
         }
     }
+
+    let hidden_group_count = hidden_groups.len();
+    let individually_hidden_count = hidden_pane_ids
+        .iter()
+        .filter(|pane_id| {
+            groups
+                .iter()
+                .find(|g| g.sessions.iter().any(|s| &s.pane_id == *pane_id))
+                .map_or(false, |g| !hidden_groups.contains(&g.session_name))
+        })
+        .count();
+    let total_hidden = hidden_group_count + individually_hidden_count;
+
+    if total_hidden > 0 {
+        items.push(VisibleItem::HiddenHeader {
+            count: total_hidden,
+            is_collapsed: hidden_section_collapsed,
+        });
+        if !hidden_section_collapsed {
+            for group in groups {
+                if !hidden_groups.contains(&group.session_name) {
+                    continue;
+                }
+                let display_name = display_name_map
+                    .get(&group.session_name)
+                    .cloned()
+                    .unwrap_or_else(|| group.session_name.clone());
+                let has_active = group.sessions.iter().any(|s| s.status == SessionStatus::Active);
+                let has_unread = group.sessions.iter().any(|s| unread_pane_ids.contains(&s.pane_id));
+                items.push(VisibleItem::GroupHeader {
+                    session_name: group.session_name.clone(),
+                    display_name: display_name.clone(),
+                    session_count: group.sessions.len(),
+                    has_active,
+                    has_unread,
+                    is_collapsed: true,
+                });
+            }
+            for group in groups {
+                if hidden_groups.contains(&group.session_name) {
+                    continue;
+                }
+                let display_name = display_name_map
+                    .get(&group.session_name)
+                    .cloned()
+                    .unwrap_or_else(|| group.session_name.clone());
+                for session in &group.sessions {
+                    if !hidden_pane_ids.contains(&session.pane_id) {
+                        continue;
+                    }
+                    items.push(VisibleItem::Session {
+                        session: session.clone(),
+                        group_session_name: group.session_name.clone(),
+                        display_name: display_name.clone(),
+                        is_unread: unread_pane_ids.contains(&session.pane_id),
+                    });
+                }
+            }
+        }
+    }
+
     items
 }
 
@@ -147,6 +226,13 @@ pub fn resolve_selected_index(
             VisibleItem::GroupHeader { session_name, .. } => {
                 if let Some(found) = new_items.iter().position(|item| {
                     matches!(item, VisibleItem::GroupHeader { session_name: name, .. } if name == session_name)
+                }) {
+                    return found;
+                }
+            }
+            VisibleItem::HiddenHeader { .. } => {
+                if let Some(found) = new_items.iter().position(|item| {
+                    matches!(item, VisibleItem::HiddenHeader { .. })
                 }) {
                     return found;
                 }
@@ -209,8 +295,16 @@ pub fn build_flat_visible_items(
     unread_order: &HashMap<String, u64>,
     prompt_states: &HashMap<String, PromptState>,
     display_name_map: &HashMap<String, String>,
+    hidden_pane_ids: &HashSet<String>,
+    hidden_groups: &HashSet<String>,
+    hidden_section_collapsed: bool,
 ) -> Vec<VisibleItem> {
-    let mut items: Vec<VisibleItem> = sessions
+    let visible_sessions: Vec<&ClaudeSession> = sessions
+        .iter()
+        .filter(|s| !hidden_pane_ids.contains(&s.pane_id) && !hidden_groups.contains(&s.session_name))
+        .collect();
+
+    let mut items: Vec<VisibleItem> = visible_sessions
         .iter()
         .map(|session| {
             let is_unread = unread_pane_ids.contains(&session.pane_id);
@@ -219,7 +313,7 @@ pub fn build_flat_visible_items(
                 .cloned()
                 .unwrap_or_else(|| session.session_name.clone());
             VisibleItem::Session {
-                session: session.clone(),
+                session: (*session).clone(),
                 group_session_name: session.session_name.clone(),
                 display_name,
                 is_unread,
@@ -230,11 +324,11 @@ pub fn build_flat_visible_items(
     items.sort_by(|a, b| {
         let session_a = match a {
             VisibleItem::Session { session, .. } => session,
-            VisibleItem::GroupHeader { .. } => return Ordering::Equal,
+            VisibleItem::GroupHeader { .. } | VisibleItem::HiddenHeader { .. } => return Ordering::Equal,
         };
         let session_b = match b {
             VisibleItem::Session { session, .. } => session,
-            VisibleItem::GroupHeader { .. } => return Ordering::Equal,
+            VisibleItem::GroupHeader { .. } | VisibleItem::HiddenHeader { .. } => return Ordering::Equal,
         };
 
         let tier_a = session_priority_tier(session_a, unread_pane_ids, prompt_states);
@@ -253,6 +347,33 @@ pub fn build_flat_visible_items(
 
         Ordering::Equal
     });
+
+    let hidden_sessions: Vec<&ClaudeSession> = sessions
+        .iter()
+        .filter(|s| hidden_pane_ids.contains(&s.pane_id) || hidden_groups.contains(&s.session_name))
+        .collect();
+
+    if !hidden_sessions.is_empty() {
+        items.push(VisibleItem::HiddenHeader {
+            count: hidden_sessions.len(),
+            is_collapsed: hidden_section_collapsed,
+        });
+        if !hidden_section_collapsed {
+            for session in hidden_sessions {
+                let is_unread = unread_pane_ids.contains(&session.pane_id);
+                let display_name = display_name_map
+                    .get(&session.session_name)
+                    .cloned()
+                    .unwrap_or_else(|| session.session_name.clone());
+                items.push(VisibleItem::Session {
+                    session: session.clone(),
+                    group_session_name: session.session_name.clone(),
+                    display_name,
+                    is_unread,
+                });
+            }
+        }
+    }
 
     items
 }

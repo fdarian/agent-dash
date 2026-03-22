@@ -25,13 +25,28 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
         return;
     }
 
+    let hidden_header_idx = state.visible_items.iter().position(|item| {
+        matches!(item, VisibleItem::HiddenHeader { .. })
+    });
+
     let items: Vec<ListItem> = state
         .visible_items
         .iter()
         .enumerate()
         .map(|(i, item)| {
             let is_selected = i == state.selected_index;
+            let in_hidden_section = hidden_header_idx.is_some_and(|idx| i > idx);
             match item {
+                VisibleItem::HiddenHeader { count, is_collapsed } => {
+                    let arrow = if *is_collapsed { "▶" } else { "▼" };
+                    let text = format!("{} Hidden ({})", arrow, count);
+                    let style = if is_selected {
+                        Style::default().fg(UNFOCUSED).bg(SELECTED_BG)
+                    } else {
+                        Style::default().fg(UNFOCUSED)
+                    };
+                    ListItem::new(Line::from(text).style(style))
+                }
                 VisibleItem::GroupHeader {
                     display_name,
                     session_count,
@@ -53,7 +68,13 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                         arrow, status_icon, display_name, session_count
                     );
                     let style = if is_selected {
-                        Style::default().fg(Color::White).bg(SELECTED_BG)
+                        if in_hidden_section {
+                            Style::default().fg(UNFOCUSED).bg(SELECTED_BG)
+                        } else {
+                            Style::default().fg(Color::White).bg(SELECTED_BG)
+                        }
+                    } else if in_hidden_section {
+                        Style::default().fg(UNFOCUSED)
                     } else {
                         Style::default().fg(Color::Rgb(0xCC, 0xCC, 0xCC))
                     };
@@ -65,10 +86,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     is_unread,
                     ..
                 } => {
-                    let (icon, default_fg) = match (&session.status, *is_unread) {
-                        (SessionStatus::Active, _) => ("●", PRIMARY),
-                        (_, true) => ("◉", UNREAD),
-                        _ => ("○", IDLE),
+                    let (icon, default_fg) = if in_hidden_section {
+                        ("○", UNFOCUSED)
+                    } else {
+                        match (&session.status, *is_unread) {
+                            (SessionStatus::Active, _) => ("●", PRIMARY),
+                            (_, true) => ("◉", UNREAD),
+                            _ => ("○", IDLE),
+                        }
                     };
                     let label = if session.title.is_empty() {
                         display_name.as_str()
@@ -89,7 +114,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                         .unwrap_or(&PromptState::None);
                     let inner_width = area.width.saturating_sub(2) as usize;
 
-                    if *prompt_state == PromptState::None {
+                    if *prompt_state == PromptState::None || in_hidden_section {
                         ListItem::new(Line::from(left_text).style(base_style))
                     } else {
                         let (badge_text, badge_fg) = match prompt_state {
