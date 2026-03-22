@@ -146,63 +146,54 @@ pub fn build_visible_items(
         }
     }
 
-    let hidden_group_count = hidden_groups.len();
-    let individually_hidden_count = hidden_pane_ids
-        .iter()
-        .filter(|pane_id| {
-            groups
-                .iter()
-                .find(|g| g.sessions.iter().any(|s| &s.pane_id == *pane_id))
-                .map_or(false, |g| !hidden_groups.contains(&g.session_name))
-        })
-        .count();
-    let total_hidden = hidden_group_count + individually_hidden_count;
+    let mut hidden_items = Vec::new();
+    for group in groups {
+        if !hidden_groups.contains(&group.session_name) {
+            continue;
+        }
+        let display_name = display_name_map
+            .get(&group.session_name)
+            .cloned()
+            .unwrap_or_else(|| group.session_name.clone());
+        let has_active = group.sessions.iter().any(|s| s.status == SessionStatus::Active);
+        let has_unread = group.sessions.iter().any(|s| unread_pane_ids.contains(&s.pane_id));
+        hidden_items.push(VisibleItem::GroupHeader {
+            session_name: group.session_name.clone(),
+            display_name: display_name.clone(),
+            session_count: group.sessions.len(),
+            has_active,
+            has_unread,
+            is_collapsed: true,
+        });
+    }
+    for group in groups {
+        if hidden_groups.contains(&group.session_name) {
+            continue;
+        }
+        let display_name = display_name_map
+            .get(&group.session_name)
+            .cloned()
+            .unwrap_or_else(|| group.session_name.clone());
+        for session in &group.sessions {
+            if !hidden_pane_ids.contains(&session.pane_id) {
+                continue;
+            }
+            hidden_items.push(VisibleItem::Session {
+                session: session.clone(),
+                group_session_name: group.session_name.clone(),
+                display_name: display_name.clone(),
+                is_unread: unread_pane_ids.contains(&session.pane_id),
+            });
+        }
+    }
 
-    if total_hidden > 0 {
+    if !hidden_items.is_empty() {
         items.push(VisibleItem::HiddenHeader {
-            count: total_hidden,
+            count: hidden_items.len(),
             is_collapsed: hidden_section_collapsed,
         });
         if !hidden_section_collapsed {
-            for group in groups {
-                if !hidden_groups.contains(&group.session_name) {
-                    continue;
-                }
-                let display_name = display_name_map
-                    .get(&group.session_name)
-                    .cloned()
-                    .unwrap_or_else(|| group.session_name.clone());
-                let has_active = group.sessions.iter().any(|s| s.status == SessionStatus::Active);
-                let has_unread = group.sessions.iter().any(|s| unread_pane_ids.contains(&s.pane_id));
-                items.push(VisibleItem::GroupHeader {
-                    session_name: group.session_name.clone(),
-                    display_name: display_name.clone(),
-                    session_count: group.sessions.len(),
-                    has_active,
-                    has_unread,
-                    is_collapsed: true,
-                });
-            }
-            for group in groups {
-                if hidden_groups.contains(&group.session_name) {
-                    continue;
-                }
-                let display_name = display_name_map
-                    .get(&group.session_name)
-                    .cloned()
-                    .unwrap_or_else(|| group.session_name.clone());
-                for session in &group.sessions {
-                    if !hidden_pane_ids.contains(&session.pane_id) {
-                        continue;
-                    }
-                    items.push(VisibleItem::Session {
-                        session: session.clone(),
-                        group_session_name: group.session_name.clone(),
-                        display_name: display_name.clone(),
-                        is_unread: unread_pane_ids.contains(&session.pane_id),
-                    });
-                }
-            }
+            items.extend(hidden_items);
         }
     }
 
@@ -299,10 +290,9 @@ pub fn build_flat_visible_items(
     hidden_groups: &HashSet<String>,
     hidden_section_collapsed: bool,
 ) -> Vec<VisibleItem> {
-    let visible_sessions: Vec<&ClaudeSession> = sessions
+    let (hidden_sessions, visible_sessions): (Vec<&ClaudeSession>, Vec<&ClaudeSession>) = sessions
         .iter()
-        .filter(|s| !hidden_pane_ids.contains(&s.pane_id) && !hidden_groups.contains(&s.session_name))
-        .collect();
+        .partition(|s| hidden_pane_ids.contains(&s.pane_id) || hidden_groups.contains(&s.session_name));
 
     let mut items: Vec<VisibleItem> = visible_sessions
         .iter()
@@ -347,11 +337,6 @@ pub fn build_flat_visible_items(
 
         Ordering::Equal
     });
-
-    let hidden_sessions: Vec<&ClaudeSession> = sessions
-        .iter()
-        .filter(|s| hidden_pane_ids.contains(&s.pane_id) || hidden_groups.contains(&s.session_name))
-        .collect();
 
     if !hidden_sessions.is_empty() {
         items.push(VisibleItem::HiddenHeader {

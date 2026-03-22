@@ -303,7 +303,7 @@ async fn process_action(
                         };
                         state.prev_status_map.insert(new_session.pane_id.clone(), new_session.status.clone());
                         state.sessions.push(new_session);
-                        state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter, &state.hidden_pane_ids, &state.hidden_groups);
+                        persist_state(state);
                         let old_items = std::mem::take(&mut state.visible_items);
                         refresh_visible_items(state);
                         state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
@@ -323,7 +323,7 @@ async fn process_action(
                 state.unread_order.remove(&pane_id);
             }
             state.sessions.retain(|s| s.pane_target != target);
-            state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter, &state.hidden_pane_ids, &state.hidden_groups);
+            persist_state(state);
             let old_items = std::mem::take(&mut state.visible_items);
             refresh_visible_items(state);
             state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
@@ -373,7 +373,7 @@ fn handle_message(
             state.unread_pane_ids = next_unread;
 
             // Persist state
-            state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter, &state.hidden_pane_ids, &state.hidden_groups);
+            persist_state(state);
 
             // Resolve selected index
             let old_items = std::mem::take(&mut state.visible_items);
@@ -639,29 +639,17 @@ fn handle_key_event(
                             refresh_visible_items(state);
                         }
                         VisibleItem::GroupHeader { session_name, .. } => {
-                            if state.hidden_groups.contains(session_name) {
-                                state.hidden_groups.remove(session_name);
-                            } else {
+                            if !state.hidden_groups.remove(session_name) {
                                 state.hidden_groups.insert(session_name.clone());
                             }
-                            state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter, &state.hidden_pane_ids, &state.hidden_groups);
-                            let old_items = std::mem::take(&mut state.visible_items);
-                            refresh_visible_items(state);
-                            state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
-                            update_selected_target(state, selected_pane_target);
+                            hide_toggle_refresh(state, selected_pane_target);
                         }
                         VisibleItem::Session { session, .. } => {
                             let pane_id = session.pane_id.clone();
-                            if state.hidden_pane_ids.contains(&pane_id) {
-                                state.hidden_pane_ids.remove(&pane_id);
-                            } else {
+                            if !state.hidden_pane_ids.remove(&pane_id) {
                                 state.hidden_pane_ids.insert(pane_id);
                             }
-                            state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter, &state.hidden_pane_ids, &state.hidden_groups);
-                            let old_items = std::mem::take(&mut state.visible_items);
-                            refresh_visible_items(state);
-                            state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
-                            update_selected_target(state, selected_pane_target);
+                            hide_toggle_refresh(state, selected_pane_target);
                         }
                     }
                 }
@@ -696,7 +684,7 @@ fn handle_key_event(
                 if let VisibleItem::Session { ref session, .. } = item {
                     state.unread_pane_ids.remove(&session.pane_id);
                     state.unread_order.remove(&session.pane_id);
-                    state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter, &state.hidden_pane_ids, &state.hidden_groups);
+                    persist_state(state);
                     refresh_visible_items(state);
                 }
                 let target = match &item {
@@ -719,7 +707,7 @@ fn handle_key_event(
                     let pane_id = session.pane_id.clone();
                     state.unread_pane_ids.remove(&pane_id);
                     state.unread_order.remove(&pane_id);
-                    state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter, &state.hidden_pane_ids, &state.hidden_groups);
+                    persist_state(state);
                     refresh_visible_items(state);
                 }
             }
@@ -947,4 +935,23 @@ fn scroll_preview_up(state: &mut AppState) {
         state.preview_scroll_offset -= 1;
         state.preview_is_sticky_bottom = false;
     }
+}
+
+fn persist_state(state: &AppState) {
+    state::save_state(
+        &state.unread_pane_ids,
+        &state.prev_status_map,
+        &state.unread_order,
+        state.unread_counter,
+        &state.hidden_pane_ids,
+        &state.hidden_groups,
+    );
+}
+
+fn hide_toggle_refresh(state: &mut AppState, selected_pane_target: &watch::Sender<Option<String>>) {
+    persist_state(state);
+    let old_items = std::mem::take(&mut state.visible_items);
+    refresh_visible_items(state);
+    state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
+    update_selected_target(state, selected_pane_target);
 }
