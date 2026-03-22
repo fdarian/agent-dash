@@ -69,7 +69,6 @@ pub enum VisibleItem {
     },
     Session {
         session: ClaudeSession,
-        group_session_name: String,
         display_name: String,
         is_unread: bool,
     },
@@ -138,7 +137,6 @@ pub fn build_visible_items(
             for session in &visible_sessions {
                 items.push(VisibleItem::Session {
                     session: (*session).clone(),
-                    group_session_name: group.session_name.clone(),
                     display_name: display_name.clone(),
                     is_unread: unread_pane_ids.contains(&session.pane_id),
                 });
@@ -180,7 +178,7 @@ pub fn build_visible_items(
             }
             hidden_items.push(VisibleItem::Session {
                 session: session.clone(),
-                group_session_name: group.session_name.clone(),
+
                 display_name: display_name.clone(),
                 is_unread: unread_pane_ids.contains(&session.pane_id),
             });
@@ -304,7 +302,7 @@ pub fn build_flat_visible_items(
                 .unwrap_or_else(|| session.session_name.clone());
             VisibleItem::Session {
                 session: (*session).clone(),
-                group_session_name: session.session_name.clone(),
+
                 display_name,
                 is_unread,
             }
@@ -352,7 +350,7 @@ pub fn build_flat_visible_items(
                     .unwrap_or_else(|| session.session_name.clone());
                 items.push(VisibleItem::Session {
                     session: session.clone(),
-                    group_session_name: session.session_name.clone(),
+    
                     display_name,
                     is_unread,
                 });
