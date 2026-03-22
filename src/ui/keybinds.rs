@@ -9,7 +9,7 @@ pub const KEYBINDS: &[KeybindEntry] = &[
     KeybindEntry { key: "1", description: "Focus session list", context: "global" },
     KeybindEntry { key: "j / ↓", description: "Next session / Scroll down", context: "sessions" },
     KeybindEntry { key: "k / ↑", description: "Previous session / Scroll up", context: "sessions" },
-    KeybindEntry { key: "h", description: "Collapse group", context: "sessions" },
+    KeybindEntry { key: "h", description: "Hide/unhide session", context: "sessions" },
     KeybindEntry { key: "l", description: "Expand group", context: "sessions" },
     KeybindEntry { key: "o", description: "Switch to tmux pane", context: "global" },
     KeybindEntry { key: "O", description: "Attach session in popup", context: "global" },

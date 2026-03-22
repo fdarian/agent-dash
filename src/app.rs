@@ -56,6 +56,9 @@ pub struct AppState {
     pub flat_view: bool,
     pub unread_order: HashMap<String, u64>,
     pub unread_counter: u64,
+    pub hidden_pane_ids: HashSet<String>,
+    pub hidden_groups: HashSet<String>,
+    pub hidden_section_collapsed: bool,
 }
 
 pub enum Message {
@@ -118,6 +121,9 @@ pub async fn run(
         flat_view: default_flat_view,
         unread_order: loaded_state.unread_order,
         unread_counter: loaded_state.unread_counter,
+        hidden_pane_ids: loaded_state.hidden_pane_ids,
+        hidden_groups: loaded_state.hidden_groups,
+        hidden_section_collapsed: true,
     };
 
     // Load cached sessions for instant first render
@@ -297,7 +303,7 @@ async fn process_action(
                         };
                         state.prev_status_map.insert(new_session.pane_id.clone(), new_session.status.clone());
                         state.sessions.push(new_session);
-                        state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter);
+                        persist_state(state);
                         let old_items = std::mem::take(&mut state.visible_items);
                         refresh_visible_items(state);
                         state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
@@ -317,7 +323,7 @@ async fn process_action(
                 state.unread_order.remove(&pane_id);
             }
             state.sessions.retain(|s| s.pane_target != target);
-            state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter);
+            persist_state(state);
             let old_items = std::mem::take(&mut state.visible_items);
             refresh_visible_items(state);
             state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
@@ -367,7 +373,7 @@ fn handle_message(
             state.unread_pane_ids = next_unread;
 
             // Persist state
-            state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter);
+            persist_state(state);
 
             // Resolve selected index
             let old_items = std::mem::take(&mut state.visible_items);
@@ -628,33 +634,44 @@ fn handle_key_event(
             if matches!(state.focus, Focus::Sessions) {
                 if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
                     match &item {
-                        VisibleItem::GroupHeader { session_name, .. } => {
-                            state.collapsed_groups.insert(session_name.clone());
+                        VisibleItem::HiddenHeader { .. } => {
+                            state.hidden_section_collapsed = !state.hidden_section_collapsed;
                             refresh_visible_items(state);
                         }
-                        VisibleItem::Session { group_session_name, .. } => {
-                            let group_name = group_session_name.clone();
-                            state.collapsed_groups.insert(group_name.clone());
-                            refresh_visible_items(state);
-                            if let Some(idx) = state.visible_items.iter().position(|i| {
-                                matches!(i, VisibleItem::GroupHeader { session_name, .. } if session_name == &group_name)
-                            }) {
-                                state.selected_index = idx;
+                        VisibleItem::GroupHeader { session_name, .. } => {
+                            if !state.hidden_groups.remove(session_name) {
+                                state.hidden_groups.insert(session_name.clone());
                             }
+                            hide_toggle_refresh(state, selected_pane_target);
+                        }
+                        VisibleItem::Session { session, .. } => {
+                            let pane_id = session.pane_id.clone();
+                            if !state.hidden_pane_ids.remove(&pane_id) {
+                                state.hidden_pane_ids.insert(pane_id);
+                            }
+                            hide_toggle_refresh(state, selected_pane_target);
                         }
                     }
-                    update_selected_target(state, selected_pane_target);
                 }
             }
             None
         }
         KeyCode::Char('l') => {
             if matches!(state.focus, Focus::Sessions) {
-                if let Some(VisibleItem::GroupHeader { session_name, .. }) = state.visible_items.get(state.selected_index).cloned().as_ref() {
-                    let name = session_name.clone();
-                    state.collapsed_groups.remove(&name);
-                    refresh_visible_items(state);
-                    update_selected_target(state, selected_pane_target);
+                if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
+                    match &item {
+                        VisibleItem::GroupHeader { session_name, .. } => {
+                            let name = session_name.clone();
+                            state.collapsed_groups.remove(&name);
+                            refresh_visible_items(state);
+                            update_selected_target(state, selected_pane_target);
+                        }
+                        VisibleItem::HiddenHeader { is_collapsed, .. } if *is_collapsed => {
+                            state.hidden_section_collapsed = false;
+                            refresh_visible_items(state);
+                        }
+                        _ => {}
+                    }
                 }
             }
             None
@@ -667,12 +684,13 @@ fn handle_key_event(
                 if let VisibleItem::Session { ref session, .. } = item {
                     state.unread_pane_ids.remove(&session.pane_id);
                     state.unread_order.remove(&session.pane_id);
-                    state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter);
+                    persist_state(state);
                     refresh_visible_items(state);
                 }
                 let target = match &item {
                     VisibleItem::Session { session, .. } => Some(session.pane_target.clone()),
                     VisibleItem::GroupHeader { session_name, .. } => Some(session_name.clone()),
+                    VisibleItem::HiddenHeader { .. } => None,
                 };
                 if let Some(target) = target {
                     if state.config.exit_on_switch {
@@ -689,7 +707,7 @@ fn handle_key_event(
                     let pane_id = session.pane_id.clone();
                     state.unread_pane_ids.remove(&pane_id);
                     state.unread_order.remove(&pane_id);
-                    state::save_state(&state.unread_pane_ids, &state.prev_status_map, &state.unread_order, state.unread_counter);
+                    persist_state(state);
                     refresh_visible_items(state);
                 }
             }
@@ -701,6 +719,7 @@ fn handle_key_event(
                     let (session_name, cwd_target) = match &item {
                         VisibleItem::Session { session, .. } => (session.session_name.clone(), session.pane_target.clone()),
                         VisibleItem::GroupHeader { session_name, .. } => (session_name.clone(), session_name.clone()),
+                        VisibleItem::HiddenHeader { .. } => return None,
                     };
                     return Some(Action::CreateSession { session_name, cwd_target });
                 }
@@ -870,6 +889,9 @@ fn refresh_visible_items(state: &mut AppState) {
             &state.unread_order,
             &state.prompt_states,
             &state.display_name_map,
+            &state.hidden_pane_ids,
+            &state.hidden_groups,
+            state.hidden_section_collapsed,
         );
     } else {
         let groups = group_sessions_by_name(&state.sessions);
@@ -878,6 +900,9 @@ fn refresh_visible_items(state: &mut AppState) {
             &state.collapsed_groups,
             &state.unread_pane_ids,
             &state.display_name_map,
+            &state.hidden_pane_ids,
+            &state.hidden_groups,
+            state.hidden_section_collapsed,
         );
     }
 }
@@ -910,4 +935,23 @@ fn scroll_preview_up(state: &mut AppState) {
         state.preview_scroll_offset -= 1;
         state.preview_is_sticky_bottom = false;
     }
+}
+
+fn persist_state(state: &AppState) {
+    state::save_state(
+        &state.unread_pane_ids,
+        &state.prev_status_map,
+        &state.unread_order,
+        state.unread_counter,
+        &state.hidden_pane_ids,
+        &state.hidden_groups,
+    );
+}
+
+fn hide_toggle_refresh(state: &mut AppState, selected_pane_target: &watch::Sender<Option<String>>) {
+    persist_state(state);
+    let old_items = std::mem::take(&mut state.visible_items);
+    refresh_visible_items(state);
+    state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
+    update_selected_target(state, selected_pane_target);
 }
