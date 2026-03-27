@@ -1,0 +1,29 @@
+---
+title: Agent Dash
+description: A TUI dashboard for managing Claude AI sessions in tmux
+---
+
+Agent Dash is a terminal user interface (TUI) application for managing and monitoring [Claude](https://claude.ai) AI sessions running in tmux.
+
+Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crossterm-rs/crossterm), and [Tokio](https://tokio.rs).
+
+## Features
+
+- **Live session monitoring** — real-time preview of Claude sessions with ANSI rendering
+- **Session grouping** — sessions organized by tmux session name with collapsible groups
+- **Copy mode** — vim-like motions, search, and text selection on preview content
+- **Unread tracking** — automatic detection of session activity changes
+- **Persistent state** — session visibility, collapse state, and read markers saved across restarts
+- **Dual-pane layout** — session list alongside live preview, with configurable orientation
+- **Search** — forward and backward search in preview content
+- **Clipboard support** — yank selected text or full preview to clipboard
+
+## How It Works
+
+Agent Dash connects to your tmux server and discovers Claude sessions by detecting Claude CLI processes running in tmux panes. It uses a combination of:
+
+- **FIFO pipe monitoring** for low-latency preview updates
+- **`tmux capture-pane` polling** as a fallback
+- **Recursive `pgrep`** for Claude process detection
+- **Braille Unicode detection** (U+2800–U+28FF) in pane titles for activity status
+- **Last-line parsing** for prompt state (Plan/Ask mode)

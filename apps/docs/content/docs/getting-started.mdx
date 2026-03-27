@@ -1,0 +1,50 @@
+---
+title: Getting Started
+description: Quick start guide for Agent Dash
+---
+
+## Launch
+
+Start Agent Dash from your terminal:
+
+```bash
+agent-dash
+```
+
+Agent Dash will automatically discover all Claude sessions running in your tmux server.
+
+## Interface Overview
+
+The interface has two main panes:
+
+1. **Session List** (left/top) — shows all discovered Claude sessions, grouped by tmux session
+2. **Preview Pane** (right/bottom) — shows a live preview of the selected session's output
+
+### Navigation
+
+- Press `j`/`k` or arrow keys to navigate sessions
+- Press `0` to focus the preview pane, `1` to focus the session list
+- Press `o` to switch to the selected session's tmux pane
+- Press `O` to open the session in a tmux popup
+
+### Session Groups
+
+Sessions are grouped by their tmux session name. You can:
+
+- Press `l` to expand/collapse a group
+- Press `` ` `` to toggle flat view (ungrouped)
+- Press `h` to hide a session or group
+
+### Copy Mode
+
+Press `v` to enter copy mode in the preview pane. This freezes the content and enables vim-like navigation:
+
+- `hjkl` for movement
+- `w`/`b`/`e` for word motions
+- `v` to start selection, `y` to yank
+- `/` to search forward, `?` to search backward
+- `Esc` to exit copy mode
+
+### Help
+
+Press `?` at any time to open the help overlay with all available keybinds. Use `/` to filter keybinds by name.
