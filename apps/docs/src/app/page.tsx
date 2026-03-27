@@ -195,7 +195,7 @@ export default function HomePage() {
             style={{
               backgroundImage:
                 'linear-gradient(var(--color-brand) 1px, transparent 1px), linear-gradient(90deg, var(--color-brand) 1px, transparent 1px)',
-              backgroundSize: '32px 32px',
+              backgroundSize: '24px 24px',
               opacity: 0.03,
               maskImage: 'linear-gradient(to bottom, transparent 40%, black 100%)',
               WebkitMaskImage: 'linear-gradient(to bottom, transparent 40%, black 100%)',
