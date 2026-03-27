@@ -1,2 +1,25 @@
 /target
 .claude/worktrees/**
+
+# Dependencies
+node_modules/
+
+# Build outputs
+.turbo
+dist/
+.output/
+.next/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Bun
+bun.lock
+
+# Lockfiles (non-bun)
+pnpm-lock.yaml
+
+# Generated
+.source/

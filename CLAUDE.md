@@ -20,6 +20,12 @@ Agent Dash is a Rust TUI application for managing and monitoring Claude AI sessi
 - **Session grouping** (`session.rs`): sessions grouped by tmux session name, with collapsible groups and hidden section
 - **Persistence** (`state.rs`, `cache.rs`): state saved to `~/.config/agent-dash/state.json`, sessions cached to `~/.config/agent-dash/cache/`
 
+## Documentation Site
+
+- `apps/docs/` — Fumadocs site (Next.js 16, Tailwind 4)
+- See `apps/docs/CLAUDE.md` for docs-specific guidance
+- See `apps/docs/notes/design-system.md` for the design system
+
 ## Non-obvious details
 
 - Session "active" status is detected via braille Unicode range (0x2800-0x28FF) in pane title — Claude CLI sets these

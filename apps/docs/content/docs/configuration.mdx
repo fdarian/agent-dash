@@ -1,0 +1,47 @@
+---
+title: Configuration
+description: Configure Agent Dash behavior
+---
+
+Agent Dash stores its configuration at `~/.config/agent-dash/config.json`.
+
+## Options
+
+```json title="~/.config/agent-dash/config.json"
+{
+  "command": "claude",
+  "layout": "vertical",
+  "defaultView": "flat",
+  "sessionNameFormatter": "~/bin/format-session-name"
+}
+```
+
+### command
+
+The CLI command used to launch new sessions. Defaults to `"claude"`.
+
+### layout
+
+Controls the pane layout direction.
+
+| Value | Description |
+|-------|-------------|
+| `"vertical"` | Session list on the left, preview on the right (default) |
+| `"horizontal"` | Session list on top, preview on the bottom |
+
+### defaultView
+
+Set to `"flat"` to disable session grouping by default. When unset, sessions are grouped by tmux session name.
+
+### sessionNameFormatter
+
+Path to an executable that formats session display names. Supports `~/` expansion for home directory paths. The formatter receives the raw session name and should output the formatted name.
+
+## Data Storage
+
+| Path | Purpose |
+|------|---------|
+| `~/.config/agent-dash/config.json` | Configuration |
+| `~/.config/agent-dash/state.json` | Persistent state (visibility, read markers, collapse state) |
+| `~/.config/agent-dash/cache/` | Session cache |
+| `/tmp/agent-dash-{pid}-preview.fifo` | Temporary FIFO pipes for preview |

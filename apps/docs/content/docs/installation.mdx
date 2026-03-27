@@ -1,0 +1,37 @@
+---
+title: Installation
+description: How to install Agent Dash
+---
+
+## Prerequisites
+
+- [Rust](https://www.rust-lang.org/tools/install) toolchain (1.70+)
+- [tmux](https://github.com/tmux/tmux) installed and running
+- [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) sessions running in tmux
+
+## From Source
+
+Clone the repository and build:
+
+```bash
+git clone https://github.com/fdarian/agent-dash.git
+cd agent-dash
+cargo build --release
+```
+
+The binary will be at `target/release/agent-dash`.
+
+## Running
+
+Make sure you have tmux sessions with Claude CLI running, then:
+
+```bash
+./target/release/agent-dash
+```
+
+### CLI Options
+
+| Flag | Description |
+|------|-------------|
+| `--exit` | Enable exit-on-switch mode — exits Agent Dash when switching to a tmux pane |
+| `--exit-immediately` | Exit immediately after initial render (used for testing) |
