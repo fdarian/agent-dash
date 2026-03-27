@@ -18,5 +18,8 @@ dist/
 # Bun
 bun.lock
 
+# Lockfiles (non-bun)
+pnpm-lock.yaml
+
 # Generated
 .source/
