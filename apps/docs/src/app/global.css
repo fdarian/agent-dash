@@ -9,13 +9,13 @@
   --color-brand-dark: #c06040;
 }
 
-/* ─── Light theme overrides ─── */
+/* ─── Light theme accent ─── */
 :root {
   --color-fd-primary: var(--color-brand-dark);
   --color-fd-primary-foreground: #fff;
 }
 
-/* ─── Dark theme: Zed-like navy-slate with orange accent ─── */
+/* ─── Dark theme: Zed-like navy-slate ─── */
 .dark {
   --color-fd-background: hsl(228, 13%, 7.5%);
   --color-fd-foreground: hsl(228, 5%, 91%);
@@ -35,31 +35,54 @@
   --color-fd-primary-foreground: #fff;
 }
 
-/* ─── Docs sidebar: darker ─── */
+/* ─── Docs sidebar: distinctly darker ─── */
 #nd-sidebar {
-  --color-fd-background: hsl(228, 5%, 94%);
-  --color-fd-muted: hsl(228, 5%, 93%);
-  --color-fd-secondary: hsl(228, 5%, 91%);
+  background-color: hsl(228, 5%, 91%) !important;
 }
 
 .dark #nd-sidebar {
-  --color-fd-background: hsl(228, 13%, 5.5%);
-  --color-fd-muted: hsl(228, 10%, 8%);
+  background-color: hsl(228, 15%, 6.5%) !important;
+  --color-fd-muted: hsl(228, 12%, 8%);
   --color-fd-secondary: hsl(228, 10%, 10%);
-  --color-fd-muted-foreground: hsl(228, 5%, 50%);
+  --color-fd-muted-foreground: hsl(228, 5%, 45%);
+  --color-fd-border: hsl(228, 10%, 14%);
 }
 
-/* ─── Blueprint grid background ─── */
-.blueprint-grid {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='280' fill='none'%3E%3Cline x1='0' y1='.5' x2='280' y2='.5' stroke='black' stroke-opacity='.05'/%3E%3Cline x1='.5' y1='0' x2='.5' y2='280' stroke='black' stroke-opacity='.05'/%3E%3Cline x1='140' y1='0' x2='140' y2='280' stroke='black' stroke-opacity='.03' stroke-dasharray='3 5'/%3E%3Cline x1='0' y1='140' x2='280' y2='140' stroke='black' stroke-opacity='.03' stroke-dasharray='3 5'/%3E%3Cg stroke='black' stroke-opacity='.07'%3E%3Cline x1='28' y1='0' x2='28' y2='4'/%3E%3Cline x1='56' y1='0' x2='56' y2='4'/%3E%3Cline x1='84' y1='0' x2='84' y2='4'/%3E%3Cline x1='112' y1='0' x2='112' y2='4'/%3E%3Cline x1='140' y1='0' x2='140' y2='7'/%3E%3Cline x1='168' y1='0' x2='168' y2='4'/%3E%3Cline x1='196' y1='0' x2='196' y2='4'/%3E%3Cline x1='224' y1='0' x2='224' y2='4'/%3E%3Cline x1='252' y1='0' x2='252' y2='4'/%3E%3C/g%3E%3Cg stroke='black' stroke-opacity='.07'%3E%3Cline x1='0' y1='28' x2='4' y2='28'/%3E%3Cline x1='0' y1='56' x2='4' y2='56'/%3E%3Cline x1='0' y1='84' x2='4' y2='84'/%3E%3Cline x1='0' y1='112' x2='4' y2='112'/%3E%3Cline x1='0' y1='140' x2='7' y2='140'/%3E%3Cline x1='0' y1='168' x2='4' y2='168'/%3E%3Cline x1='0' y1='196' x2='4' y2='196'/%3E%3Cline x1='0' y1='224' x2='4' y2='224'/%3E%3Cline x1='0' y1='252' x2='4' y2='252'/%3E%3C/g%3E%3Cg fill='black' fill-opacity='.08'%3E%3Cpath d='M0 0L5 0 0 5z'/%3E%3Cpath d='M280 0L275 0 280 5z'/%3E%3Cpath d='M0 280L5 280 0 275z'/%3E%3Cpath d='M280 280L275 280 280 275z'/%3E%3C/g%3E%3C/svg%3E");
-  background-size: 280px 280px;
+/* ─── Paper-like noise texture overlay (same technique as Zed) ─── */
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0.012;
+  background-image: url('/noise.webp');
+  background-repeat: repeat;
+  background-size: 180px;
 }
 
-.dark .blueprint-grid {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='280' fill='none'%3E%3Cline x1='0' y1='.5' x2='280' y2='.5' stroke='white' stroke-opacity='.04'/%3E%3Cline x1='.5' y1='0' x2='.5' y2='280' stroke='white' stroke-opacity='.04'/%3E%3Cline x1='140' y1='0' x2='140' y2='280' stroke='white' stroke-opacity='.025' stroke-dasharray='3 5'/%3E%3Cline x1='0' y1='140' x2='280' y2='140' stroke='white' stroke-opacity='.025' stroke-dasharray='3 5'/%3E%3Cg stroke='white' stroke-opacity='.06'%3E%3Cline x1='28' y1='0' x2='28' y2='4'/%3E%3Cline x1='56' y1='0' x2='56' y2='4'/%3E%3Cline x1='84' y1='0' x2='84' y2='4'/%3E%3Cline x1='112' y1='0' x2='112' y2='4'/%3E%3Cline x1='140' y1='0' x2='140' y2='7'/%3E%3Cline x1='168' y1='0' x2='168' y2='4'/%3E%3Cline x1='196' y1='0' x2='196' y2='4'/%3E%3Cline x1='224' y1='0' x2='224' y2='4'/%3E%3Cline x1='252' y1='0' x2='252' y2='4'/%3E%3C/g%3E%3Cg stroke='white' stroke-opacity='.06'%3E%3Cline x1='0' y1='28' x2='4' y2='28'/%3E%3Cline x1='0' y1='56' x2='4' y2='56'/%3E%3Cline x1='0' y1='84' x2='4' y2='84'/%3E%3Cline x1='0' y1='112' x2='4' y2='112'/%3E%3Cline x1='0' y1='140' x2='7' y2='140'/%3E%3Cline x1='0' y1='168' x2='4' y2='168'/%3E%3Cline x1='0' y1='196' x2='4' y2='196'/%3E%3Cline x1='0' y1='224' x2='4' y2='224'/%3E%3Cline x1='0' y1='252' x2='4' y2='252'/%3E%3C/g%3E%3Cg fill='white' fill-opacity='.07'%3E%3Cpath d='M0 0L5 0 0 5z'/%3E%3Cpath d='M280 0L275 0 280 5z'/%3E%3Cpath d='M0 280L5 280 0 275z'/%3E%3Cpath d='M280 280L275 280 280 275z'/%3E%3C/g%3E%3C/svg%3E");
+/* ─── Structural grid: ruler ticks along vertical borders ─── */
+.ruler-ticks-r {
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 23px,
+    var(--color-fd-border) 23px,
+    var(--color-fd-border) 24px
+  );
 }
 
-/* ─── Fancy button (AlignUI-inspired glossy effect) ─── */
+.ruler-ticks-l {
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 23px,
+    var(--color-fd-border) 23px,
+    var(--color-fd-border) 24px
+  );
+  transform: scaleX(-1);
+}
+
+/* ─── Fancy button (AlignUI-inspired) ─── */
 .fancy-button {
   position: relative;
   overflow: hidden;
@@ -94,7 +117,6 @@
 }
 
 .fancy-button:hover::after {
-  opacity: 1;
   background: linear-gradient(to bottom, rgba(255, 255, 255, 0.24), transparent);
 }
 

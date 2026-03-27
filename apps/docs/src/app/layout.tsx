@@ -12,7 +12,10 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={archivo.variable} suppressHydrationWarning>
       <body className="flex flex-col min-h-screen font-sans">
-        <RootProvider>{children}</RootProvider>
+        <RootProvider>
+          <div className="noise-overlay" aria-hidden="true" />
+          {children}
+        </RootProvider>
       </body>
     </html>
   );
