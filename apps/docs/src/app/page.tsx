@@ -188,7 +188,19 @@ export default function HomePage() {
         <div className="absolute top-0 bottom-0 left-1/2 w-px border-l border-dashed border-fd-border/40 pointer-events-none hidden lg:block" />
 
         {/* ═══ Hero ═══ */}
-        <section className="pt-28 pb-16 px-8">
+        <section className="pt-28 pb-16 px-8 relative overflow-hidden">
+          {/* Micro-grid fading in from bottom — subtle orange tint */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage:
+                'linear-gradient(var(--color-brand) 1px, transparent 1px), linear-gradient(90deg, var(--color-brand) 1px, transparent 1px)',
+              backgroundSize: '32px 32px',
+              opacity: 0.03,
+              maskImage: 'linear-gradient(to bottom, transparent 40%, black 100%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, transparent 40%, black 100%)',
+            }}
+          />
           <div className="mx-auto max-w-3xl text-center">
             <div className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-fd-border bg-fd-card px-4 py-1.5 text-sm text-fd-muted-foreground mb-8">
               Open Source &middot; Built with Rust
