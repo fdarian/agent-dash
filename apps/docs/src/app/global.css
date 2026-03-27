@@ -82,42 +82,43 @@
   transform: scaleX(-1);
 }
 
-/* ─── Fancy button (AlignUI-inspired) ─── */
+/* ─── Fancy button (AlignUI-inspired glossy effect) ─── */
 .fancy-button {
   position: relative;
-  overflow: hidden;
 }
 
+/* Inner gradient border: white rim at top, fading to transparent */
 .fancy-button::before {
   content: '';
   position: absolute;
   inset: 0;
+  z-index: 10;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.2), transparent);
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.12), transparent);
+  mask-clip: content-box, border-box;
   mask-composite: exclude;
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+  mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);
+  -webkit-mask-clip: content-box, border-box;
   -webkit-mask-composite: xor;
+  -webkit-mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);
   pointer-events: none;
 }
 
+/* Subtle white gradient overlay for depth */
 .fancy-button::after {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.14), transparent);
+  background: linear-gradient(to bottom, white, transparent);
+  opacity: 0.16;
   pointer-events: none;
   transition: opacity 0.2s ease-out;
 }
 
 .fancy-button:hover::after {
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.24), transparent);
+  opacity: 0.24;
 }
 
 /* ─── Animations ─── */

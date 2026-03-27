@@ -33,7 +33,7 @@ function ArrowRightIcon() {
 function Diamond(props: { className?: string }) {
   return (
     <div
-      className={`absolute w-[8px] h-[8px] rotate-45 border border-fd-border bg-fd-background z-10 hidden lg:block ${props.className ?? ''}`}
+      className={`absolute w-[9px] h-[9px] rotate-45 border border-fd-border bg-fd-background z-10 hidden lg:block ${props.className ?? ''}`}
     />
   );
 }
