@@ -32,9 +32,24 @@ function ArrowRightIcon() {
 /** Diamond marker at a grid line intersection */
 function Diamond(props: { className?: string }) {
   return (
-    <div
-      className={`absolute w-[9px] h-[9px] rotate-45 border border-fd-border bg-fd-background z-10 hidden lg:block ${props.className ?? ''}`}
-    />
+    <svg
+      width="9"
+      height="9"
+      viewBox="0 0 9 9"
+      className={`absolute -translate-x-1/2 -translate-y-1/2 z-10 hidden lg:block ${props.className ?? ''}`}
+    >
+      <rect
+        x="1.5"
+        y="1.5"
+        width="6"
+        height="6"
+        rx="0.5"
+        transform="rotate(45 4.5 4.5)"
+        fill="none"
+        stroke="var(--color-fd-border)"
+        strokeWidth="1"
+      />
+    </svg>
   );
 }
 
@@ -42,8 +57,8 @@ function Diamond(props: { className?: string }) {
 function GridLine() {
   return (
     <div className="relative border-t border-fd-border">
-      <Diamond className="-top-[4.5px] -left-[4.5px]" />
-      <Diamond className="-top-[4.5px] -right-[4.5px]" />
+      <Diamond className="top-0 left-0" />
+      <Diamond className="top-0 right-0" />
     </div>
   );
 }
@@ -164,7 +179,7 @@ export default function HomePage() {
       </nav>
 
       {/* ─── Grid frame: structural borders framing all content ─── */}
-      <div className="mx-auto max-w-6xl relative border-l border-r border-fd-border">
+      <div className="mx-4 sm:mx-6 lg:mx-auto max-w-6xl relative border-l border-r border-fd-border">
         {/* Ruler tick marks along left and right edges */}
         <div className="ruler-ticks-r absolute top-0 bottom-0 left-0 w-[5px] pointer-events-none opacity-60 hidden lg:block" />
         <div className="ruler-ticks-l absolute top-0 bottom-0 right-0 w-[5px] pointer-events-none opacity-60 hidden lg:block" />
