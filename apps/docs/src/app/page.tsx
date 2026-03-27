@@ -68,7 +68,7 @@ function GridLine() {
 function TerminalMockup() {
   return (
     <div className="relative mx-auto max-w-4xl">
-      <div className="rounded-xl border border-fd-border dark:border-[#1e2028] bg-[#0e1013] overflow-hidden">
+      <div className="rounded-sm border border-fd-border dark:border-[#1e2028] bg-[#0e1013] overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06] bg-white/[0.015]">
           <div className="flex gap-1.5">
             <div className="w-2.5 h-2.5 rounded-full bg-[#ff5c57]/70" />
@@ -124,7 +124,7 @@ type FeatureCardProps = { title: string; description: string };
 
 function FeatureCard(props: FeatureCardProps) {
   return (
-    <div className="rounded-xl border border-fd-border bg-fd-card p-6 transition-colors hover:bg-fd-accent">
+    <div className="rounded border border-fd-border bg-fd-card p-6 transition-colors hover:bg-fd-accent">
       <h3 className="text-[15px] font-semibold tracking-tight text-fd-card-foreground">{props.title}</h3>
       <p className="mt-2 text-sm leading-relaxed text-fd-muted-foreground">{props.description}</p>
     </div>
@@ -212,10 +212,10 @@ export default function HomePage() {
               A keyboard-first terminal dashboard for managing and monitoring Claude AI sessions in tmux.
             </p>
             <div className="animate-fade-up flex flex-wrap gap-3 justify-center mt-10" style={{ animationDelay: '240ms' }}>
-              <Link href="/docs" className="fancy-button inline-flex items-center gap-2 rounded-[10px] bg-brand px-5 py-2.5 text-sm font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_1px_3px_rgba(0,0,0,0.2),0_2px_8px_rgba(217,119,87,0.25)] hover:brightness-110 transition">
+              <Link href="/docs" className="fancy-button inline-flex items-center gap-2 rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_1px_3px_rgba(0,0,0,0.2),0_2px_8px_rgba(217,119,87,0.25)] hover:brightness-110 transition">
                 Get Started <ArrowRightIcon />
               </Link>
-              <a href="https://github.com/fdarian/agent-dash" className="inline-flex items-center gap-2 rounded-[10px] border border-fd-border bg-fd-card px-5 py-2.5 text-sm font-medium text-fd-foreground hover:bg-fd-accent transition" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/fdarian/agent-dash" className="inline-flex items-center gap-2 rounded-md border border-fd-border bg-fd-card px-5 py-2.5 text-sm font-medium text-fd-foreground hover:bg-fd-accent transition" target="_blank" rel="noopener noreferrer">
                 <GithubIcon /> View Source
               </a>
             </div>
@@ -231,7 +231,7 @@ export default function HomePage() {
         {/* ═══ Video Placeholder ═══ */}
         <section className="px-8 pb-10">
           <div className="mx-auto max-w-4xl">
-            <div className="relative aspect-video rounded-xl border border-dashed border-fd-border bg-fd-card overflow-hidden group cursor-pointer hover:border-fd-muted-foreground/30 transition-colors">
+            <div className="relative aspect-video rounded-sm border border-dashed border-fd-border bg-fd-card overflow-hidden group cursor-pointer hover:border-fd-muted-foreground/30 transition-colors">
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
                 <div className="w-14 h-14 rounded-full border border-fd-border bg-fd-muted flex items-center justify-center group-hover:bg-fd-accent transition-colors">
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" className="ml-0.5 text-fd-muted-foreground"><polygon points="4,2 18,10 4,18" /></svg>
@@ -277,7 +277,7 @@ export default function HomePage() {
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl sm:text-4xl font-bold tracking-[-0.02em] mb-4">Get started in seconds</h2>
             <p className="text-fd-muted-foreground text-lg mb-10">Clone, build, run.</p>
-            <div className="rounded-xl border border-fd-border dark:border-[#1e2028] bg-[#0e1013] p-5 text-left font-mono text-[13px] leading-7 overflow-x-auto">
+            <div className="rounded-sm border border-fd-border dark:border-[#1e2028] bg-[#0e1013] p-5 text-left font-mono text-[13px] leading-7 overflow-x-auto">
               <div className="text-white/35"><span className="text-emerald-400/70">$</span> git clone https://github.com/fdarian/agent-dash.git</div>
               <div className="text-white/35"><span className="text-emerald-400/70">$</span> cd agent-dash &amp;&amp; cargo build --release</div>
               <div className="text-white/35"><span className="text-emerald-400/70">$</span> ./target/release/agent-dash</div>
