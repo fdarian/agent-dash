@@ -7,6 +7,7 @@
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
   --color-brand: #D97757;
   --color-brand-dark: #c06040;
+  --color-sidebar: hsl(228, 5%, 91%);
 }
 
 /* ─── Light theme accent ─── */
@@ -33,6 +34,7 @@
   --color-fd-ring: hsl(228, 5%, 40%);
   --color-fd-primary: var(--color-brand);
   --color-fd-primary-foreground: #fff;
+  --color-sidebar: hsl(228, 15%, 6.5%);
 }
 
 /* ─── Docs sidebar: distinctly darker ─── */

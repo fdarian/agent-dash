@@ -36,7 +36,7 @@ function Diamond(props: { className?: string }) {
       width="9"
       height="9"
       viewBox="0 0 9 9"
-      className={`absolute -translate-x-1/2 -translate-y-1/2 z-10 hidden lg:block ${props.className ?? ''}`}
+      className={`absolute z-10 hidden lg:block ${props.className ?? ''}`}
     >
       <rect
         x="1.5"
@@ -45,8 +45,9 @@ function Diamond(props: { className?: string }) {
         height="6"
         rx="0.5"
         transform="rotate(45 4.5 4.5)"
-        className="fill-fd-border stroke-fd-border"
-        strokeWidth="0.5"
+        fill="var(--color-sidebar)"
+        stroke="var(--color-fd-border)"
+        strokeWidth="1"
       />
     </svg>
   );
@@ -56,8 +57,8 @@ function Diamond(props: { className?: string }) {
 function GridLine() {
   return (
     <div className="relative border-t border-fd-border">
-      <Diamond className="top-0 left-0" />
-      <Diamond className="top-0 right-0" />
+      <Diamond className="top-0 left-0 -translate-x-1/2 -translate-y-1/2" />
+      <Diamond className="top-0 right-0 translate-x-1/2 -translate-y-1/2" />
     </div>
   );
 }
