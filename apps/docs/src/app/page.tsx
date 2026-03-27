@@ -45,9 +45,8 @@ function Diamond(props: { className?: string }) {
         height="6"
         rx="0.5"
         transform="rotate(45 4.5 4.5)"
-        fill="none"
-        stroke="var(--color-fd-border)"
-        strokeWidth="1"
+        className="fill-fd-border stroke-fd-border"
+        strokeWidth="0.5"
       />
     </svg>
   );
