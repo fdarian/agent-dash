@@ -9,16 +9,16 @@ use ratatui::prelude::*;
 use std::io;
 
 mod app;
-mod ui;
 mod cache;
 mod config;
+mod copy_mode;
+mod selection;
 mod session;
 mod state;
-mod selection;
-mod copy_mode;
+mod ui;
 
-mod tmux;
 mod pipe_pane;
+mod tmux;
 
 #[derive(Parser)]
 #[command(name = "agent-dash", version)]

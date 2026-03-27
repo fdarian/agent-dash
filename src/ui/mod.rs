@@ -55,8 +55,11 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
             toast_width,
             1,
         );
-        let toast = Paragraph::new(format!(" {} ", msg))
-            .style(Style::default().fg(Color::Black).bg(Color::Rgb(0xD9, 0x77, 0x57)));
+        let toast = Paragraph::new(format!(" {} ", msg)).style(
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Rgb(0xD9, 0x77, 0x57)),
+        );
         frame.render_widget(toast, toast_area);
     }
 }

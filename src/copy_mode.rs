@@ -168,7 +168,11 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
             copy.pending_g = false;
             copy.pending_z = false;
             let line_len = line_char_count(&text, copy.cursor.row);
-            copy.cursor.col = if line_len > 0 { line_len.saturating_sub(1) } else { 0 };
+            copy.cursor.col = if line_len > 0 {
+                line_len.saturating_sub(1)
+            } else {
+                0
+            };
         }
         KeyCode::Char('w') => {
             let copy = state.copy_mode.as_mut().unwrap();
@@ -176,7 +180,11 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
             copy.pending_z = false;
             let row = copy.cursor.row as usize;
             if row < text.lines.len() {
-                let plain: String = text.lines[row].spans.iter().map(|s| s.content.as_ref()).collect();
+                let plain: String = text.lines[row]
+                    .spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect();
                 let chars: Vec<char> = plain.chars().collect();
                 let mut pos = copy.cursor.col as usize;
                 // Skip current word (non-whitespace)
@@ -201,7 +209,11 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
             copy.pending_z = false;
             let row = copy.cursor.row as usize;
             if row < text.lines.len() {
-                let plain: String = text.lines[row].spans.iter().map(|s| s.content.as_ref()).collect();
+                let plain: String = text.lines[row]
+                    .spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect();
                 let chars: Vec<char> = plain.chars().collect();
                 let mut pos = copy.cursor.col as usize;
                 if pos + 1 < chars.len() {
@@ -220,7 +232,11 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
                     copy.cursor.row += 1;
                     let next_row = copy.cursor.row as usize;
                     if next_row < text.lines.len() {
-                        let next_plain: String = text.lines[next_row].spans.iter().map(|s| s.content.as_ref()).collect();
+                        let next_plain: String = text.lines[next_row]
+                            .spans
+                            .iter()
+                            .map(|s| s.content.as_ref())
+                            .collect();
                         let next_chars: Vec<char> = next_plain.chars().collect();
                         let mut npos = 0usize;
                         // Skip leading whitespace
@@ -244,7 +260,11 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
             copy.pending_z = false;
             let row = copy.cursor.row as usize;
             if row < text.lines.len() {
-                let plain: String = text.lines[row].spans.iter().map(|s| s.content.as_ref()).collect();
+                let plain: String = text.lines[row]
+                    .spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect();
                 let chars: Vec<char> = plain.chars().collect();
                 let mut pos = copy.cursor.col as usize;
                 if pos > 0 {
@@ -261,7 +281,11 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
                 } else if copy.cursor.row > 0 {
                     copy.cursor.row -= 1;
                     let prev_len = line_char_count(&text, copy.cursor.row);
-                    copy.cursor.col = if prev_len > 0 { prev_len.saturating_sub(1) } else { 0 };
+                    copy.cursor.col = if prev_len > 0 {
+                        prev_len.saturating_sub(1)
+                    } else {
+                        0
+                    };
                 }
             }
         }
@@ -320,7 +344,10 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
         }
         KeyCode::Char('y') => {
             let has_selection = state.preview_selection.is_some();
-            let has_anchor = state.copy_mode.as_ref().map_or(false, |c| c.anchor.is_some());
+            let has_anchor = state
+                .copy_mode
+                .as_ref()
+                .map_or(false, |c| c.anchor.is_some());
 
             if has_anchor && has_selection {
                 let sel = state.preview_selection.as_ref().unwrap();
@@ -328,9 +355,8 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                     let _ = clipboard.set_text(&selected_text);
                     state.toast_message = Some("Copied!".to_string());
-                    state.toast_deadline = Some(
-                        std::time::Instant::now() + std::time::Duration::from_millis(1500),
-                    );
+                    state.toast_deadline =
+                        Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
                 }
             }
             state.copy_mode = None;
@@ -385,7 +411,11 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
                 let prev_index = match copy.current_match_index {
                     Some(i) => {
                         if forward {
-                            if i == 0 { copy.search_matches.len() - 1 } else { i - 1 }
+                            if i == 0 {
+                                copy.search_matches.len() - 1
+                            } else {
+                                i - 1
+                            }
                         } else {
                             (i + 1) % copy.search_matches.len()
                         }
@@ -454,8 +484,16 @@ pub fn handle_copy_mode_search_input(state: &mut AppState, key: KeyEvent) -> Opt
                         m.row < cursor_row || (m.row == cursor_row && m.col <= cursor_col)
                     })
                 };
-                let match_index = found_index.or_else(|| if matches.is_empty() { None } else {
-                    if search_direction == SearchDirection::Forward { Some(0) } else { Some(matches.len() - 1) }
+                let match_index = found_index.or_else(|| {
+                    if matches.is_empty() {
+                        None
+                    } else {
+                        if search_direction == SearchDirection::Forward {
+                            Some(0)
+                        } else {
+                            Some(matches.len() - 1)
+                        }
+                    }
                 });
                 let copy = state.copy_mode.as_mut().unwrap();
                 copy.search_matches = matches;
@@ -635,7 +673,11 @@ fn find_matches(text: &Text, query: &str) -> Vec<SearchMatch> {
                 col,
                 len: match_char_len,
             });
-            let advance = if query_lower.is_empty() { 1 } else { query_lower.len() };
+            let advance = if query_lower.is_empty() {
+                1
+            } else {
+                query_lower.len()
+            };
             search_start = abs_byte_pos + advance;
             if search_start > plain_lower.len() {
                 break;
@@ -660,7 +702,11 @@ pub fn apply_cursor_highlight(
         return;
     }
     let line = &mut text.lines[row as usize];
-    let line_len: u16 = line.spans.iter().map(|s| s.content.chars().count() as u16).sum();
+    let line_len: u16 = line
+        .spans
+        .iter()
+        .map(|s| s.content.chars().count() as u16)
+        .sum();
     if col >= line_len {
         line.spans.push(Span::styled(
             " ",

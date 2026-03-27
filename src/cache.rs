@@ -58,5 +58,8 @@ pub fn save_cached_sessions(data: &CachedSessionData) {
         value: data,
         stored_at: now,
     };
-    let _ = std::fs::write(cache_path(), serde_json::to_string(&entry).unwrap_or_default());
+    let _ = std::fs::write(
+        cache_path(),
+        serde_json::to_string(&entry).unwrap_or_default(),
+    );
 }

@@ -1,7 +1,7 @@
-use anyhow::{anyhow, Result};
-use tokio::process::Command;
 use crate::config::AppConfig;
 use crate::session::{parse_session_status, ClaudeSession};
+use anyhow::{anyhow, Result};
+use tokio::process::Command;
 
 pub struct TmuxClient<'a> {
     config: &'a AppConfig,
@@ -13,7 +13,8 @@ impl<'a> TmuxClient<'a> {
     }
 
     pub async fn discover_sessions(&self) -> Result<Vec<ClaudeSession>> {
-        let format = "#{pane_id}\t#{pane_pid}\t#{pane_title}\t#{session_name}:#{window_index}.#{pane_index}";
+        let format =
+            "#{pane_id}\t#{pane_pid}\t#{pane_title}\t#{session_name}:#{window_index}.#{pane_index}";
         let output = run_command("tmux", &["list-panes", "-a", "-F", format]).await;
 
         let output = match output {
@@ -82,7 +83,11 @@ impl<'a> TmuxClient<'a> {
     }
 
     pub async fn capture_pane_content(&self, pane_target: &str) -> Result<String> {
-        run_command("tmux", &["capture-pane", "-e", "-t", pane_target, "-p", "-S", "-"]).await
+        run_command(
+            "tmux",
+            &["capture-pane", "-e", "-t", pane_target, "-p", "-S", "-"],
+        )
+        .await
     }
 
     pub async fn start_pipe_pane(&self, pane_target: &str, fifo_path: &str) -> Result<()> {
@@ -109,11 +114,19 @@ impl<'a> TmuxClient<'a> {
             "env -u TMUX tmux attach-session -t '{}' \\; select-window -t '{}' \\; select-pane -t '{}'",
             session, pane_target, pane_target
         );
-        run_command("tmux", &["display-popup", "-E", "-w", "90%", "-h", "90%", &cmd]).await?;
+        run_command(
+            "tmux",
+            &["display-popup", "-E", "-w", "90%", "-h", "90%", &cmd],
+        )
+        .await?;
         Ok(())
     }
 
-    pub async fn create_window(&self, session_name: &str, cwd: Option<&str>) -> Result<Option<CreatedPaneInfo>> {
+    pub async fn create_window(
+        &self,
+        session_name: &str,
+        cwd: Option<&str>,
+    ) -> Result<Option<CreatedPaneInfo>> {
         let format = "#{pane_id}\t#{pane_title}\t#{session_name}:#{window_index}.#{pane_index}";
         let mut args = vec!["new-window", "-d", "-P", "-F", format, "-t", session_name];
         if let Some(cwd) = cwd {
@@ -143,7 +156,17 @@ impl<'a> TmuxClient<'a> {
     }
 
     pub async fn get_pane_cwd(&self, target: &str) -> Result<String> {
-        let output = run_command("tmux", &["display-message", "-p", "-t", target, "#{pane_current_path}"]).await?;
+        let output = run_command(
+            "tmux",
+            &[
+                "display-message",
+                "-p",
+                "-t",
+                target,
+                "#{pane_current_path}",
+            ],
+        )
+        .await?;
         Ok(output.trim().to_string())
     }
 

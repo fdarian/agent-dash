@@ -11,7 +11,9 @@ pub struct PreviewSelection {
     pub is_dragging: bool,
 }
 
-const SELECTION_BG: Style = Style::new().bg(Color::Rgb(0x44, 0x44, 0x88)).fg(Color::White);
+const SELECTION_BG: Style = Style::new()
+    .bg(Color::Rgb(0x44, 0x44, 0x88))
+    .fg(Color::White);
 
 pub fn mouse_to_content_position(
     mouse_col: u16,
@@ -76,7 +78,11 @@ pub fn extract_selected_text(text: &Text, selection: &PreviewSelection) -> Strin
         let segment = if row == start_row && row == end_row {
             let start = start_col as usize;
             let end = end_col as usize;
-            plain.chars().skip(start).take(end.saturating_sub(start) + 1).collect::<String>()
+            plain
+                .chars()
+                .skip(start)
+                .take(end.saturating_sub(start) + 1)
+                .collect::<String>()
         } else if row == start_row {
             plain.chars().skip(start_col as usize).collect::<String>()
         } else if row == end_row {
@@ -111,10 +117,23 @@ pub fn apply_selection_highlight(
             continue;
         }
 
-        let sel_start = if content_row == start_row { start_col } else { 0 };
-        let sel_end = if content_row == end_row { end_col + 1 } else { u16::MAX };
+        let sel_start = if content_row == start_row {
+            start_col
+        } else {
+            0
+        };
+        let sel_end = if content_row == end_row {
+            end_col + 1
+        } else {
+            u16::MAX
+        };
 
-        highlight_spans_in_range(&mut text.lines[content_row as usize].spans, sel_start, sel_end, SELECTION_BG);
+        highlight_spans_in_range(
+            &mut text.lines[content_row as usize].spans,
+            sel_start,
+            sel_end,
+            SELECTION_BG,
+        );
     }
 }
 

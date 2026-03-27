@@ -22,7 +22,10 @@ impl<'de> Deserialize<'de> for LayoutDirection {
         match s.as_str() {
             "horizontal" => Ok(LayoutDirection::Horizontal),
             "vertical" => Ok(LayoutDirection::Vertical),
-            _ => Err(serde::de::Error::unknown_variant(&s, &["vertical", "horizontal"])),
+            _ => Err(serde::de::Error::unknown_variant(
+                &s,
+                &["vertical", "horizontal"],
+            )),
         }
     }
 }

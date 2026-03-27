@@ -1,5 +1,7 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
+use ratatui::widgets::{
+    Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+};
 
 use crate::app::AppState;
 
@@ -51,7 +53,12 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool
     }
 
     if let Some(ref sel) = state.preview_selection {
-        crate::selection::apply_selection_highlight(&mut text, sel, state.preview_scroll_offset, inner_area.height);
+        crate::selection::apply_selection_highlight(
+            &mut text,
+            sel,
+            state.preview_scroll_offset,
+            inner_area.height,
+        );
     }
 
     if let Some(ref copy) = state.copy_mode {
@@ -92,13 +99,22 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool
             let search_y = inner_area.y + inner_area.height.saturating_sub(1);
             let search_area = Rect::new(inner_area.x, search_y, inner_area.width, 1);
             let bg = Color::Rgb(0x33, 0x33, 0x33);
-            let prefix = if copy.search_direction == crate::copy_mode::SearchDirection::Backward { "?" } else { "/" };
+            let prefix = if copy.search_direction == crate::copy_mode::SearchDirection::Backward {
+                "?"
+            } else {
+                "/"
+            };
             let spans = vec![
-                Span::styled(prefix, Style::default().fg(Color::Rgb(0x88, 0x88, 0x88)).bg(bg)),
-                Span::styled(copy.search_query.as_str(), Style::default().fg(Color::White).bg(bg)),
+                Span::styled(
+                    prefix,
+                    Style::default().fg(Color::Rgb(0x88, 0x88, 0x88)).bg(bg),
+                ),
+                Span::styled(
+                    copy.search_query.as_str(),
+                    Style::default().fg(Color::White).bg(bg),
+                ),
             ];
-            let search_paragraph = Paragraph::new(Line::from(spans))
-                .style(Style::default().bg(bg));
+            let search_paragraph = Paragraph::new(Line::from(spans)).style(Style::default().bg(bg));
             frame.render_widget(ratatui::widgets::Clear, search_area);
             frame.render_widget(search_paragraph, search_area);
             let cursor_x = search_area.x + 1 + copy.search_cursor as u16;

@@ -100,5 +100,8 @@ pub fn save_state(
     };
     let dir = state_dir();
     let _ = std::fs::create_dir_all(&dir);
-    let _ = std::fs::write(state_path(), serde_json::to_string(&data).unwrap_or_default());
+    let _ = std::fs::write(
+        state_path(),
+        serde_json::to_string(&data).unwrap_or_default(),
+    );
 }

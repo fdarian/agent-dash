@@ -78,8 +78,8 @@ pub enum VisibleItem {
     },
 }
 
-use std::collections::{HashMap, HashSet};
 use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 
 pub fn group_sessions_by_name(sessions: &[ClaudeSession]) -> Vec<SessionGroup> {
     let mut map: indexmap::IndexMap<String, Vec<ClaudeSession>> = indexmap::IndexMap::new();
@@ -118,8 +118,12 @@ pub fn build_visible_items(
         if visible_sessions.is_empty() {
             continue;
         }
-        let has_active = visible_sessions.iter().any(|s| s.status == SessionStatus::Active);
-        let has_unread = visible_sessions.iter().any(|s| unread_pane_ids.contains(&s.pane_id));
+        let has_active = visible_sessions
+            .iter()
+            .any(|s| s.status == SessionStatus::Active);
+        let has_unread = visible_sessions
+            .iter()
+            .any(|s| unread_pane_ids.contains(&s.pane_id));
         let is_collapsed = collapsed_groups.contains(&group.session_name);
         let display_name = display_name_map
             .get(&group.session_name)
@@ -153,8 +157,14 @@ pub fn build_visible_items(
             .get(&group.session_name)
             .cloned()
             .unwrap_or_else(|| group.session_name.clone());
-        let has_active = group.sessions.iter().any(|s| s.status == SessionStatus::Active);
-        let has_unread = group.sessions.iter().any(|s| unread_pane_ids.contains(&s.pane_id));
+        let has_active = group
+            .sessions
+            .iter()
+            .any(|s| s.status == SessionStatus::Active);
+        let has_unread = group
+            .sessions
+            .iter()
+            .any(|s| unread_pane_ids.contains(&s.pane_id));
         hidden_items.push(VisibleItem::GroupHeader {
             session_name: group.session_name.clone(),
             display_name: display_name.clone(),
@@ -288,9 +298,10 @@ pub fn build_flat_visible_items(
     hidden_groups: &HashSet<String>,
     hidden_section_collapsed: bool,
 ) -> Vec<VisibleItem> {
-    let (hidden_sessions, visible_sessions): (Vec<&ClaudeSession>, Vec<&ClaudeSession>) = sessions
-        .iter()
-        .partition(|s| hidden_pane_ids.contains(&s.pane_id) || hidden_groups.contains(&s.session_name));
+    let (hidden_sessions, visible_sessions): (Vec<&ClaudeSession>, Vec<&ClaudeSession>) =
+        sessions.iter().partition(|s| {
+            hidden_pane_ids.contains(&s.pane_id) || hidden_groups.contains(&s.session_name)
+        });
 
     let mut items: Vec<VisibleItem> = visible_sessions
         .iter()
@@ -312,11 +323,15 @@ pub fn build_flat_visible_items(
     items.sort_by(|a, b| {
         let session_a = match a {
             VisibleItem::Session { session, .. } => session,
-            VisibleItem::GroupHeader { .. } | VisibleItem::HiddenHeader { .. } => return Ordering::Equal,
+            VisibleItem::GroupHeader { .. } | VisibleItem::HiddenHeader { .. } => {
+                return Ordering::Equal
+            }
         };
         let session_b = match b {
             VisibleItem::Session { session, .. } => session,
-            VisibleItem::GroupHeader { .. } | VisibleItem::HiddenHeader { .. } => return Ordering::Equal,
+            VisibleItem::GroupHeader { .. } | VisibleItem::HiddenHeader { .. } => {
+                return Ordering::Equal
+            }
         };
 
         let tier_a = session_priority_tier(session_a, unread_pane_ids, prompt_states);
@@ -350,7 +365,7 @@ pub fn build_flat_visible_items(
                     .unwrap_or_else(|| session.session_name.clone());
                 items.push(VisibleItem::Session {
                     session: session.clone(),
-    
+
                     display_name,
                     is_unread,
                 });

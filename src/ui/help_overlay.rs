@@ -1,8 +1,8 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
 
-use crate::app::AppState;
 use super::keybinds::filter_keybinds;
+use crate::app::AppState;
 
 const PRIMARY: Color = Color::Rgb(0xD9, 0x77, 0x57);
 
@@ -41,13 +41,19 @@ pub fn render(frame: &mut Frame, state: &AppState) {
         if state.help_filter_query.is_empty() {
             let spans = vec![
                 Span::styled("/", Style::default().fg(Color::Rgb(0x88, 0x88, 0x88))),
-                Span::styled("Type to filter...", Style::default().fg(Color::Rgb(0x66, 0x66, 0x66))),
+                Span::styled(
+                    "Type to filter...",
+                    Style::default().fg(Color::Rgb(0x66, 0x66, 0x66)),
+                ),
             ];
             frame.render_widget(Line::from(spans), filter_area);
         } else {
             let spans = vec![
                 Span::styled("/", Style::default().fg(Color::Rgb(0x88, 0x88, 0x88))),
-                Span::styled(state.help_filter_query.as_str(), Style::default().fg(Color::White)),
+                Span::styled(
+                    state.help_filter_query.as_str(),
+                    Style::default().fg(Color::White),
+                ),
             ];
             frame.render_widget(Line::from(spans), filter_area);
         }

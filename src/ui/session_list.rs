@@ -25,9 +25,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
         return;
     }
 
-    let hidden_header_idx = state.visible_items.iter().position(|item| {
-        matches!(item, VisibleItem::HiddenHeader { .. })
-    });
+    let hidden_header_idx = state
+        .visible_items
+        .iter()
+        .position(|item| matches!(item, VisibleItem::HiddenHeader { .. }));
 
     let items: Vec<ListItem> = state
         .visible_items
@@ -37,7 +38,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
             let is_selected = i == state.selected_index;
             let in_hidden_section = hidden_header_idx.is_some_and(|idx| i > idx);
             match item {
-                VisibleItem::HiddenHeader { count, is_collapsed } => {
+                VisibleItem::HiddenHeader {
+                    count,
+                    is_collapsed,
+                } => {
                     let arrow = if *is_collapsed { "▶" } else { "▼" };
                     let text = format!("{} Hidden ({})", arrow, count);
                     let style = if is_selected {
