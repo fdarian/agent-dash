@@ -1,5 +1,7 @@
 use anyhow::Result;
-use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{
+    Event, EventStream, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use futures::StreamExt;
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -7,12 +9,12 @@ use tokio::sync::mpsc;
 use tokio::sync::watch;
 
 use crate::cache::{load_cached_sessions, save_cached_sessions, CachedSessionData};
-use crate::copy_mode;
-use crate::selection::{self, PreviewSelection, ContentPosition};
 use crate::config::AppConfig;
+use crate::copy_mode;
+use crate::selection::{self, ContentPosition, PreviewSelection};
 use crate::session::{
-    auto_select_index, build_visible_items, build_flat_visible_items, group_sessions_by_name, resolve_selected_index,
-    ClaudeSession, PromptState, SessionStatus, VisibleItem,
+    auto_select_index, build_flat_visible_items, build_visible_items, group_sessions_by_name,
+    resolve_selected_index, ClaudeSession, PromptState, SessionStatus, VisibleItem,
 };
 use crate::state;
 use crate::tmux::TmuxClient;
@@ -62,14 +64,21 @@ pub struct AppState {
 }
 
 pub enum Message {
-    SessionsUpdated(Vec<ClaudeSession>, HashMap<String, String>, HashMap<String, PromptState>),
+    SessionsUpdated(
+        Vec<ClaudeSession>,
+        HashMap<String, String>,
+        HashMap<String, PromptState>,
+    ),
     PreviewUpdated(String),
 }
 
 pub enum Action {
     SwitchToPane(String),
     OpenPopup(String),
-    CreateSession { session_name: String, cwd_target: String },
+    CreateSession {
+        session_name: String,
+        cwd_target: String,
+    },
     KillPane(String),
 }
 
@@ -161,11 +170,7 @@ pub async fn run(
                         if let Some(cached) = formatter_cache.get(name) {
                             cached.clone()
                         } else {
-                            match tokio::process::Command::new(path)
-                                .arg(name)
-                                .output()
-                                .await
-                            {
+                            match tokio::process::Command::new(path).arg(name).output().await {
                                 Ok(output) if output.status.success() => {
                                     let result =
                                         String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -208,7 +213,11 @@ pub async fn run(
                 };
                 save_cached_sessions(&cached_data);
 
-                let _ = poll_tx.send(Message::SessionsUpdated(sessions, display_names, prompt_states));
+                let _ = poll_tx.send(Message::SessionsUpdated(
+                    sessions,
+                    display_names,
+                    prompt_states,
+                ));
             }
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }
@@ -285,7 +294,10 @@ async fn process_action(
             let tmux = TmuxClient::new(&config);
             let _ = tmux.open_popup(&target).await;
         }
-        Action::CreateSession { session_name, cwd_target } => {
+        Action::CreateSession {
+            session_name,
+            cwd_target,
+        } => {
             let config = crate::config::load_config(state.config.exit_on_switch);
             let tmux = TmuxClient::new(&config);
             if let Ok(cwd) = tmux.get_pane_cwd(&cwd_target).await {
@@ -301,12 +313,18 @@ async fn process_action(
                             session_name: pane_info.session_name.clone(),
                             status: crate::session::parse_session_status(&pane_info.pane_title),
                         };
-                        state.prev_status_map.insert(new_session.pane_id.clone(), new_session.status.clone());
+                        state
+                            .prev_status_map
+                            .insert(new_session.pane_id.clone(), new_session.status.clone());
                         state.sessions.push(new_session);
                         persist_state(state);
                         let old_items = std::mem::take(&mut state.visible_items);
                         refresh_visible_items(state);
-                        state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
+                        state.selected_index = resolve_selected_index(
+                            &state.visible_items,
+                            &old_items,
+                            state.selected_index,
+                        );
                         update_selected_target(state, selected_pane_target);
                     }
                 }
@@ -326,7 +344,8 @@ async fn process_action(
             persist_state(state);
             let old_items = std::mem::take(&mut state.visible_items);
             refresh_visible_items(state);
-            state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
+            state.selected_index =
+                resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
             update_selected_target(state, selected_pane_target);
         }
     }
@@ -351,14 +370,18 @@ fn handle_message(
                     {
                         next_unread.insert(session.pane_id.clone());
                         state.unread_counter += 1;
-                        state.unread_order.insert(session.pane_id.clone(), state.unread_counter);
+                        state
+                            .unread_order
+                            .insert(session.pane_id.clone(), state.unread_counter);
                     }
                 }
             }
 
             // Remove unread for panes that no longer exist
             next_unread.retain(|id| current_pane_ids.contains(id));
-            state.unread_order.retain(|id, _| current_pane_ids.contains(id));
+            state
+                .unread_order
+                .retain(|id, _| current_pane_ids.contains(id));
 
             // Update prev status map
             let mut next_status_map = HashMap::new();
@@ -391,7 +414,11 @@ fn handle_message(
             if state.copy_mode.is_some() {
                 return;
             }
-            if !state.preview_selection.as_ref().is_some_and(|s| s.is_dragging) {
+            if !state
+                .preview_selection
+                .as_ref()
+                .is_some_and(|s| s.is_dragging)
+            {
                 state.preview_selection = None;
             }
             state.preview_content = content;
@@ -437,8 +464,11 @@ fn handle_key_event(
                     state.help_filter_cursor = state.help_filter_query.chars().count();
                     return None;
                 }
-                (KeyCode::Char('u'), KeyModifiers::CONTROL) | (KeyCode::Backspace, KeyModifiers::SUPER) => {
-                    let byte_offset = state.help_filter_query.char_indices()
+                (KeyCode::Char('u'), KeyModifiers::CONTROL)
+                | (KeyCode::Backspace, KeyModifiers::SUPER) => {
+                    let byte_offset = state
+                        .help_filter_query
+                        .char_indices()
                         .nth(state.help_filter_cursor)
                         .map(|(i, _)| i)
                         .unwrap_or(state.help_filter_query.len());
@@ -447,20 +477,24 @@ fn handle_key_event(
                     return None;
                 }
                 (KeyCode::Char('k'), KeyModifiers::CONTROL) => {
-                    let byte_offset = state.help_filter_query.char_indices()
+                    let byte_offset = state
+                        .help_filter_query
+                        .char_indices()
                         .nth(state.help_filter_cursor)
                         .map(|(i, _)| i)
                         .unwrap_or(state.help_filter_query.len());
                     state.help_filter_query.truncate(byte_offset);
                     return None;
                 }
-                (KeyCode::Char('b'), KeyModifiers::CONTROL) | (KeyCode::Left, KeyModifiers::NONE) => {
+                (KeyCode::Char('b'), KeyModifiers::CONTROL)
+                | (KeyCode::Left, KeyModifiers::NONE) => {
                     if state.help_filter_cursor > 0 {
                         state.help_filter_cursor -= 1;
                     }
                     return None;
                 }
-                (KeyCode::Char('f'), KeyModifiers::CONTROL) | (KeyCode::Right, KeyModifiers::NONE) => {
+                (KeyCode::Char('f'), KeyModifiers::CONTROL)
+                | (KeyCode::Right, KeyModifiers::NONE) => {
                     let len = state.help_filter_query.chars().count();
                     if state.help_filter_cursor < len {
                         state.help_filter_cursor += 1;
@@ -501,11 +535,15 @@ fn handle_key_event(
                     while pos > 0 && !chars[pos - 1].is_whitespace() {
                         pos -= 1;
                     }
-                    let start_byte = state.help_filter_query.char_indices()
+                    let start_byte = state
+                        .help_filter_query
+                        .char_indices()
                         .nth(pos)
                         .map(|(i, _)| i)
                         .unwrap_or(state.help_filter_query.len());
-                    let end_byte = state.help_filter_query.char_indices()
+                    let end_byte = state
+                        .help_filter_query
+                        .char_indices()
                         .nth(state.help_filter_cursor)
                         .map(|(i, _)| i)
                         .unwrap_or(state.help_filter_query.len());
@@ -515,11 +553,15 @@ fn handle_key_event(
                 }
                 (KeyCode::Backspace, _) => {
                     if state.help_filter_cursor > 0 {
-                        let byte_at_cursor = state.help_filter_query.char_indices()
+                        let byte_at_cursor = state
+                            .help_filter_query
+                            .char_indices()
                             .nth(state.help_filter_cursor - 1)
                             .map(|(i, _)| i)
                             .unwrap_or(state.help_filter_query.len());
-                        let next_byte = state.help_filter_query.char_indices()
+                        let next_byte = state
+                            .help_filter_query
+                            .char_indices()
                             .nth(state.help_filter_cursor)
                             .map(|(i, _)| i)
                             .unwrap_or(state.help_filter_query.len());
@@ -531,11 +573,15 @@ fn handle_key_event(
                 (KeyCode::Delete, _) => {
                     let len = state.help_filter_query.chars().count();
                     if state.help_filter_cursor < len {
-                        let byte_at_cursor = state.help_filter_query.char_indices()
+                        let byte_at_cursor = state
+                            .help_filter_query
+                            .char_indices()
                             .nth(state.help_filter_cursor)
                             .map(|(i, _)| i)
                             .unwrap_or(state.help_filter_query.len());
-                        let next_byte = state.help_filter_query.char_indices()
+                        let next_byte = state
+                            .help_filter_query
+                            .char_indices()
                             .nth(state.help_filter_cursor + 1)
                             .map(|(i, _)| i)
                             .unwrap_or(state.help_filter_query.len());
@@ -544,7 +590,9 @@ fn handle_key_event(
                     return None;
                 }
                 (KeyCode::Char(c), _) => {
-                    let byte_offset = state.help_filter_query.char_indices()
+                    let byte_offset = state
+                        .help_filter_query
+                        .char_indices()
                         .nth(state.help_filter_cursor)
                         .map(|(i, _)| i)
                         .unwrap_or(state.help_filter_query.len());
@@ -639,14 +687,32 @@ fn handle_key_event(
                             refresh_visible_items(state);
                         }
                         VisibleItem::GroupHeader { session_name, .. } => {
-                            if !state.hidden_groups.remove(session_name) {
-                                state.hidden_groups.insert(session_name.clone());
+                            let group_name = session_name.clone();
+                            // Clear individual pane hides for this group
+                            state.hidden_pane_ids.retain(|pid| {
+                                !state
+                                    .sessions
+                                    .iter()
+                                    .any(|s| s.session_name == group_name && s.pane_id == *pid)
+                            });
+                            if !state.hidden_groups.remove(&group_name) {
+                                state.hidden_groups.insert(group_name);
                             }
                             hide_toggle_refresh(state, selected_pane_target);
                         }
                         VisibleItem::Session { session, .. } => {
                             let pane_id = session.pane_id.clone();
-                            if !state.hidden_pane_ids.remove(&pane_id) {
+                            if state.hidden_groups.contains(&session.session_name) {
+                                // Unhide this session from a group-level hide:
+                                // remove group hide, individually hide all siblings instead
+                                let group_name = session.session_name.clone();
+                                state.hidden_groups.remove(&group_name);
+                                for s in &state.sessions {
+                                    if s.session_name == group_name && s.pane_id != pane_id {
+                                        state.hidden_pane_ids.insert(s.pane_id.clone());
+                                    }
+                                }
+                            } else if !state.hidden_pane_ids.remove(&pane_id) {
                                 state.hidden_pane_ids.insert(pane_id);
                             }
                             hide_toggle_refresh(state, selected_pane_target);
@@ -676,9 +742,7 @@ fn handle_key_event(
             }
             None
         }
-        KeyCode::Char('O') => {
-            get_selected_pane_target(state).map(Action::OpenPopup)
-        }
+        KeyCode::Char('O') => get_selected_pane_target(state).map(Action::OpenPopup),
         KeyCode::Char('o') => {
             if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
                 if let VisibleItem::Session { ref session, .. } = item {
@@ -703,7 +767,12 @@ fn handle_key_event(
         }
         KeyCode::Char('r') => {
             if matches!(state.focus, Focus::Sessions) {
-                if let Some(VisibleItem::Session { session, .. }) = state.visible_items.get(state.selected_index).cloned().as_ref() {
+                if let Some(VisibleItem::Session { session, .. }) = state
+                    .visible_items
+                    .get(state.selected_index)
+                    .cloned()
+                    .as_ref()
+                {
                     let pane_id = session.pane_id.clone();
                     state.unread_pane_ids.remove(&pane_id);
                     state.unread_order.remove(&pane_id);
@@ -717,18 +786,30 @@ fn handle_key_event(
             if matches!(state.focus, Focus::Sessions) {
                 if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
                     let (session_name, cwd_target) = match &item {
-                        VisibleItem::Session { session, .. } => (session.session_name.clone(), session.pane_target.clone()),
-                        VisibleItem::GroupHeader { session_name, .. } => (session_name.clone(), session_name.clone()),
+                        VisibleItem::Session { session, .. } => {
+                            (session.session_name.clone(), session.pane_target.clone())
+                        }
+                        VisibleItem::GroupHeader { session_name, .. } => {
+                            (session_name.clone(), session_name.clone())
+                        }
                         VisibleItem::HiddenHeader { .. } => return None,
                     };
-                    return Some(Action::CreateSession { session_name, cwd_target });
+                    return Some(Action::CreateSession {
+                        session_name,
+                        cwd_target,
+                    });
                 }
             }
             None
         }
         KeyCode::Char('x') => {
             if matches!(state.focus, Focus::Sessions) {
-                if let Some(VisibleItem::Session { session, .. }) = state.visible_items.get(state.selected_index).cloned().as_ref() {
+                if let Some(VisibleItem::Session { session, .. }) = state
+                    .visible_items
+                    .get(state.selected_index)
+                    .cloned()
+                    .as_ref()
+                {
                     state.pending_confirm_target = Some(session.pane_target.clone());
                 }
             }
@@ -782,7 +863,8 @@ fn handle_key_event(
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                     let _ = clipboard.set_text(&state.preview_content);
                     state.toast_message = Some("Copied!".to_string());
-                    state.toast_deadline = Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
+                    state.toast_deadline =
+                        Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
                 }
             }
             None
@@ -803,7 +885,8 @@ fn handle_key_event(
             state.flat_view = !state.flat_view;
             let old_items = std::mem::take(&mut state.visible_items);
             refresh_visible_items(state);
-            state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
+            state.selected_index =
+                resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
             update_selected_target(state, selected_pane_target);
             None
         }
@@ -833,11 +916,20 @@ fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) {
                 return;
             }
             if let Some(pos) = selection::mouse_to_content_position(
-                mouse.column, mouse.row, state.preview_pane_area, state.preview_scroll_offset,
+                mouse.column,
+                mouse.row,
+                state.preview_pane_area,
+                state.preview_scroll_offset,
             ) {
                 state.preview_selection = Some(PreviewSelection {
-                    anchor: ContentPosition { row: pos.row, col: pos.col },
-                    cursor: ContentPosition { row: pos.row, col: pos.col },
+                    anchor: ContentPosition {
+                        row: pos.row,
+                        col: pos.col,
+                    },
+                    cursor: ContentPosition {
+                        row: pos.row,
+                        col: pos.col,
+                    },
                     is_dragging: true,
                 });
             }
@@ -863,13 +955,16 @@ fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) {
                 if sel.anchor.row == sel.cursor.row && sel.anchor.col == sel.cursor.col {
                     state.preview_selection = None;
                 } else if !state.preview_content.is_empty() {
-                    let text = ansi_to_tui::IntoText::into_text(&state.preview_content).unwrap_or_default();
+                    let text = ansi_to_tui::IntoText::into_text(&state.preview_content)
+                        .unwrap_or_default();
                     let selected = selection::extract_selected_text(&text, sel);
                     if !selected.is_empty() {
                         if let Ok(mut clipboard) = arboard::Clipboard::new() {
                             let _ = clipboard.set_text(&selected);
                             state.toast_message = Some("Copied to clipboard!".to_string());
-                            state.toast_deadline = Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
+                            state.toast_deadline = Some(
+                                std::time::Instant::now() + std::time::Duration::from_millis(1500),
+                            );
                         }
                     }
                 }
@@ -952,6 +1047,7 @@ fn hide_toggle_refresh(state: &mut AppState, selected_pane_target: &watch::Sende
     persist_state(state);
     let old_items = std::mem::take(&mut state.visible_items);
     refresh_visible_items(state);
-    state.selected_index = resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
+    state.selected_index =
+        resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
     update_selected_target(state, selected_pane_target);
 }
