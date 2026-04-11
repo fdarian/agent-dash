@@ -994,6 +994,8 @@ fn refresh_visible_items(state: &mut AppState) {
             &groups,
             &state.collapsed_groups,
             &state.unread_pane_ids,
+            &state.unread_order,
+            &state.prompt_states,
             &state.display_name_map,
             &state.hidden_pane_ids,
             &state.hidden_groups,

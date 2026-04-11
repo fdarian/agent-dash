@@ -96,21 +96,25 @@ pub fn group_sessions_by_name(sessions: &[ClaudeSession]) -> Vec<SessionGroup> {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn build_visible_items(
     groups: &[SessionGroup],
     collapsed_groups: &HashSet<String>,
     unread_pane_ids: &HashSet<String>,
+    unread_order: &HashMap<String, u64>,
+    prompt_states: &HashMap<String, PromptState>,
     display_name_map: &HashMap<String, String>,
     hidden_pane_ids: &HashSet<String>,
     hidden_groups: &HashSet<String>,
     hidden_section_collapsed: bool,
 ) -> Vec<VisibleItem> {
     let mut items = Vec::new();
+    let mut visible_groups: Vec<(&SessionGroup, Vec<&ClaudeSession>)> = Vec::new();
     for group in groups {
         if hidden_groups.contains(&group.session_name) {
             continue;
         }
-        let visible_sessions: Vec<&ClaudeSession> = group
+        let mut visible_sessions: Vec<&ClaudeSession> = group
             .sessions
             .iter()
             .filter(|s| !hidden_pane_ids.contains(&s.pane_id))
@@ -118,6 +122,53 @@ pub fn build_visible_items(
         if visible_sessions.is_empty() {
             continue;
         }
+        visible_sessions.sort_by(|a, b| {
+            let tier_a = session_priority_tier(a, unread_pane_ids, prompt_states);
+            let tier_b = session_priority_tier(b, unread_pane_ids, prompt_states);
+            if tier_a != tier_b {
+                return tier_a.cmp(&tier_b);
+            }
+            if tier_a <= 1 {
+                let order_a = unread_order.get(&a.pane_id).copied().unwrap_or(0);
+                let order_b = unread_order.get(&b.pane_id).copied().unwrap_or(0);
+                return order_b.cmp(&order_a);
+            }
+            Ordering::Equal
+        });
+        visible_groups.push((group, visible_sessions));
+    }
+    visible_groups.sort_by(|a, b| {
+        let tier_a =
+            a.1.iter()
+                .map(|s| session_priority_tier(s, unread_pane_ids, prompt_states))
+                .min()
+                .unwrap_or(u8::MAX);
+        let tier_b =
+            b.1.iter()
+                .map(|s| session_priority_tier(s, unread_pane_ids, prompt_states))
+                .min()
+                .unwrap_or(u8::MAX);
+        if tier_a != tier_b {
+            return tier_a.cmp(&tier_b);
+        }
+        if tier_a <= 1 {
+            let order_a =
+                a.1.iter()
+                    .filter(|s| unread_pane_ids.contains(&s.pane_id))
+                    .map(|s| unread_order.get(&s.pane_id).copied().unwrap_or(0))
+                    .max()
+                    .unwrap_or(0);
+            let order_b =
+                b.1.iter()
+                    .filter(|s| unread_pane_ids.contains(&s.pane_id))
+                    .map(|s| unread_order.get(&s.pane_id).copied().unwrap_or(0))
+                    .max()
+                    .unwrap_or(0);
+            return order_b.cmp(&order_a);
+        }
+        Ordering::Equal
+    });
+    for (group, visible_sessions) in visible_groups {
         let has_active = visible_sessions
             .iter()
             .any(|s| s.status == SessionStatus::Active);
@@ -288,6 +339,7 @@ fn session_priority_tier(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn build_flat_visible_items(
     sessions: &[ClaudeSession],
     unread_pane_ids: &HashSet<String>,
