@@ -1,5 +1,5 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem};
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
 
 use crate::app::AppState;
 use crate::session::{PromptState, SessionStatus, VisibleItem};
@@ -146,7 +146,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
         .collect();
 
     let list = List::new(items).block(block);
-    frame.render_widget(list, area);
+    let mut list_state = ListState::default().with_selected(Some(state.selected_index));
+    frame.render_stateful_widget(list, area, &mut list_state);
 }
 
 fn truncate_or_pad(text: &str, width: usize) -> String {
