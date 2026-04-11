@@ -1,16 +1,11 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LayoutDirection {
+    #[default]
     Vertical,
     Horizontal,
-}
-
-impl Default for LayoutDirection {
-    fn default() -> Self {
-        LayoutDirection::Vertical
-    }
 }
 
 impl<'de> Deserialize<'de> for LayoutDirection {

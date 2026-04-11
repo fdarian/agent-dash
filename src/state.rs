@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 struct PersistedState {
@@ -13,19 +13,6 @@ struct PersistedState {
     unread_counter: u64,
     hidden_pane_ids: Vec<String>,
     hidden_groups: Vec<String>,
-}
-
-impl Default for PersistedState {
-    fn default() -> Self {
-        PersistedState {
-            unread_pane_ids: Vec::new(),
-            prev_status_map: HashMap::new(),
-            unread_order: HashMap::new(),
-            unread_counter: 0,
-            hidden_pane_ids: Vec::new(),
-            hidden_groups: Vec::new(),
-        }
-    }
 }
 
 fn state_dir() -> PathBuf {

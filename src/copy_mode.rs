@@ -344,10 +344,7 @@ pub fn handle_copy_mode_key(state: &mut AppState, key: KeyEvent) -> Option<Actio
         }
         KeyCode::Char('y') => {
             let has_selection = state.preview_selection.is_some();
-            let has_anchor = state
-                .copy_mode
-                .as_ref()
-                .map_or(false, |c| c.anchor.is_some());
+            let has_anchor = state.copy_mode.as_ref().is_some_and(|c| c.anchor.is_some());
 
             if has_anchor && has_selection {
                 let sel = state.preview_selection.as_ref().unwrap();
