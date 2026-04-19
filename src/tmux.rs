@@ -1,4 +1,4 @@
-use crate::config::AppConfig;
+use crate::config::{AppConfig, PreviewScrollMode};
 use crate::session::{parse_session_status, AgentSession};
 use anyhow::{anyhow, Result};
 use tokio::process::Command;
@@ -83,11 +83,13 @@ impl<'a> TmuxClient<'a> {
     }
 
     pub async fn capture_pane_content(&self, pane_target: &str) -> Result<String> {
-        run_command(
-            "tmux",
-            &["capture-pane", "-e", "-t", pane_target, "-p", "-S", "-"],
-        )
-        .await
+        let args: &[&str] = match self.config.preview_scroll_mode {
+            PreviewScrollMode::Scrollback => {
+                &["capture-pane", "-e", "-t", pane_target, "-p", "-S", "-"]
+            }
+            PreviewScrollMode::Virtualized => &["capture-pane", "-e", "-t", pane_target, "-p"],
+        };
+        run_command("tmux", args).await
     }
 
     pub async fn start_pipe_pane(&self, pane_target: &str, fifo_path: &str) -> Result<()> {
