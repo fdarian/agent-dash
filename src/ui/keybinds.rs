@@ -26,18 +26,18 @@ pub const KEYBINDS: &[KeybindEntry] = &[
         context: "sessions",
     },
     KeybindEntry {
-        key: "Space",
-        description: "Collapse/expand group",
+        key: "h / l",
+        description: "Collapse / expand group",
+        context: "sessions",
+    },
+    KeybindEntry {
+        key: "H",
+        description: "Hide/unhide group",
         context: "sessions",
     },
     KeybindEntry {
         key: "h",
-        description: "Hide/unhide session or group",
-        context: "sessions",
-    },
-    KeybindEntry {
-        key: "l",
-        description: "Expand group",
+        description: "Hide/unhide session",
         context: "sessions",
     },
     KeybindEntry {
