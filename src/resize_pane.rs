@@ -74,8 +74,8 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>)
                         continue;
                     }
 
-                    let (session_window, session) = match parse_session_window(&pane_target) {
-                        Some(pair) => pair,
+                    let session_window = match parse_session_window(&pane_target) {
+                        Some((sw, _)) => sw,
                         None => {
                             debounce = None;
                             continue;
@@ -90,7 +90,7 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>)
 
                     if target_changed {
                         debounce = None;
-                        apply_resize(&tmux, &pane_target, &session_window, &session, cols, rows, &mut state).await;
+                        apply_resize(&tmux, &pane_target, &session_window, cols, rows, &mut state).await;
                     } else {
                         let same_dims = state
                             .last_applied
@@ -111,11 +111,7 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>)
 
                 _ = debounce_sleep, if debounce.is_some() => {
                     if let Some((_, pane_target, session_window, cols, rows)) = debounce.take() {
-                        let session = match session_window.split(':').next() {
-                            Some(s) if !s.is_empty() => s.to_string(),
-                            _ => continue,
-                        };
-                        apply_resize(&tmux, &pane_target, &session_window, &session, cols, rows, &mut state).await;
+                        apply_resize(&tmux, &pane_target, &session_window, cols, rows, &mut state).await;
                     }
                 }
             }
@@ -129,11 +125,15 @@ async fn apply_resize(
     tmux: &TmuxClient<'_>,
     pane_target: &str,
     session_window: &str,
-    session: &str,
     cols: u16,
     rows: u16,
     state: &mut ResizeState,
 ) {
+    let session = match session_window.split(':').next() {
+        Some(s) if !s.is_empty() => s,
+        _ => return,
+    };
+
     transition_zoom(tmux, pane_target, &mut state.zoomed).await;
 
     if !state.configured_sessions.contains(session) {
@@ -150,11 +150,7 @@ async fn transition_zoom(tmux: &TmuxClient<'_>, target_pane: &str, zoomed: &mut 
         if current.pane_target == target_pane {
             return;
         }
-        if current.we_zoomed_it {
-            if let Ok(true) = tmux.is_pane_zoomed(&current.pane_target).await {
-                let _ = tmux.toggle_pane_zoom(&current.pane_target).await;
-            }
-        }
+        unzoom_if_owned(tmux, current).await;
         *zoomed = None;
     }
 
@@ -177,13 +173,18 @@ async fn transition_zoom(tmux: &TmuxClient<'_>, target_pane: &str, zoomed: &mut 
     }
 }
 
+async fn unzoom_if_owned(tmux: &TmuxClient<'_>, zoom: &ZoomState) {
+    if !zoom.we_zoomed_it {
+        return;
+    }
+    if let Ok(true) = tmux.is_pane_zoomed(&zoom.pane_target).await {
+        let _ = tmux.toggle_pane_zoom(&zoom.pane_target).await;
+    }
+}
+
 async fn restore_windows(tmux: &TmuxClient<'_>, state: &ResizeState) {
     if let Some(zoom) = state.zoomed.as_ref() {
-        if zoom.we_zoomed_it {
-            if let Ok(true) = tmux.is_pane_zoomed(&zoom.pane_target).await {
-                let _ = tmux.toggle_pane_zoom(&zoom.pane_target).await;
-            }
-        }
+        unzoom_if_owned(tmux, zoom).await;
     }
 
     let mut by_session: HashMap<String, Vec<String>> = HashMap::new();
@@ -195,15 +196,24 @@ async fn restore_windows(tmux: &TmuxClient<'_>, state: &ResizeState) {
         by_session.entry(session).or_default().push(window.clone());
     }
 
-    for (session, windows) in by_session {
-        if let Ok(Some((w, h))) = tmux.get_client_size(&session).await {
-            for window in &windows {
-                let _ = tmux.resize_window(window, w, h).await;
-            }
+    let resize_futures = by_session.into_iter().map(|(session, windows)| async move {
+        let dims = tmux.get_client_size(&session).await.ok().flatten();
+        if let Some((w, h)) = dims {
+            futures::future::join_all(
+                windows
+                    .iter()
+                    .map(|window| tmux.resize_window(window, w, h)),
+            )
+            .await;
         }
-    }
+    });
+    futures::future::join_all(resize_futures).await;
 
-    for session in &state.configured_sessions {
-        let _ = tmux.unset_window_size(session).await;
-    }
+    futures::future::join_all(
+        state
+            .configured_sessions
+            .iter()
+            .map(|session| tmux.unset_window_size(session)),
+    )
+    .await;
 }
