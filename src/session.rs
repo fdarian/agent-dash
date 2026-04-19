@@ -66,6 +66,7 @@ pub enum VisibleItem {
         has_active: bool,
         has_unread: bool,
         is_collapsed: bool,
+        in_hidden_section: bool,
     },
     GroupHeader {
         tmux_session_name: String,
@@ -75,6 +76,7 @@ pub enum VisibleItem {
         has_unread: bool,
         is_collapsed: bool,
         in_subgroup: bool,
+        in_hidden_section: bool,
     },
     Session {
         session: AgentSession,
@@ -115,6 +117,7 @@ pub fn group_sessions_by_name(sessions: &[AgentSession]) -> Vec<SessionGroup> {
 pub fn build_visible_items(
     groups: &[SessionGroup],
     collapsed_groups: &HashSet<String>,
+    collapsed_hidden_groups: &HashSet<String>,
     unread_pane_ids: &HashSet<String>,
     unread_order: &HashMap<String, u64>,
     prompt_states: &HashMap<String, PromptState>,
@@ -126,6 +129,7 @@ pub fn build_visible_items(
     include_hidden: bool,
     group_name_separator: Option<&str>,
     collapsed_subgroups: &HashSet<String>,
+    collapsed_hidden_subgroups: &HashSet<String>,
 ) -> Vec<VisibleItem> {
     let mut items = Vec::new();
     let mut visible_groups: Vec<(&SessionGroup, Vec<&AgentSession>)> = Vec::new();
@@ -201,6 +205,7 @@ pub fn build_visible_items(
         group_name_separator,
         collapsed_subgroups,
         !include_hidden,
+        false,
     );
 
     if !include_hidden {
@@ -223,14 +228,15 @@ pub fn build_visible_items(
             emit_groups_with_subgrouping(
                 hidden_groups_data,
                 &mut hidden_items,
-                collapsed_groups,
+                collapsed_hidden_groups,
                 unread_pane_ids,
                 display_name_map,
                 hidden_pane_ids,
                 group_hidden_collapsed,
                 group_name_separator,
-                collapsed_subgroups,
+                collapsed_hidden_subgroups,
                 false,
+                true,
             );
             items.push(VisibleItem::HiddenHeader {
                 count: hidden_item_count,
@@ -257,6 +263,7 @@ fn emit_groups_with_subgrouping<'a>(
     group_name_separator: Option<&str>,
     collapsed_subgroups: &HashSet<String>,
     with_hidden_subsection: bool,
+    in_hidden_section: bool,
 ) {
     if let Some(sep) = group_name_separator {
         let mut prefix_map: indexmap::IndexMap<String, Vec<(&SessionGroup, Vec<&AgentSession>)>> =
@@ -302,6 +309,7 @@ fn emit_groups_with_subgrouping<'a>(
                     has_active,
                     has_unread,
                     is_collapsed,
+                    in_hidden_section,
                 });
                 if !is_collapsed {
                     for (group, sessions) in sub_groups {
@@ -325,6 +333,7 @@ fn emit_groups_with_subgrouping<'a>(
                             group_hidden_collapsed,
                             true,
                             with_hidden_subsection,
+                            in_hidden_section,
                         );
                     }
                 }
@@ -346,6 +355,7 @@ fn emit_groups_with_subgrouping<'a>(
                         group_hidden_collapsed,
                         false,
                         with_hidden_subsection,
+                        in_hidden_section,
                     );
                 }
             }
@@ -368,6 +378,7 @@ fn emit_groups_with_subgrouping<'a>(
                 group_hidden_collapsed,
                 false,
                 with_hidden_subsection,
+                in_hidden_section,
             );
         }
     }
@@ -386,6 +397,7 @@ fn emit_single_group<'a>(
     group_hidden_collapsed: &HashSet<String>,
     in_subgroup: bool,
     with_hidden_subsection: bool,
+    in_hidden_section: bool,
 ) {
     let has_active = sessions.iter().any(|s| s.status == SessionStatus::Active);
     let has_unread = sessions
@@ -400,6 +412,7 @@ fn emit_single_group<'a>(
         has_unread,
         is_collapsed,
         in_subgroup,
+        in_hidden_section,
     });
     if !is_collapsed {
         for session in &sessions {
