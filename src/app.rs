@@ -775,7 +775,7 @@ fn handle_key_event(
                         VisibleItem::HiddenHeader { .. } => {
                             state.hidden_section_collapsed = !state.hidden_section_collapsed;
                             refresh_visible_items(state);
-                            persist_state(state);
+                            persist_ui_state(state);
                         }
                         VisibleItem::GroupHiddenHeader {
                             tmux_session_name, ..
@@ -785,7 +785,7 @@ fn handle_key_event(
                                 state.group_hidden_collapsed.insert(name);
                             }
                             refresh_visible_items(state);
-                            persist_state(state);
+                            persist_ui_state(state);
                         }
                         VisibleItem::SubgroupHeader { prefix, .. } => {
                             let p = prefix.clone();
@@ -804,7 +804,7 @@ fn handle_key_event(
                             }
                             refresh_visible_items(state);
                             update_selected_target(state, selected_pane_target);
-                            persist_state(state);
+                            persist_ui_state(state);
                         }
                         VisibleItem::Session { session, .. } => {
                             let pane_id = session.pane_id.clone();
@@ -905,12 +905,12 @@ fn handle_key_event(
                             state.collapsed_groups.remove(&name);
                             refresh_visible_items(state);
                             update_selected_target(state, selected_pane_target);
-                            persist_state(state);
+                            persist_ui_state(state);
                         }
                         VisibleItem::HiddenHeader { is_collapsed, .. } if *is_collapsed => {
                             state.hidden_section_collapsed = false;
                             refresh_visible_items(state);
-                            persist_state(state);
+                            persist_ui_state(state);
                         }
                         VisibleItem::GroupHiddenHeader {
                             tmux_session_name,
@@ -920,7 +920,7 @@ fn handle_key_event(
                             let name = tmux_session_name.clone();
                             state.group_hidden_collapsed.remove(&name);
                             refresh_visible_items(state);
-                            persist_state(state);
+                            persist_ui_state(state);
                         }
                         _ => {}
                     }
@@ -1288,6 +1288,21 @@ fn scroll_preview_up(state: &mut AppState) {
 }
 
 fn persist_state(state: &AppState) {
+    save_with(state, None);
+}
+
+fn persist_ui_state(state: &AppState) {
+    save_with(
+        state,
+        Some(state::InstanceSaveArgs {
+            collapsed_groups: &state.collapsed_groups,
+            hidden_section_collapsed: state.hidden_section_collapsed,
+            group_hidden_collapsed: &state.group_hidden_collapsed,
+        }),
+    );
+}
+
+fn save_with(state: &AppState, instance: Option<state::InstanceSaveArgs<'_>>) {
     state::save_state(state::SaveArgs {
         unread_pane_ids: &state.unread_pane_ids,
         prev_status_map: &state.prev_status_map,
@@ -1295,9 +1310,7 @@ fn persist_state(state: &AppState) {
         unread_counter: state.unread_counter,
         hidden_pane_ids: &state.hidden_pane_ids,
         hidden_groups: &state.hidden_groups,
-        collapsed_groups: &state.collapsed_groups,
-        hidden_section_collapsed: state.hidden_section_collapsed,
-        group_hidden_collapsed: &state.group_hidden_collapsed,
+        instance,
         shared_state: state.config.shared_state,
     });
 }

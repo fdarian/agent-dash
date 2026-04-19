@@ -112,10 +112,14 @@ pub struct SaveArgs<'a> {
     pub unread_counter: u64,
     pub hidden_pane_ids: &'a HashSet<String>,
     pub hidden_groups: &'a HashSet<String>,
+    pub instance: Option<InstanceSaveArgs<'a>>,
+    pub shared_state: bool,
+}
+
+pub struct InstanceSaveArgs<'a> {
     pub collapsed_groups: &'a HashSet<String>,
     pub hidden_section_collapsed: bool,
     pub group_hidden_collapsed: &'a HashSet<String>,
-    pub shared_state: bool,
 }
 
 pub fn save_state(args: SaveArgs) {
@@ -132,11 +136,14 @@ pub fn save_state(args: SaveArgs) {
     persisted.hidden_pane_ids = args.hidden_pane_ids.iter().cloned().collect();
     persisted.hidden_groups = args.hidden_groups.iter().cloned().collect();
 
-    let instance_id = resolve_instance_id(args.shared_state);
-    let instance = persisted.per_instance.entry(instance_id).or_default();
-    instance.collapsed_groups = args.collapsed_groups.iter().cloned().collect();
-    instance.hidden_section_collapsed = Some(args.hidden_section_collapsed);
-    instance.group_hidden_collapsed = args.group_hidden_collapsed.iter().cloned().collect();
+    if let Some(inst_args) = args.instance {
+        let instance_id = resolve_instance_id(args.shared_state);
+        let instance = persisted.per_instance.entry(instance_id).or_default();
+        instance.collapsed_groups = inst_args.collapsed_groups.iter().cloned().collect();
+        instance.hidden_section_collapsed = Some(inst_args.hidden_section_collapsed);
+        instance.group_hidden_collapsed =
+            inst_args.group_hidden_collapsed.iter().cloned().collect();
+    }
 
     let dir = state_dir();
     let _ = std::fs::create_dir_all(&dir);
