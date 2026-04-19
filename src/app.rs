@@ -647,6 +647,27 @@ fn handle_key_event(
             }
             KeyCode::Enter => {
                 state.session_filter_active = false;
+                if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
+                    if let VisibleItem::Session { ref session, .. } = item {
+                        state.unread_pane_ids.remove(&session.pane_id);
+                        state.unread_order.remove(&session.pane_id);
+                        persist_state(state);
+                        refresh_visible_items(state);
+                    }
+                    let target = match &item {
+                        VisibleItem::Session { session, .. } => Some(session.pane_target.clone()),
+                        VisibleItem::GroupHeader {
+                            tmux_session_name, ..
+                        } => Some(tmux_session_name.clone()),
+                        VisibleItem::HiddenHeader { .. } => None,
+                    };
+                    if let Some(target) = target {
+                        if state.config.exit_on_switch {
+                            state.should_quit = true;
+                        }
+                        return Some(Action::SwitchToPane(target));
+                    }
+                }
                 return None;
             }
             KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
