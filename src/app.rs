@@ -14,7 +14,7 @@ use crate::copy_mode;
 use crate::selection::{self, ContentPosition, PreviewSelection};
 use crate::session::{
     auto_select_index, build_flat_visible_items, build_visible_items, group_sessions_by_name,
-    resolve_selected_index, ClaudeSession, PromptState, SessionStatus, VisibleItem,
+    resolve_selected_index, AgentSession, PromptState, SessionStatus, VisibleItem,
 };
 use crate::state;
 use crate::tmux::TmuxClient;
@@ -28,7 +28,7 @@ pub enum Focus {
 pub struct AppState {
     pub should_quit: bool,
     pub config: AppConfig,
-    pub sessions: Vec<ClaudeSession>,
+    pub sessions: Vec<AgentSession>,
     pub visible_items: Vec<VisibleItem>,
     pub selected_index: usize,
     pub focus: Focus,
@@ -65,7 +65,7 @@ pub struct AppState {
 
 pub enum Message {
     SessionsUpdated(
-        Vec<ClaudeSession>,
+        Vec<AgentSession>,
         HashMap<String, String>,
         HashMap<String, PromptState>,
     ),
@@ -76,7 +76,7 @@ pub enum Action {
     SwitchToPane(String),
     OpenPopup(String),
     CreateSession {
-        session_name: String,
+        tmux_session_name: String,
         cwd_target: String,
     },
     KillPane(String),
@@ -159,7 +159,7 @@ pub async fn run(
             if let Ok(sessions) = tmux.discover_sessions().await {
                 let unique_names: Vec<String> = sessions
                     .iter()
-                    .map(|s| s.session_name.clone())
+                    .map(|s| s.tmux_session_name.clone())
                     .collect::<std::collections::HashSet<_>>()
                     .into_iter()
                     .collect();
@@ -295,22 +295,24 @@ async fn process_action(
             let _ = tmux.open_popup(&target).await;
         }
         Action::CreateSession {
-            session_name,
+            tmux_session_name,
             cwd_target,
         } => {
             let config = crate::config::load_config(state.config.exit_on_switch);
             let tmux = TmuxClient::new(&config);
             if let Ok(cwd) = tmux.get_pane_cwd(&cwd_target).await {
-                if let Ok(Some(pane_info)) = tmux.create_window(&session_name, Some(&cwd)).await {
+                if let Ok(Some(pane_info)) =
+                    tmux.create_window(&tmux_session_name, Some(&cwd)).await
+                {
                     let _ = tmux.switch_to_pane(&pane_info.pane_target).await;
                     if state.config.exit_on_switch {
                         state.should_quit = true;
                     } else {
-                        let new_session = ClaudeSession {
+                        let new_session = AgentSession {
                             pane_id: pane_info.pane_id,
                             pane_target: pane_info.pane_target,
                             title: pane_info.pane_title.clone(),
-                            session_name: pane_info.session_name.clone(),
+                            tmux_session_name: pane_info.tmux_session_name.clone(),
                             status: crate::session::parse_session_status(&pane_info.pane_title),
                         };
                         state
@@ -686,14 +688,16 @@ fn handle_key_event(
                             state.hidden_section_collapsed = !state.hidden_section_collapsed;
                             refresh_visible_items(state);
                         }
-                        VisibleItem::GroupHeader { session_name, .. } => {
-                            let group_name = session_name.clone();
+                        VisibleItem::GroupHeader {
+                            tmux_session_name, ..
+                        } => {
+                            let group_name = tmux_session_name.clone();
                             // Clear individual pane hides for this group
                             state.hidden_pane_ids.retain(|pid| {
                                 !state
                                     .sessions
                                     .iter()
-                                    .any(|s| s.session_name == group_name && s.pane_id == *pid)
+                                    .any(|s| s.tmux_session_name == group_name && s.pane_id == *pid)
                             });
                             if !state.hidden_groups.remove(&group_name) {
                                 state.hidden_groups.insert(group_name);
@@ -702,13 +706,13 @@ fn handle_key_event(
                         }
                         VisibleItem::Session { session, .. } => {
                             let pane_id = session.pane_id.clone();
-                            if state.hidden_groups.contains(&session.session_name) {
+                            if state.hidden_groups.contains(&session.tmux_session_name) {
                                 // Unhide this session from a group-level hide:
                                 // remove group hide, individually hide all siblings instead
-                                let group_name = session.session_name.clone();
+                                let group_name = session.tmux_session_name.clone();
                                 state.hidden_groups.remove(&group_name);
                                 for s in &state.sessions {
-                                    if s.session_name == group_name && s.pane_id != pane_id {
+                                    if s.tmux_session_name == group_name && s.pane_id != pane_id {
                                         state.hidden_pane_ids.insert(s.pane_id.clone());
                                     }
                                 }
@@ -726,8 +730,10 @@ fn handle_key_event(
             if matches!(state.focus, Focus::Sessions) {
                 if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
                     match &item {
-                        VisibleItem::GroupHeader { session_name, .. } => {
-                            let name = session_name.clone();
+                        VisibleItem::GroupHeader {
+                            tmux_session_name, ..
+                        } => {
+                            let name = tmux_session_name.clone();
                             state.collapsed_groups.remove(&name);
                             refresh_visible_items(state);
                             update_selected_target(state, selected_pane_target);
@@ -753,7 +759,9 @@ fn handle_key_event(
                 }
                 let target = match &item {
                     VisibleItem::Session { session, .. } => Some(session.pane_target.clone()),
-                    VisibleItem::GroupHeader { session_name, .. } => Some(session_name.clone()),
+                    VisibleItem::GroupHeader {
+                        tmux_session_name, ..
+                    } => Some(tmux_session_name.clone()),
                     VisibleItem::HiddenHeader { .. } => None,
                 };
                 if let Some(target) = target {
@@ -785,17 +793,18 @@ fn handle_key_event(
         KeyCode::Char('c') => {
             if matches!(state.focus, Focus::Sessions) {
                 if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
-                    let (session_name, cwd_target) = match &item {
-                        VisibleItem::Session { session, .. } => {
-                            (session.session_name.clone(), session.pane_target.clone())
-                        }
-                        VisibleItem::GroupHeader { session_name, .. } => {
-                            (session_name.clone(), session_name.clone())
-                        }
+                    let (tmux_session_name, cwd_target) = match &item {
+                        VisibleItem::Session { session, .. } => (
+                            session.tmux_session_name.clone(),
+                            session.pane_target.clone(),
+                        ),
+                        VisibleItem::GroupHeader {
+                            tmux_session_name, ..
+                        } => (tmux_session_name.clone(), tmux_session_name.clone()),
                         VisibleItem::HiddenHeader { .. } => return None,
                     };
                     return Some(Action::CreateSession {
-                        session_name,
+                        tmux_session_name,
                         cwd_target,
                     });
                 }

@@ -20,7 +20,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
     if state.visible_items.is_empty() {
         let inner = block.inner(area);
         frame.render_widget(block, area);
-        let text = Line::from(" No Claude sessions found").fg(UNFOCUSED);
+        let text = Line::from(" No agent sessions found").fg(UNFOCUSED);
         frame.render_widget(text, inner);
         return;
     }

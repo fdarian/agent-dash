@@ -16,11 +16,12 @@ pub enum PromptState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ClaudeSession {
+pub struct AgentSession {
     pub pane_id: String,
     pub pane_target: String,
     pub title: String,
-    pub session_name: String,
+    #[serde(rename = "sessionName")]
+    pub tmux_session_name: String,
     pub status: SessionStatus,
 }
 
@@ -53,14 +54,14 @@ pub fn detect_prompt_state(visible_text: &str) -> PromptState {
 // -- Session grouping --
 
 pub struct SessionGroup {
-    pub session_name: String,
-    pub sessions: Vec<ClaudeSession>,
+    pub tmux_session_name: String,
+    pub sessions: Vec<AgentSession>,
 }
 
 #[derive(Debug, Clone)]
 pub enum VisibleItem {
     GroupHeader {
-        session_name: String,
+        tmux_session_name: String,
         display_name: String,
         session_count: usize,
         has_active: bool,
@@ -68,7 +69,7 @@ pub enum VisibleItem {
         is_collapsed: bool,
     },
     Session {
-        session: ClaudeSession,
+        session: AgentSession,
         display_name: String,
         is_unread: bool,
     },
@@ -81,16 +82,16 @@ pub enum VisibleItem {
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
-pub fn group_sessions_by_name(sessions: &[ClaudeSession]) -> Vec<SessionGroup> {
-    let mut map: indexmap::IndexMap<String, Vec<ClaudeSession>> = indexmap::IndexMap::new();
+pub fn group_sessions_by_name(sessions: &[AgentSession]) -> Vec<SessionGroup> {
+    let mut map: indexmap::IndexMap<String, Vec<AgentSession>> = indexmap::IndexMap::new();
     for session in sessions {
-        map.entry(session.session_name.clone())
+        map.entry(session.tmux_session_name.clone())
             .or_default()
             .push(session.clone());
     }
     map.into_iter()
-        .map(|(session_name, sessions)| SessionGroup {
-            session_name,
+        .map(|(tmux_session_name, sessions)| SessionGroup {
+            tmux_session_name,
             sessions,
         })
         .collect()
@@ -109,12 +110,12 @@ pub fn build_visible_items(
     hidden_section_collapsed: bool,
 ) -> Vec<VisibleItem> {
     let mut items = Vec::new();
-    let mut visible_groups: Vec<(&SessionGroup, Vec<&ClaudeSession>)> = Vec::new();
+    let mut visible_groups: Vec<(&SessionGroup, Vec<&AgentSession>)> = Vec::new();
     for group in groups {
-        if hidden_groups.contains(&group.session_name) {
+        if hidden_groups.contains(&group.tmux_session_name) {
             continue;
         }
-        let mut visible_sessions: Vec<&ClaudeSession> = group
+        let mut visible_sessions: Vec<&AgentSession> = group
             .sessions
             .iter()
             .filter(|s| !hidden_pane_ids.contains(&s.pane_id))
@@ -175,13 +176,13 @@ pub fn build_visible_items(
         let has_unread = visible_sessions
             .iter()
             .any(|s| unread_pane_ids.contains(&s.pane_id));
-        let is_collapsed = collapsed_groups.contains(&group.session_name);
+        let is_collapsed = collapsed_groups.contains(&group.tmux_session_name);
         let display_name = display_name_map
-            .get(&group.session_name)
+            .get(&group.tmux_session_name)
             .cloned()
-            .unwrap_or_else(|| group.session_name.clone());
+            .unwrap_or_else(|| group.tmux_session_name.clone());
         items.push(VisibleItem::GroupHeader {
-            session_name: group.session_name.clone(),
+            tmux_session_name: group.tmux_session_name.clone(),
             display_name: display_name.clone(),
             session_count: visible_sessions.len(),
             has_active,
@@ -201,13 +202,13 @@ pub fn build_visible_items(
 
     let mut hidden_items = Vec::new();
     for group in groups {
-        if !hidden_groups.contains(&group.session_name) {
+        if !hidden_groups.contains(&group.tmux_session_name) {
             continue;
         }
         let display_name = display_name_map
-            .get(&group.session_name)
+            .get(&group.tmux_session_name)
             .cloned()
-            .unwrap_or_else(|| group.session_name.clone());
+            .unwrap_or_else(|| group.tmux_session_name.clone());
         let has_active = group
             .sessions
             .iter()
@@ -217,7 +218,7 @@ pub fn build_visible_items(
             .iter()
             .any(|s| unread_pane_ids.contains(&s.pane_id));
         hidden_items.push(VisibleItem::GroupHeader {
-            session_name: group.session_name.clone(),
+            tmux_session_name: group.tmux_session_name.clone(),
             display_name: display_name.clone(),
             session_count: group.sessions.len(),
             has_active,
@@ -226,13 +227,13 @@ pub fn build_visible_items(
         });
     }
     for group in groups {
-        if hidden_groups.contains(&group.session_name) {
+        if hidden_groups.contains(&group.tmux_session_name) {
             continue;
         }
         let display_name = display_name_map
-            .get(&group.session_name)
+            .get(&group.tmux_session_name)
             .cloned()
-            .unwrap_or_else(|| group.session_name.clone());
+            .unwrap_or_else(|| group.tmux_session_name.clone());
         for session in &group.sessions {
             if !hidden_pane_ids.contains(&session.pane_id) {
                 continue;
@@ -273,9 +274,9 @@ pub fn resolve_selected_index(
                     return found;
                 }
             }
-            VisibleItem::GroupHeader { session_name, .. } => {
+            VisibleItem::GroupHeader { tmux_session_name, .. } => {
                 if let Some(found) = new_items.iter().position(|item| {
-                    matches!(item, VisibleItem::GroupHeader { session_name: name, .. } if name == session_name)
+                    matches!(item, VisibleItem::GroupHeader { tmux_session_name: name, .. } if name == tmux_session_name)
                 }) {
                     return found;
                 }
@@ -299,7 +300,7 @@ pub fn resolve_selected_index(
 pub fn auto_select_index(
     visible_items: &[VisibleItem],
     focused_pane_id: &str,
-    focused_session_name: &str,
+    focused_tmux_session_name: &str,
 ) -> usize {
     // Priority 1: focused pane is itself an agent session
     if let Some(idx) = visible_items.iter().position(|item| {
@@ -309,7 +310,7 @@ pub fn auto_select_index(
     }
     // Priority 2: first agent session in the focused tmux session
     if let Some(idx) = visible_items.iter().position(|item| {
-        matches!(item, VisibleItem::Session { session, .. } if session.session_name == focused_session_name)
+        matches!(item, VisibleItem::Session { session, .. } if session.tmux_session_name == focused_tmux_session_name)
     }) {
         return idx;
     }
@@ -318,7 +319,7 @@ pub fn auto_select_index(
 }
 
 fn session_priority_tier(
-    session: &ClaudeSession,
+    session: &AgentSession,
     unread_pane_ids: &HashSet<String>,
     prompt_states: &HashMap<String, PromptState>,
 ) -> u8 {
@@ -341,7 +342,7 @@ fn session_priority_tier(
 
 #[allow(clippy::too_many_arguments)]
 pub fn build_flat_visible_items(
-    sessions: &[ClaudeSession],
+    sessions: &[AgentSession],
     unread_pane_ids: &HashSet<String>,
     unread_order: &HashMap<String, u64>,
     prompt_states: &HashMap<String, PromptState>,
@@ -350,9 +351,9 @@ pub fn build_flat_visible_items(
     hidden_groups: &HashSet<String>,
     hidden_section_collapsed: bool,
 ) -> Vec<VisibleItem> {
-    let (hidden_sessions, visible_sessions): (Vec<&ClaudeSession>, Vec<&ClaudeSession>) =
+    let (hidden_sessions, visible_sessions): (Vec<&AgentSession>, Vec<&AgentSession>) =
         sessions.iter().partition(|s| {
-            hidden_pane_ids.contains(&s.pane_id) || hidden_groups.contains(&s.session_name)
+            hidden_pane_ids.contains(&s.pane_id) || hidden_groups.contains(&s.tmux_session_name)
         });
 
     let mut items: Vec<VisibleItem> = visible_sessions
@@ -360,9 +361,9 @@ pub fn build_flat_visible_items(
         .map(|session| {
             let is_unread = unread_pane_ids.contains(&session.pane_id);
             let display_name = display_name_map
-                .get(&session.session_name)
+                .get(&session.tmux_session_name)
                 .cloned()
-                .unwrap_or_else(|| session.session_name.clone());
+                .unwrap_or_else(|| session.tmux_session_name.clone());
             VisibleItem::Session {
                 session: (*session).clone(),
 
@@ -412,9 +413,9 @@ pub fn build_flat_visible_items(
             for session in hidden_sessions {
                 let is_unread = unread_pane_ids.contains(&session.pane_id);
                 let display_name = display_name_map
-                    .get(&session.session_name)
+                    .get(&session.tmux_session_name)
                     .cloned()
-                    .unwrap_or_else(|| session.session_name.clone());
+                    .unwrap_or_else(|| session.tmux_session_name.clone());
                 items.push(VisibleItem::Session {
                     session: session.clone(),
 

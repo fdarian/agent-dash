@@ -4,9 +4,9 @@ import type { ReactNode } from 'react';
 import { ThemeToggle } from '@/components/theme-toggle';
 
 export const metadata: Metadata = {
-  title: 'Agent Dash — Terminal Dashboard for Claude Sessions',
+  title: 'Agent Dash — Terminal Dashboard for Agent Sessions',
   description:
-    'A keyboard-first TUI for managing and monitoring Claude AI sessions in tmux. Built with Rust.',
+    'A keyboard-first TUI for managing and monitoring agent sessions in tmux. Built with Rust.',
 };
 
 /* ─── Icons ─── */
@@ -144,7 +144,7 @@ function Key(props: KeyProps) {
 /* ─── Data ─── */
 
 const features: FeatureCardProps[] = [
-  { title: 'Live Monitoring', description: 'Real-time preview of Claude sessions with full ANSI rendering. FIFO pipe monitoring for low-latency updates.' },
+  { title: 'Live Monitoring', description: 'Real-time preview of agent sessions with full ANSI rendering. FIFO pipe monitoring for low-latency updates.' },
   { title: 'Vim-like Copy Mode', description: 'Navigate, search, and yank text with familiar vim motions. Visual selection, forward/backward search, clipboard support.' },
   { title: 'Session Grouping', description: "Sessions organized by tmux session name with collapsible groups. Hide sessions you don't need, toggle flat view." },
   { title: 'Persistent State', description: 'Read markers, visibility, and collapse state saved across restarts. Pick up right where you left off.' },
@@ -206,10 +206,10 @@ export default function HomePage() {
               Open Source &middot; Built with Rust
             </div>
             <h1 className="animate-fade-up text-5xl sm:text-6xl lg:text-[4.5rem] font-bold tracking-[-0.03em] leading-[1.05]" style={{ animationDelay: '80ms' }}>
-              Your Claude sessions,<br />at a glance
+              Your agent sessions,<br />at a glance
             </h1>
             <p className="animate-fade-up mt-6 text-lg text-fd-muted-foreground max-w-xl mx-auto leading-relaxed" style={{ animationDelay: '160ms' }}>
-              A keyboard-first terminal dashboard for managing and monitoring Claude AI sessions in tmux.
+              A keyboard-first terminal dashboard for managing and monitoring agent sessions in tmux.
             </p>
             <div className="animate-fade-up flex flex-wrap gap-3 justify-center mt-10" style={{ animationDelay: '240ms' }}>
               <Link href="/docs" className="fancy-button inline-flex items-center gap-2 rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_1px_3px_rgba(0,0,0,0.2),0_2px_8px_rgba(217,119,87,0.25)] hover:brightness-110 transition">
@@ -247,7 +247,7 @@ export default function HomePage() {
         <section className="px-8 py-24">
           <div className="text-center mb-14">
             <h2 className="text-3xl sm:text-4xl font-bold tracking-[-0.02em]">Built for power users</h2>
-            <p className="mt-4 text-fd-muted-foreground text-lg">Everything you need to manage Claude sessions, nothing you don&apos;t.</p>
+            <p className="mt-4 text-fd-muted-foreground text-lg">Everything you need to manage agent sessions, nothing you don&apos;t.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {features.map((f) => <FeatureCard key={f.title} title={f.title} description={f.description} />)}

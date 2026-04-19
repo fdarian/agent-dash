@@ -1,5 +1,5 @@
 use crate::config::AppConfig;
-use crate::session::{parse_session_status, ClaudeSession};
+use crate::session::{parse_session_status, AgentSession};
 use anyhow::{anyhow, Result};
 use tokio::process::Command;
 
@@ -12,7 +12,7 @@ impl<'a> TmuxClient<'a> {
         Self { config }
     }
 
-    pub async fn discover_sessions(&self) -> Result<Vec<ClaudeSession>> {
+    pub async fn discover_sessions(&self) -> Result<Vec<AgentSession>> {
         let format =
             "#{pane_id}\t#{pane_pid}\t#{pane_title}\t#{session_name}:#{window_index}.#{pane_index}";
         let output = run_command("tmux", &["list-panes", "-a", "-F", format]).await;
@@ -27,7 +27,7 @@ impl<'a> TmuxClient<'a> {
             pane_pid: String,
             pane_title: String,
             pane_target: String,
-            session_name: String,
+            tmux_session_name: String,
         }
 
         let mut parsed = Vec::new();
@@ -37,7 +37,7 @@ impl<'a> TmuxClient<'a> {
                 continue;
             }
             let pane_target = parts[3];
-            let session_name = match pane_target.split(':').next() {
+            let tmux_session_name = match pane_target.split(':').next() {
                 Some(s) if !s.is_empty() => s,
                 _ => continue,
             };
@@ -46,7 +46,7 @@ impl<'a> TmuxClient<'a> {
                 pane_pid: parts[1].to_string(),
                 pane_title: parts[2].to_string(),
                 pane_target: pane_target.to_string(),
-                session_name: session_name.to_string(),
+                tmux_session_name: tmux_session_name.to_string(),
             });
         }
 
@@ -70,11 +70,11 @@ impl<'a> TmuxClient<'a> {
             .into_iter()
             .enumerate()
             .filter(|(i, _)| claude_indices.contains(i))
-            .map(|(_, p)| ClaudeSession {
+            .map(|(_, p)| AgentSession {
                 pane_id: p.pane_id,
                 pane_target: p.pane_target,
                 title: p.pane_title.clone(),
-                session_name: p.session_name,
+                tmux_session_name: p.tmux_session_name,
                 status: parse_session_status(&p.pane_title),
             })
             .collect();
@@ -124,11 +124,19 @@ impl<'a> TmuxClient<'a> {
 
     pub async fn create_window(
         &self,
-        session_name: &str,
+        tmux_session_name: &str,
         cwd: Option<&str>,
     ) -> Result<Option<CreatedPaneInfo>> {
         let format = "#{pane_id}\t#{pane_title}\t#{session_name}:#{window_index}.#{pane_index}";
-        let mut args = vec!["new-window", "-d", "-P", "-F", format, "-t", session_name];
+        let mut args = vec![
+            "new-window",
+            "-d",
+            "-P",
+            "-F",
+            format,
+            "-t",
+            tmux_session_name,
+        ];
         if let Some(cwd) = cwd {
             args.push("-c");
             args.push(cwd);
@@ -142,7 +150,7 @@ impl<'a> TmuxClient<'a> {
         }
 
         let pane_target = parts[2];
-        let session_name = match pane_target.split(':').next() {
+        let tmux_session_name = match pane_target.split(':').next() {
             Some(s) if !s.is_empty() => s.to_string(),
             _ => return Ok(None),
         };
@@ -151,7 +159,7 @@ impl<'a> TmuxClient<'a> {
             pane_id: parts[0].to_string(),
             pane_title: parts[1].to_string(),
             pane_target: pane_target.to_string(),
-            session_name,
+            tmux_session_name,
         }))
     }
 
@@ -186,12 +194,12 @@ impl<'a> TmuxClient<'a> {
         let line = output.trim();
         let mut parts = line.splitn(2, '\t');
         let pane_id = parts.next()?.trim().to_string();
-        let session_name = parts.next()?.trim().to_string();
+        let tmux_session_name = parts.next()?.trim().to_string();
 
-        if pane_id.is_empty() || session_name.is_empty() {
+        if pane_id.is_empty() || tmux_session_name.is_empty() {
             return None;
         }
-        Some((pane_id, session_name))
+        Some((pane_id, tmux_session_name))
     }
 }
 
@@ -203,7 +211,7 @@ pub struct CreatedPaneInfo {
     pub pane_id: String,
     pub pane_title: String,
     pub pane_target: String,
-    pub session_name: String,
+    pub tmux_session_name: String,
 }
 
 async fn run_command(cmd: &str, args: &[&str]) -> Result<String> {

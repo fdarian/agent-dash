@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Agent Dash is a Rust TUI application for managing and monitoring Claude AI sessions running in tmux. Built with ratatui, crossterm, and tokio.
+Agent Dash is a Rust TUI application for managing and monitoring agent sessions running in tmux. Built with ratatui, crossterm, and tokio.
 
 ## CI / Quality
 

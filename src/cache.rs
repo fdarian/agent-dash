@@ -1,4 +1,4 @@
-use crate::session::ClaudeSession;
+use crate::session::AgentSession;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -14,7 +14,7 @@ struct CacheEntry<T> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CachedSessionData {
-    pub sessions: Vec<ClaudeSession>,
+    pub sessions: Vec<AgentSession>,
     pub display_names: HashMap<String, String>,
 }
 
