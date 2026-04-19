@@ -126,8 +126,9 @@ pub fn spawn_preview_task(
                             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                         }
                         Ok(_) => {
-                            // Data arrived — reset debounce timer
-                            debounce = Some(tokio::time::Instant::now() + debounce_duration);
+                            if debounce.is_none() {
+                                debounce = Some(tokio::time::Instant::now() + debounce_duration);
+                            }
                         }
                         Err(_) => {
                             // EWOULDBLOCK or other error — no data available, that's fine
