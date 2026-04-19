@@ -12,15 +12,49 @@ const SELECTED_BG: Color = Color::Rgb(0x44, 0x44, 0x44);
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, flat_view: bool) {
     let border_color = if focused { PRIMARY } else { UNFOCUSED };
-    let block = Block::default()
+    let filter_color = Color::Rgb(0x88, 0x88, 0x88);
+
+    let mut block = Block::default()
         .borders(Borders::ALL)
         .title(" [1] Sessions ")
         .border_style(Style::default().fg(border_color));
 
+    if state.session_filter_active || !state.session_filter_query.is_empty() {
+        let filter_line = if state.session_filter_query.is_empty() {
+            Line::from(vec![
+                Span::styled("/", Style::default().fg(filter_color)),
+                Span::styled(
+                    "Type to filter...",
+                    Style::default().fg(Color::Rgb(0x55, 0x55, 0x55)),
+                ),
+                Span::raw(" "),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled("/", Style::default().fg(filter_color)),
+                Span::styled(
+                    state.session_filter_query.as_str(),
+                    Style::default().fg(Color::White),
+                ),
+                Span::raw(" "),
+            ])
+        };
+        block = block.title_bottom(filter_line);
+
+        if state.session_filter_active {
+            let cursor_x = area.x + 1 + 1 + state.session_filter_cursor as u16;
+            frame.set_cursor_position((cursor_x, area.y + area.height - 1));
+        }
+    }
+
     if state.visible_items.is_empty() {
         let inner = block.inner(area);
         frame.render_widget(block, area);
-        let text = Line::from(" No agent sessions found").fg(UNFOCUSED);
+        let text = if !state.session_filter_query.is_empty() {
+            Line::from(" No matching sessions").fg(UNFOCUSED)
+        } else {
+            Line::from(" No agent sessions found").fg(UNFOCUSED)
+        };
         frame.render_widget(text, inner);
         return;
     }
@@ -151,8 +185,28 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                         .unwrap_or(&PromptState::None);
                     let inner_width = area.width.saturating_sub(2) as usize;
 
+                    let show_group_tag = !state.session_filter_query.is_empty()
+                        && !in_hidden_section
+                        && !session.title.is_empty();
+
                     if *prompt_state == PromptState::None || in_hidden_section {
-                        ListItem::new(Line::from(left_text).style(base_style))
+                        if show_group_tag {
+                            let tag = display_name.as_str();
+                            let tag_width = tag.chars().count();
+                            let left_width = inner_width.saturating_sub(tag_width + 1);
+                            let left_padded = truncate_or_pad(&left_text, left_width);
+                            let tag_style = if is_selected {
+                                Style::default().fg(UNFOCUSED).bg(SELECTED_BG)
+                            } else {
+                                Style::default().fg(UNFOCUSED)
+                            };
+                            ListItem::new(Line::from(vec![
+                                Span::styled(left_padded, base_style),
+                                Span::styled(tag, tag_style),
+                            ]))
+                        } else {
+                            ListItem::new(Line::from(left_text).style(base_style))
+                        }
                     } else {
                         let (badge_text, badge_fg) = match prompt_state {
                             PromptState::Plan => ("plan", Color::Rgb(0x61, 0xAF, 0xEF)),
