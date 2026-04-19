@@ -201,6 +201,34 @@ impl<'a> TmuxClient<'a> {
         }
         Some((pane_id, tmux_session_name))
     }
+
+    pub async fn set_window_size_manual(&self, session: &str) -> Result<()> {
+        run_command(
+            "tmux",
+            &["set-option", "-t", session, "window-size", "manual"],
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn resize_window(&self, session_window: &str, cols: u16, rows: u16) -> Result<()> {
+        let cols_str = cols.to_string();
+        let rows_str = rows.to_string();
+        run_command(
+            "tmux",
+            &[
+                "resize-window",
+                "-t",
+                session_window,
+                "-x",
+                &cols_str,
+                "-y",
+                &rows_str,
+            ],
+        )
+        .await?;
+        Ok(())
+    }
 }
 
 pub async fn capture_pane_visible(pane_target: &str) -> Result<String> {
