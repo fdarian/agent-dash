@@ -152,8 +152,28 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                         .unwrap_or(&PromptState::None);
                     let inner_width = area.width.saturating_sub(2) as usize;
 
+                    let show_group_tag = !state.session_filter_query.is_empty()
+                        && !in_hidden_section
+                        && !session.title.is_empty();
+
                     if *prompt_state == PromptState::None || in_hidden_section {
-                        ListItem::new(Line::from(left_text).style(base_style))
+                        if show_group_tag {
+                            let tag = display_name.as_str();
+                            let tag_width = tag.chars().count();
+                            let left_width = inner_width.saturating_sub(tag_width + 1);
+                            let left_padded = truncate_or_pad(&left_text, left_width);
+                            let tag_style = if is_selected {
+                                Style::default().fg(UNFOCUSED).bg(SELECTED_BG)
+                            } else {
+                                Style::default().fg(UNFOCUSED)
+                            };
+                            ListItem::new(Line::from(vec![
+                                Span::styled(left_padded, base_style),
+                                Span::styled(tag, tag_style),
+                            ]))
+                        } else {
+                            ListItem::new(Line::from(left_text).style(base_style))
+                        }
                     } else {
                         let (badge_text, badge_fg) = match prompt_state {
                             PromptState::Plan => ("plan", Color::Rgb(0x61, 0xAF, 0xEF)),
