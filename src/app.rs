@@ -661,7 +661,8 @@ fn handle_key_event(
                         VisibleItem::GroupHeader {
                             tmux_session_name, ..
                         } => Some(tmux_session_name.clone()),
-                        VisibleItem::HiddenHeader { .. } => None,
+                        VisibleItem::HiddenHeader { .. }
+                        | VisibleItem::GroupHiddenHeader { .. } => None,
                     };
                     if let Some(target) = target {
                         if state.config.exit_on_switch {
