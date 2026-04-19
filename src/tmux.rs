@@ -257,8 +257,21 @@ impl<'a> TmuxClient<'a> {
         Ok(())
     }
 
-    pub async fn send_keys(&self, pane_target: &str, keys: &str) -> Result<()> {
-        run_command("tmux", &["send-keys", "-t", pane_target, keys]).await?;
+    pub async fn send_scroll_up(&self, pane_target: &str) -> Result<()> {
+        run_command(
+            "tmux",
+            &["send-keys", "-l", "-t", pane_target, "\x1b[<64;1;1M"],
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn send_scroll_down(&self, pane_target: &str) -> Result<()> {
+        run_command(
+            "tmux",
+            &["send-keys", "-l", "-t", pane_target, "\x1b[<65;1;1M"],
+        )
+        .await?;
         Ok(())
     }
 
