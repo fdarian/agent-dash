@@ -66,6 +66,7 @@ pub struct AppState {
     pub hidden_groups: HashSet<String>,
     pub hidden_section_collapsed: bool,
     pub group_hidden_collapsed: HashSet<String>,
+    pub collapsed_subgroups: HashSet<String>,
 }
 
 pub enum Message {
@@ -143,6 +144,7 @@ pub async fn run(
         hidden_groups: loaded_state.hidden_groups,
         hidden_section_collapsed: loaded_state.hidden_section_collapsed,
         group_hidden_collapsed: loaded_state.group_hidden_collapsed,
+        collapsed_subgroups: HashSet::new(),
     };
 
     // Load cached sessions for instant first render
@@ -668,7 +670,8 @@ fn handle_key_event(
                         VisibleItem::GroupHeader {
                             tmux_session_name, ..
                         } => Some(tmux_session_name.clone()),
-                        VisibleItem::HiddenHeader { .. }
+                        VisibleItem::SubgroupHeader { .. }
+                        | VisibleItem::HiddenHeader { .. }
                         | VisibleItem::GroupHiddenHeader { .. } => None,
                     };
                     if let Some(target) = target {
@@ -784,6 +787,14 @@ fn handle_key_event(
                             refresh_visible_items(state);
                             persist_state(state);
                         }
+                        VisibleItem::SubgroupHeader { prefix, .. } => {
+                            let p = prefix.clone();
+                            if !state.collapsed_subgroups.remove(&p) {
+                                state.collapsed_subgroups.insert(p);
+                            }
+                            refresh_visible_items(state);
+                            update_selected_target(state, selected_pane_target);
+                        }
                         VisibleItem::GroupHeader {
                             tmux_session_name, ..
                         } => {
@@ -842,6 +853,16 @@ fn handle_key_event(
             if matches!(state.focus, Focus::Sessions) {
                 if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
                     match &item {
+                        VisibleItem::SubgroupHeader {
+                            prefix,
+                            is_collapsed,
+                            ..
+                        } if *is_collapsed => {
+                            let p = prefix.clone();
+                            state.collapsed_subgroups.remove(&p);
+                            refresh_visible_items(state);
+                            update_selected_target(state, selected_pane_target);
+                        }
                         VisibleItem::GroupHeader {
                             tmux_session_name, ..
                         } => {
@@ -886,9 +907,9 @@ fn handle_key_event(
                     VisibleItem::GroupHeader {
                         tmux_session_name, ..
                     } => Some(tmux_session_name.clone()),
-                    VisibleItem::HiddenHeader { .. } | VisibleItem::GroupHiddenHeader { .. } => {
-                        None
-                    }
+                    VisibleItem::SubgroupHeader { .. }
+                    | VisibleItem::HiddenHeader { .. }
+                    | VisibleItem::GroupHiddenHeader { .. } => None,
                 };
                 if let Some(target) = target {
                     if state.config.exit_on_switch {
@@ -927,7 +948,8 @@ fn handle_key_event(
                         VisibleItem::GroupHeader {
                             tmux_session_name, ..
                         } => (tmux_session_name.clone(), tmux_session_name.clone()),
-                        VisibleItem::HiddenHeader { .. }
+                        VisibleItem::SubgroupHeader { .. }
+                        | VisibleItem::HiddenHeader { .. }
                         | VisibleItem::GroupHiddenHeader { .. } => return None,
                     };
                     return Some(Action::CreateSession {
@@ -1158,6 +1180,8 @@ fn refresh_visible_items(state: &mut AppState) {
             state.hidden_section_collapsed,
             &state.group_hidden_collapsed,
             include_hidden,
+            state.config.group_name_separator.as_deref(),
+            &state.collapsed_subgroups,
         );
     }
 
