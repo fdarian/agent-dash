@@ -13,8 +13,8 @@ use crate::config::AppConfig;
 use crate::copy_mode;
 use crate::selection::{self, ContentPosition, PreviewSelection};
 use crate::session::{
-    auto_select_index, build_flat_visible_items, build_visible_items, group_sessions_by_name,
-    resolve_selected_index, AgentSession, PromptState, SessionStatus, VisibleItem,
+    build_flat_visible_items, build_visible_items, group_sessions_by_name, resolve_selected_index,
+    AgentSession, PromptState, SessionStatus, VisibleItem,
 };
 use crate::state;
 use crate::tmux::TmuxClient;
@@ -152,11 +152,7 @@ pub async fn run(
         state.sessions = cached.sessions;
         state.display_name_map = cached.display_names;
         refresh_visible_items(&mut state);
-        if let Some(info) = state.initial_focused_info.take() {
-            state.selected_index = auto_select_index(&state.visible_items, &info.0, &info.1);
-        } else if let Some(pane_id) = state.initial_selected_pane_id.take() {
-            state.selected_index = auto_select_index(&state.visible_items, &pane_id, "");
-        }
+        apply_initial_selection(&mut state);
     }
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
@@ -418,11 +414,7 @@ fn handle_message(
             // Resolve selected index
             let old_items = std::mem::take(&mut state.visible_items);
             refresh_visible_items(state);
-            if let Some(info) = state.initial_focused_info.take() {
-                state.selected_index = auto_select_index(&state.visible_items, &info.0, &info.1);
-            } else if let Some(pane_id) = state.initial_selected_pane_id.take() {
-                state.selected_index = auto_select_index(&state.visible_items, &pane_id, "");
-            } else {
+            if !apply_initial_selection(state) {
                 state.selected_index =
                     resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
             }
@@ -681,12 +673,14 @@ fn handle_key_event(
                 return None;
             }
             KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                clear_initial_selection(state);
                 let max = state.visible_items.len().saturating_sub(1);
                 state.selected_index = (state.selected_index + 1).min(max);
                 update_selected_target(state, selected_pane_target);
                 return None;
             }
             KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                clear_initial_selection(state);
                 state.selected_index = state.selected_index.saturating_sub(1);
                 update_selected_target(state, selected_pane_target);
                 return None;
@@ -698,6 +692,7 @@ fn handle_key_event(
                     key,
                 );
                 if changed {
+                    clear_initial_selection(state);
                     refresh_visible_items(state);
                     state.selected_index = 0;
                     update_selected_target(state, selected_pane_target);
@@ -736,6 +731,7 @@ fn handle_key_event(
         KeyCode::Char('j') | KeyCode::Down => {
             match state.focus {
                 Focus::Sessions => {
+                    clear_initial_selection(state);
                     if state.selected_index < state.visible_items.len().saturating_sub(1) {
                         state.selected_index += 1;
                         state.preview_content.clear();
@@ -752,6 +748,7 @@ fn handle_key_event(
         KeyCode::Char('k') | KeyCode::Up => {
             match state.focus {
                 Focus::Sessions => {
+                    clear_initial_selection(state);
                     if state.selected_index > 0 {
                         state.selected_index -= 1;
                         state.preview_content.clear();
@@ -1218,6 +1215,48 @@ fn scroll_preview_up(state: &mut AppState) {
         state.preview_scroll_offset -= 1;
         state.preview_is_sticky_bottom = false;
     }
+}
+
+fn apply_initial_selection(state: &mut AppState) -> bool {
+    let focused = state.initial_focused_info.take();
+    let saved_pane = state.initial_selected_pane_id.take();
+
+    // Priority 1: tmux-focused pane is itself an agent session
+    if let Some(info) = focused.as_ref() {
+        if let Some(idx) = state.visible_items.iter().position(|item| {
+            matches!(item, VisibleItem::Session { session, .. } if session.pane_id == info.0)
+        }) {
+            state.selected_index = idx;
+            return true;
+        }
+    }
+
+    // Priority 2: previously-selected pane from persisted state
+    if let Some(pane_id) = saved_pane.as_ref() {
+        if let Some(idx) = state.visible_items.iter().position(|item| {
+            matches!(item, VisibleItem::Session { session, .. } if &session.pane_id == pane_id)
+        }) {
+            state.selected_index = idx;
+            return true;
+        }
+    }
+
+    // Priority 3: first agent session in the tmux-focused session
+    if let Some(info) = focused.as_ref() {
+        if let Some(idx) = state.visible_items.iter().position(|item| {
+            matches!(item, VisibleItem::Session { session, .. } if session.tmux_session_name == info.1)
+        }) {
+            state.selected_index = idx;
+            return true;
+        }
+    }
+
+    false
+}
+
+fn clear_initial_selection(state: &mut AppState) {
+    state.initial_focused_info = None;
+    state.initial_selected_pane_id = None;
 }
 
 fn persist_state(state: &AppState) {
