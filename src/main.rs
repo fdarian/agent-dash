@@ -19,6 +19,7 @@ mod state;
 mod ui;
 
 mod pipe_pane;
+mod resize_pane;
 mod tmux;
 
 #[derive(Parser)]
