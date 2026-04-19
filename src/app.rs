@@ -1116,6 +1116,9 @@ fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) {
 }
 
 fn refresh_visible_items(state: &mut AppState) {
+    let parsed = crate::filter_query::parse_filter_query(&state.session_filter_query);
+    let include_hidden = parsed.include_hidden;
+
     if state.flat_view {
         state.visible_items = build_flat_visible_items(
             &state.sessions,
@@ -1126,7 +1129,7 @@ fn refresh_visible_items(state: &mut AppState) {
             &state.hidden_pane_ids,
             &state.hidden_groups,
             state.hidden_section_collapsed,
-            false,
+            include_hidden,
         );
     } else {
         let groups = group_sessions_by_name(&state.sessions);
@@ -1141,7 +1144,7 @@ fn refresh_visible_items(state: &mut AppState) {
             &state.hidden_groups,
             state.hidden_section_collapsed,
             &state.group_hidden_collapsed,
-            false,
+            include_hidden,
         );
     }
 
@@ -1149,37 +1152,36 @@ fn refresh_visible_items(state: &mut AppState) {
         use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
         use nucleo_matcher::{Matcher, Utf32Str};
 
-        let mut matcher = Matcher::new(nucleo_matcher::Config::DEFAULT);
-        let pattern = Pattern::parse(
-            &state.session_filter_query,
-            CaseMatching::Smart,
-            Normalization::Smart,
-        );
+        if !parsed.text.is_empty() {
+            let mut matcher = Matcher::new(nucleo_matcher::Config::DEFAULT);
+            let pattern = Pattern::parse(&parsed.text, CaseMatching::Smart, Normalization::Smart);
 
-        let items = std::mem::take(&mut state.visible_items);
-        let mut scored: Vec<(u32, VisibleItem)> = items
-            .into_iter()
-            .filter_map(|item| match &item {
-                VisibleItem::Session {
-                    session,
-                    display_name,
-                    ..
-                } => {
-                    let haystack = if session.title.is_empty() {
-                        display_name.clone()
-                    } else {
-                        format!("{}/{}", display_name, session.title)
-                    };
-                    let mut buf = Vec::new();
-                    let score = pattern.score(Utf32Str::new(&haystack, &mut buf), &mut matcher)?;
-                    Some((score, item))
-                }
-                _ => None,
-            })
-            .collect();
+            let items = std::mem::take(&mut state.visible_items);
+            let mut scored: Vec<(u32, VisibleItem)> = items
+                .into_iter()
+                .filter_map(|item| match &item {
+                    VisibleItem::Session {
+                        session,
+                        display_name,
+                        ..
+                    } => {
+                        let haystack = if session.title.is_empty() {
+                            display_name.clone()
+                        } else {
+                            format!("{}/{}", display_name, session.title)
+                        };
+                        let mut buf = Vec::new();
+                        let score =
+                            pattern.score(Utf32Str::new(&haystack, &mut buf), &mut matcher)?;
+                        Some((score, item))
+                    }
+                    _ => None,
+                })
+                .collect();
 
-        scored.sort_by(|a, b| b.0.cmp(&a.0));
-        state.visible_items = scored.into_iter().map(|(_, item)| item).collect();
+            scored.sort_by(|a, b| b.0.cmp(&a.0));
+            state.visible_items = scored.into_iter().map(|(_, item)| item).collect();
+        }
     }
 }
 
