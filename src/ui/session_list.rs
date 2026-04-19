@@ -30,6 +30,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
         let mut in_global = false;
         let mut in_group = false;
         for (i, item) in state.visible_items.iter().enumerate() {
+            if matches!(item, VisibleItem::GroupHeader { .. }) && !in_global {
+                in_group = false;
+            }
             if in_global || in_group {
                 in_hidden_flags[i] = true;
             }
@@ -40,9 +43,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                 }
                 VisibleItem::GroupHiddenHeader { .. } => {
                     in_group = true;
-                }
-                VisibleItem::GroupHeader { .. } if !in_global => {
-                    in_group = false;
                 }
                 _ => {}
             }
