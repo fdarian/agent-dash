@@ -59,6 +59,7 @@ pub struct AppState {
     pub toast_message: Option<String>,
     pub toast_deadline: Option<std::time::Instant>,
     pub initial_focused_info: Option<(String, String)>,
+    pub initial_selected_pane_id: Option<String>,
     pub flat_view: bool,
     pub unread_order: HashMap<String, u64>,
     pub unread_counter: u64,
@@ -94,7 +95,7 @@ pub async fn run(
 ) -> Result<()> {
     let config = crate::config::load_config(exit_on_switch);
     let formatter_path = config.session_name_formatter.clone();
-    let loaded_state = state::load_state();
+    let loaded_state = state::load_state(config.shared_state);
 
     let focused_pane_info = {
         let tmux = TmuxClient::new(&config);
@@ -109,7 +110,7 @@ pub async fn run(
         visible_items: Vec::new(),
         selected_index: 0,
         focus: Focus::Sessions,
-        collapsed_groups: HashSet::new(),
+        collapsed_groups: loaded_state.collapsed_groups,
         unread_pane_ids: loaded_state.unread_pane_ids,
         prev_status_map: loaded_state.prev_status_map,
         display_name_map: HashMap::new(),
@@ -136,6 +137,7 @@ pub async fn run(
         toast_message: None,
         toast_deadline: None,
         initial_focused_info: focused_pane_info,
+        initial_selected_pane_id: loaded_state.selected_pane_id,
         flat_view: default_flat_view,
         unread_order: loaded_state.unread_order,
         unread_counter: loaded_state.unread_counter,
@@ -152,6 +154,8 @@ pub async fn run(
         refresh_visible_items(&mut state);
         if let Some(info) = state.initial_focused_info.take() {
             state.selected_index = auto_select_index(&state.visible_items, &info.0, &info.1);
+        } else if let Some(pane_id) = state.initial_selected_pane_id.take() {
+            state.selected_index = auto_select_index(&state.visible_items, &pane_id, "");
         }
     }
 
@@ -283,6 +287,7 @@ pub async fn run(
         }
     }
 
+    persist_state(&state);
     pipe_watcher.cleanup();
 
     Ok(())
@@ -415,6 +420,8 @@ fn handle_message(
             refresh_visible_items(state);
             if let Some(info) = state.initial_focused_info.take() {
                 state.selected_index = auto_select_index(&state.visible_items, &info.0, &info.1);
+            } else if let Some(pane_id) = state.initial_selected_pane_id.take() {
+                state.selected_index = auto_select_index(&state.visible_items, &pane_id, "");
             } else {
                 state.selected_index =
                     resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
@@ -784,6 +791,7 @@ fn handle_key_event(
                             }
                             refresh_visible_items(state);
                             update_selected_target(state, selected_pane_target);
+                            persist_state(state);
                         }
                         VisibleItem::Session { session, .. } => {
                             let pane_id = session.pane_id.clone();
@@ -839,6 +847,7 @@ fn handle_key_event(
                             state.collapsed_groups.remove(&name);
                             refresh_visible_items(state);
                             update_selected_target(state, selected_pane_target);
+                            persist_state(state);
                         }
                         VisibleItem::HiddenHeader { is_collapsed, .. } if *is_collapsed => {
                             state.hidden_section_collapsed = false;
@@ -1212,14 +1221,25 @@ fn scroll_preview_up(state: &mut AppState) {
 }
 
 fn persist_state(state: &AppState) {
-    state::save_state(
-        &state.unread_pane_ids,
-        &state.prev_status_map,
-        &state.unread_order,
-        state.unread_counter,
-        &state.hidden_pane_ids,
-        &state.hidden_groups,
-    );
+    let selected_pane_id =
+        state
+            .visible_items
+            .get(state.selected_index)
+            .and_then(|item| match item {
+                VisibleItem::Session { session, .. } => Some(session.pane_id.as_str()),
+                _ => None,
+            });
+    state::save_state(state::SaveArgs {
+        unread_pane_ids: &state.unread_pane_ids,
+        prev_status_map: &state.prev_status_map,
+        unread_order: &state.unread_order,
+        unread_counter: state.unread_counter,
+        hidden_pane_ids: &state.hidden_pane_ids,
+        hidden_groups: &state.hidden_groups,
+        collapsed_groups: &state.collapsed_groups,
+        selected_pane_id,
+        shared_state: state.config.shared_state,
+    });
 }
 
 fn hide_toggle_refresh(state: &mut AppState, selected_pane_target: &watch::Sender<Option<String>>) {
