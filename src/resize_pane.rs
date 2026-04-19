@@ -18,6 +18,12 @@ struct ResizeState {
     last_applied: Option<(String, u16, u16)>,
     configured_sessions: HashSet<String>,
     touched_windows: HashSet<String>,
+    zoomed: Option<ZoomState>,
+}
+
+struct ZoomState {
+    pane_target: String,
+    we_zoomed_it: bool,
 }
 
 fn parse_session_window(pane_target: &str) -> Option<(String, String)> {
@@ -38,11 +44,11 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>)
         let mut state = ResizeState::default();
 
         let debounce_duration = tokio::time::Duration::from_millis(150);
-        let mut debounce: Option<(tokio::time::Instant, String, u16, u16)> = None;
+        let mut debounce: Option<(tokio::time::Instant, String, String, u16, u16)> = None;
 
         loop {
             let debounce_sleep = match debounce {
-                Some((deadline, _, _, _)) => tokio::time::sleep_until(deadline),
+                Some((deadline, _, _, _, _)) => tokio::time::sleep_until(deadline),
                 None => tokio::time::sleep(tokio::time::Duration::from_secs(86400)),
             };
 
@@ -79,12 +85,12 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>)
                     let target_changed = state
                         .last_applied
                         .as_ref()
-                        .map(|(t, _, _)| t != &session_window)
+                        .map(|(p, _, _)| p != &pane_target)
                         .unwrap_or(true);
 
                     if target_changed {
                         debounce = None;
-                        apply_resize(&tmux, &session_window, &session, cols, rows, &mut state).await;
+                        apply_resize(&tmux, &pane_target, &session_window, &session, cols, rows, &mut state).await;
                     } else {
                         let same_dims = state
                             .last_applied
@@ -94,6 +100,7 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>)
                         if !same_dims {
                             debounce = Some((
                                 tokio::time::Instant::now() + debounce_duration,
+                                pane_target,
                                 session_window,
                                 cols,
                                 rows,
@@ -103,12 +110,12 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>)
                 }
 
                 _ = debounce_sleep, if debounce.is_some() => {
-                    if let Some((_, session_window, cols, rows)) = debounce.take() {
+                    if let Some((_, pane_target, session_window, cols, rows)) = debounce.take() {
                         let session = match session_window.split(':').next() {
                             Some(s) if !s.is_empty() => s.to_string(),
                             _ => continue,
                         };
-                        apply_resize(&tmux, &session_window, &session, cols, rows, &mut state).await;
+                        apply_resize(&tmux, &pane_target, &session_window, &session, cols, rows, &mut state).await;
                     }
                 }
             }
@@ -120,22 +127,65 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>)
 
 async fn apply_resize(
     tmux: &TmuxClient<'_>,
+    pane_target: &str,
     session_window: &str,
     session: &str,
     cols: u16,
     rows: u16,
     state: &mut ResizeState,
 ) {
+    transition_zoom(tmux, pane_target, &mut state.zoomed).await;
+
     if !state.configured_sessions.contains(session) {
         let _ = tmux.set_window_size_manual(session).await;
         state.configured_sessions.insert(session.to_string());
     }
     let _ = tmux.resize_window(session_window, cols, rows).await;
     state.touched_windows.insert(session_window.to_string());
-    state.last_applied = Some((session_window.to_string(), cols, rows));
+    state.last_applied = Some((pane_target.to_string(), cols, rows));
+}
+
+async fn transition_zoom(tmux: &TmuxClient<'_>, target_pane: &str, zoomed: &mut Option<ZoomState>) {
+    if let Some(current) = zoomed.as_ref() {
+        if current.pane_target == target_pane {
+            return;
+        }
+        if current.we_zoomed_it {
+            if let Ok(true) = tmux.is_pane_zoomed(&current.pane_target).await {
+                let _ = tmux.toggle_pane_zoom(&current.pane_target).await;
+            }
+        }
+        *zoomed = None;
+    }
+
+    match tmux.is_pane_zoomed(target_pane).await {
+        Ok(true) => {
+            *zoomed = Some(ZoomState {
+                pane_target: target_pane.to_string(),
+                we_zoomed_it: false,
+            });
+        }
+        Ok(false) => {
+            if tmux.toggle_pane_zoom(target_pane).await.is_ok() {
+                *zoomed = Some(ZoomState {
+                    pane_target: target_pane.to_string(),
+                    we_zoomed_it: true,
+                });
+            }
+        }
+        Err(_) => {}
+    }
 }
 
 async fn restore_windows(tmux: &TmuxClient<'_>, state: &ResizeState) {
+    if let Some(zoom) = state.zoomed.as_ref() {
+        if zoom.we_zoomed_it {
+            if let Ok(true) = tmux.is_pane_zoomed(&zoom.pane_target).await {
+                let _ = tmux.toggle_pane_zoom(&zoom.pane_target).await;
+            }
+        }
+    }
+
     let mut by_session: HashMap<String, Vec<String>> = HashMap::new();
     for window in &state.touched_windows {
         let session = match window.split(':').next() {

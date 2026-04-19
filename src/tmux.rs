@@ -235,6 +235,26 @@ impl<'a> TmuxClient<'a> {
         Ok(())
     }
 
+    pub async fn is_pane_zoomed(&self, pane_target: &str) -> Result<bool> {
+        let output = run_command(
+            "tmux",
+            &[
+                "display-message",
+                "-t",
+                pane_target,
+                "-p",
+                "#{window_zoomed_flag}",
+            ],
+        )
+        .await?;
+        Ok(output.trim() == "1")
+    }
+
+    pub async fn toggle_pane_zoom(&self, pane_target: &str) -> Result<()> {
+        run_command("tmux", &["resize-pane", "-Z", "-t", pane_target]).await?;
+        Ok(())
+    }
+
     pub async fn get_client_size(&self, session: &str) -> Result<Option<(u16, u16)>> {
         let output = run_command(
             "tmux",
