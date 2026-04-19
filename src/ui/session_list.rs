@@ -123,7 +123,13 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     };
                     let text = format!("{} {} {} ({})", arrow, status_icon, prefix, total_count);
                     let style = if is_selected {
-                        Style::default().fg(Color::White).bg(SELECTED_BG)
+                        if in_hidden_section {
+                            Style::default().fg(UNFOCUSED).bg(SELECTED_BG)
+                        } else {
+                            Style::default().fg(Color::White).bg(SELECTED_BG)
+                        }
+                    } else if in_hidden_section {
+                        Style::default().fg(UNFOCUSED)
                     } else {
                         Style::default().fg(Color::Rgb(0xCC, 0xCC, 0xCC))
                     };
