@@ -268,12 +268,12 @@ pub async fn run(
                     Event::Key(key) => {
                         let action = handle_key_event(&mut state, key, &target_tx);
                         if let Some(action) = action {
-                            process_action(&mut state, action, &target_tx).await;
+                            process_action(&mut state, action, &target_tx, &tx).await;
                         }
                     }
                     Event::Mouse(mouse) => {
                         if let Some(action) = handle_mouse_event(&mut state, mouse) {
-                            process_action(&mut state, action, &target_tx).await;
+                            process_action(&mut state, action, &target_tx, &tx).await;
                         }
                     }
                     _ => {}
@@ -314,6 +314,7 @@ async fn process_action(
     state: &mut AppState,
     action: Action,
     selected_pane_target: &watch::Sender<Option<String>>,
+    tx: &mpsc::UnboundedSender<Message>,
 ) {
     match action {
         Action::SwitchToPane(target) => {
@@ -383,13 +384,23 @@ async fn process_action(
             update_selected_target(state, selected_pane_target);
         }
         Action::ForwardScrollDown(target) => {
+            let tx = tx.clone();
             tokio::spawn(async move {
                 let _ = crate::tmux::send_scroll_down(&target).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
+                if let Ok(content) = crate::tmux::capture_pane_visible_colored(&target).await {
+                    let _ = tx.send(Message::PreviewUpdated(content));
+                }
             });
         }
         Action::ForwardScrollUp(target) => {
+            let tx = tx.clone();
             tokio::spawn(async move {
                 let _ = crate::tmux::send_scroll_up(&target).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
+                if let Ok(content) = crate::tmux::capture_pane_visible_colored(&target).await {
+                    let _ = tx.send(Message::PreviewUpdated(content));
+                }
             });
         }
     }
