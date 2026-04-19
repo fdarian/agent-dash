@@ -257,6 +257,11 @@ impl<'a> TmuxClient<'a> {
         Ok(())
     }
 
+    pub async fn send_keys(&self, pane_target: &str, keys: &str) -> Result<()> {
+        run_command("tmux", &["send-keys", "-t", pane_target, keys]).await?;
+        Ok(())
+    }
+
     pub async fn get_client_size(&self, session: &str) -> Result<Option<(u16, u16)>> {
         let output = run_command(
             "tmux",
