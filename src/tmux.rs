@@ -255,15 +255,15 @@ impl<'a> TmuxClient<'a> {
         Ok(())
     }
 
-    pub async fn get_client_size(&self, session: &str) -> Result<Option<(u16, u16)>> {
+    pub async fn get_window_size(&self, session_window: &str) -> Result<Option<(u16, u16)>> {
         let output = run_command(
             "tmux",
             &[
                 "display-message",
                 "-t",
-                session,
+                session_window,
                 "-p",
-                "#{client_width}x#{client_height}",
+                "#{window_width}x#{window_height}",
             ],
         )
         .await?;

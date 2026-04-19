@@ -17,7 +17,7 @@ pub struct ResizeRequest {
 struct ResizeState {
     last_applied: Option<(String, u16, u16)>,
     configured_sessions: HashSet<String>,
-    touched_windows: HashSet<String>,
+    original_window_sizes: HashMap<String, (u16, u16)>,
     zoomed: Option<ZoomState>,
 }
 
@@ -136,12 +136,18 @@ async fn apply_resize(
 
     transition_zoom(tmux, pane_target, &mut state.zoomed).await;
 
+    if !state.original_window_sizes.contains_key(session_window) {
+        if let Ok(Some(orig)) = tmux.get_window_size(session_window).await {
+            state
+                .original_window_sizes
+                .insert(session_window.to_string(), orig);
+        }
+    }
     if !state.configured_sessions.contains(session) {
         let _ = tmux.set_window_size_manual(session).await;
         state.configured_sessions.insert(session.to_string());
     }
     let _ = tmux.resize_window(session_window, cols, rows).await;
-    state.touched_windows.insert(session_window.to_string());
     state.last_applied = Some((pane_target.to_string(), cols, rows));
 }
 
@@ -187,27 +193,13 @@ async fn restore_windows(tmux: &TmuxClient<'_>, state: &ResizeState) {
         unzoom_if_owned(tmux, zoom).await;
     }
 
-    let mut by_session: HashMap<String, Vec<String>> = HashMap::new();
-    for window in &state.touched_windows {
-        let session = match window.split(':').next() {
-            Some(s) if !s.is_empty() => s.to_string(),
-            _ => continue,
-        };
-        by_session.entry(session).or_default().push(window.clone());
-    }
-
-    let resize_futures = by_session.into_iter().map(|(session, windows)| async move {
-        let dims = tmux.get_client_size(&session).await.ok().flatten();
-        if let Some((w, h)) = dims {
-            futures::future::join_all(
-                windows
-                    .iter()
-                    .map(|window| tmux.resize_window(window, w, h)),
-            )
-            .await;
-        }
-    });
-    futures::future::join_all(resize_futures).await;
+    futures::future::join_all(
+        state
+            .original_window_sizes
+            .iter()
+            .map(|(window, &(w, h))| tmux.resize_window(window, w, h)),
+    )
+    .await;
 
     futures::future::join_all(
         state
