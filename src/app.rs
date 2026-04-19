@@ -384,21 +384,17 @@ async fn process_action(
         }
         Action::ForwardScrollDown(target) => {
             let config = crate::config::load_config(false);
-            let tmux = TmuxClient::new(&config);
-            let _ = tmux.send_scroll_down(&target).await;
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            if let Ok(content) = tmux.capture_pane_content(&target).await {
-                state.preview_content = content;
-            }
+            tokio::spawn(async move {
+                let tmux = TmuxClient::new(&config);
+                let _ = tmux.send_scroll_down(&target).await;
+            });
         }
         Action::ForwardScrollUp(target) => {
             let config = crate::config::load_config(false);
-            let tmux = TmuxClient::new(&config);
-            let _ = tmux.send_scroll_up(&target).await;
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            if let Ok(content) = tmux.capture_pane_content(&target).await {
-                state.preview_content = content;
-            }
+            tokio::spawn(async move {
+                let tmux = TmuxClient::new(&config);
+                let _ = tmux.send_scroll_up(&target).await;
+            });
         }
     }
 }
