@@ -387,6 +387,7 @@ async fn process_action(
             let tx = tx.clone();
             tokio::spawn(async move {
                 let _ = crate::tmux::send_scroll_down(&target).await;
+                // Give tmux time to deliver the scroll sequence and the pane to repaint before capturing.
                 tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
                 if let Ok(content) = crate::tmux::capture_pane_visible_colored(&target).await {
                     let _ = tx.send(Message::PreviewUpdated(content));
@@ -397,6 +398,7 @@ async fn process_action(
             let tx = tx.clone();
             tokio::spawn(async move {
                 let _ = crate::tmux::send_scroll_up(&target).await;
+                // Give tmux time to deliver the scroll sequence and the pane to repaint before capturing.
                 tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
                 if let Ok(content) = crate::tmux::capture_pane_visible_colored(&target).await {
                     let _ = tx.send(Message::PreviewUpdated(content));
