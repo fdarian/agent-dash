@@ -692,17 +692,11 @@ fn handle_key_event(
                             tmux_session_name, ..
                         } => {
                             let group_name = tmux_session_name.clone();
-                            // Clear individual pane hides for this group
-                            state.hidden_pane_ids.retain(|pid| {
-                                !state
-                                    .sessions
-                                    .iter()
-                                    .any(|s| s.tmux_session_name == group_name && s.pane_id == *pid)
-                            });
-                            if !state.hidden_groups.remove(&group_name) {
-                                state.hidden_groups.insert(group_name);
+                            if !state.collapsed_groups.remove(&group_name) {
+                                state.collapsed_groups.insert(group_name);
                             }
-                            hide_toggle_refresh(state, selected_pane_target);
+                            refresh_visible_items(state);
+                            update_selected_target(state, selected_pane_target);
                         }
                         VisibleItem::Session { session, .. } => {
                             let pane_id = session.pane_id.clone();
@@ -722,6 +716,27 @@ fn handle_key_event(
                             hide_toggle_refresh(state, selected_pane_target);
                         }
                     }
+                }
+            }
+            None
+        }
+        KeyCode::Char('H') => {
+            if matches!(state.focus, Focus::Sessions) {
+                if let Some(VisibleItem::GroupHeader {
+                    tmux_session_name, ..
+                }) = state.visible_items.get(state.selected_index).cloned()
+                {
+                    let group_name = tmux_session_name.clone();
+                    state.hidden_pane_ids.retain(|pid| {
+                        !state
+                            .sessions
+                            .iter()
+                            .any(|s| s.tmux_session_name == group_name && s.pane_id == *pid)
+                    });
+                    if !state.hidden_groups.remove(&group_name) {
+                        state.hidden_groups.insert(group_name);
+                    }
+                    hide_toggle_refresh(state, selected_pane_target);
                 }
             }
             None
