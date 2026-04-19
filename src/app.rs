@@ -13,8 +13,8 @@ use crate::config::AppConfig;
 use crate::copy_mode;
 use crate::selection::{self, ContentPosition, PreviewSelection};
 use crate::session::{
-    build_flat_visible_items, build_visible_items, group_sessions_by_name, resolve_selected_index,
-    AgentSession, PromptState, SessionStatus, VisibleItem,
+    auto_select_index, build_flat_visible_items, build_visible_items, group_sessions_by_name,
+    resolve_selected_index, AgentSession, PromptState, SessionStatus, VisibleItem,
 };
 use crate::state;
 use crate::tmux::TmuxClient;
@@ -59,7 +59,6 @@ pub struct AppState {
     pub toast_message: Option<String>,
     pub toast_deadline: Option<std::time::Instant>,
     pub initial_focused_info: Option<(String, String)>,
-    pub initial_selected_pane_id: Option<String>,
     pub flat_view: bool,
     pub unread_order: HashMap<String, u64>,
     pub unread_counter: u64,
@@ -137,14 +136,13 @@ pub async fn run(
         toast_message: None,
         toast_deadline: None,
         initial_focused_info: focused_pane_info,
-        initial_selected_pane_id: loaded_state.selected_pane_id,
         flat_view: default_flat_view,
         unread_order: loaded_state.unread_order,
         unread_counter: loaded_state.unread_counter,
         hidden_pane_ids: loaded_state.hidden_pane_ids,
         hidden_groups: loaded_state.hidden_groups,
-        hidden_section_collapsed: true,
-        group_hidden_collapsed: HashSet::new(),
+        hidden_section_collapsed: loaded_state.hidden_section_collapsed,
+        group_hidden_collapsed: loaded_state.group_hidden_collapsed,
     };
 
     // Load cached sessions for instant first render
@@ -152,7 +150,9 @@ pub async fn run(
         state.sessions = cached.sessions;
         state.display_name_map = cached.display_names;
         refresh_visible_items(&mut state);
-        apply_initial_selection(&mut state);
+        if let Some(info) = state.initial_focused_info.take() {
+            state.selected_index = auto_select_index(&state.visible_items, &info.0, &info.1);
+        }
     }
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
@@ -420,7 +420,9 @@ fn handle_message(
             // Resolve selected index
             let old_items = std::mem::take(&mut state.visible_items);
             refresh_visible_items(state);
-            if !apply_initial_selection(state) {
+            if let Some(info) = state.initial_focused_info.take() {
+                state.selected_index = auto_select_index(&state.visible_items, &info.0, &info.1);
+            } else {
                 state.selected_index =
                     resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
             }
@@ -679,14 +681,12 @@ fn handle_key_event(
                 return None;
             }
             KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                clear_initial_selection(state);
                 let max = state.visible_items.len().saturating_sub(1);
                 state.selected_index = (state.selected_index + 1).min(max);
                 update_selected_target(state, selected_pane_target);
                 return None;
             }
             KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                clear_initial_selection(state);
                 state.selected_index = state.selected_index.saturating_sub(1);
                 update_selected_target(state, selected_pane_target);
                 return None;
@@ -698,7 +698,6 @@ fn handle_key_event(
                     key,
                 );
                 if changed {
-                    clear_initial_selection(state);
                     refresh_visible_items(state);
                     state.selected_index = 0;
                     update_selected_target(state, selected_pane_target);
@@ -737,7 +736,6 @@ fn handle_key_event(
         KeyCode::Char('j') | KeyCode::Down => {
             match state.focus {
                 Focus::Sessions => {
-                    clear_initial_selection(state);
                     if state.selected_index < state.visible_items.len().saturating_sub(1) {
                         state.selected_index += 1;
                         state.preview_content.clear();
@@ -754,7 +752,6 @@ fn handle_key_event(
         KeyCode::Char('k') | KeyCode::Up => {
             match state.focus {
                 Focus::Sessions => {
-                    clear_initial_selection(state);
                     if state.selected_index > 0 {
                         state.selected_index -= 1;
                         state.preview_content.clear();
@@ -775,6 +772,7 @@ fn handle_key_event(
                         VisibleItem::HiddenHeader { .. } => {
                             state.hidden_section_collapsed = !state.hidden_section_collapsed;
                             refresh_visible_items(state);
+                            persist_state(state);
                         }
                         VisibleItem::GroupHiddenHeader {
                             tmux_session_name, ..
@@ -784,6 +782,7 @@ fn handle_key_event(
                                 state.group_hidden_collapsed.insert(name);
                             }
                             refresh_visible_items(state);
+                            persist_state(state);
                         }
                         VisibleItem::GroupHeader {
                             tmux_session_name, ..
@@ -855,6 +854,7 @@ fn handle_key_event(
                         VisibleItem::HiddenHeader { is_collapsed, .. } if *is_collapsed => {
                             state.hidden_section_collapsed = false;
                             refresh_visible_items(state);
+                            persist_state(state);
                         }
                         VisibleItem::GroupHiddenHeader {
                             tmux_session_name,
@@ -864,6 +864,7 @@ fn handle_key_event(
                             let name = tmux_session_name.clone();
                             state.group_hidden_collapsed.remove(&name);
                             refresh_visible_items(state);
+                            persist_state(state);
                         }
                         _ => {}
                     }
@@ -1227,57 +1228,7 @@ fn scroll_preview_up(state: &mut AppState) {
     }
 }
 
-fn apply_initial_selection(state: &mut AppState) -> bool {
-    let focused = state.initial_focused_info.take();
-    let saved_pane = state.initial_selected_pane_id.take();
-
-    // Priority 1: tmux-focused pane is itself an agent session
-    if let Some(info) = focused.as_ref() {
-        if let Some(idx) = state.visible_items.iter().position(|item| {
-            matches!(item, VisibleItem::Session { session, .. } if session.pane_id == info.0)
-        }) {
-            state.selected_index = idx;
-            return true;
-        }
-    }
-
-    // Priority 2: previously-selected pane from persisted state
-    if let Some(pane_id) = saved_pane.as_ref() {
-        if let Some(idx) = state.visible_items.iter().position(|item| {
-            matches!(item, VisibleItem::Session { session, .. } if &session.pane_id == pane_id)
-        }) {
-            state.selected_index = idx;
-            return true;
-        }
-    }
-
-    // Priority 3: first agent session in the tmux-focused session
-    if let Some(info) = focused.as_ref() {
-        if let Some(idx) = state.visible_items.iter().position(|item| {
-            matches!(item, VisibleItem::Session { session, .. } if session.tmux_session_name == info.1)
-        }) {
-            state.selected_index = idx;
-            return true;
-        }
-    }
-
-    false
-}
-
-fn clear_initial_selection(state: &mut AppState) {
-    state.initial_focused_info = None;
-    state.initial_selected_pane_id = None;
-}
-
 fn persist_state(state: &AppState) {
-    let selected_pane_id =
-        state
-            .visible_items
-            .get(state.selected_index)
-            .and_then(|item| match item {
-                VisibleItem::Session { session, .. } => Some(session.pane_id.as_str()),
-                _ => None,
-            });
     state::save_state(state::SaveArgs {
         unread_pane_ids: &state.unread_pane_ids,
         prev_status_map: &state.prev_status_map,
@@ -1286,7 +1237,8 @@ fn persist_state(state: &AppState) {
         hidden_pane_ids: &state.hidden_pane_ids,
         hidden_groups: &state.hidden_groups,
         collapsed_groups: &state.collapsed_groups,
-        selected_pane_id,
+        hidden_section_collapsed: state.hidden_section_collapsed,
+        group_hidden_collapsed: &state.group_hidden_collapsed,
         shared_state: state.config.shared_state,
     });
 }

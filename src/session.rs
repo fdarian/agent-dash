@@ -360,6 +360,24 @@ pub fn resolve_selected_index(
     }
 }
 
+pub fn auto_select_index(
+    visible_items: &[VisibleItem],
+    focused_pane_id: &str,
+    focused_tmux_session_name: &str,
+) -> usize {
+    if let Some(idx) = visible_items.iter().position(|item| {
+        matches!(item, VisibleItem::Session { session, .. } if session.pane_id == focused_pane_id)
+    }) {
+        return idx;
+    }
+    if let Some(idx) = visible_items.iter().position(|item| {
+        matches!(item, VisibleItem::Session { session, .. } if session.tmux_session_name == focused_tmux_session_name)
+    }) {
+        return idx;
+    }
+    0
+}
+
 fn session_priority_tier(
     session: &AgentSession,
     unread_pane_ids: &HashSet<String>,
