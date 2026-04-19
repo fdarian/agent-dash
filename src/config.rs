@@ -33,6 +33,7 @@ struct ConfigFile {
     default_view: Option<String>,
     layout: Option<LayoutDirection>,
     shared_state: Option<bool>,
+    group_name_separator: Option<String>,
 }
 
 pub struct AppConfig {
@@ -42,6 +43,7 @@ pub struct AppConfig {
     pub default_flat_view: bool,
     pub layout: LayoutDirection,
     pub shared_state: bool,
+    pub group_name_separator: Option<String>,
 }
 
 fn config_path() -> PathBuf {
@@ -76,6 +78,10 @@ pub fn load_config(exit_on_switch: bool) -> AppConfig {
         .and_then(|c| c.shared_state)
         .unwrap_or(false);
 
+    let group_name_separator = config_file
+        .as_ref()
+        .and_then(|c| c.group_name_separator.clone());
+
     AppConfig {
         command,
         exit_on_switch,
@@ -83,6 +89,7 @@ pub fn load_config(exit_on_switch: bool) -> AppConfig {
         default_flat_view,
         layout,
         shared_state,
+        group_name_separator,
     }
 }
 

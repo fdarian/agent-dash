@@ -74,8 +74,13 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
         let mut in_global = false;
         let mut in_group = false;
         for (i, item) in state.visible_items.iter().enumerate() {
-            if matches!(item, VisibleItem::GroupHeader { .. }) && !in_global {
-                in_group = false;
+            match item {
+                VisibleItem::SubgroupHeader { .. } | VisibleItem::GroupHeader { .. }
+                    if !in_global =>
+                {
+                    in_group = false;
+                }
+                _ => {}
             }
             if in_global || in_group {
                 in_hidden_flags[i] = true;
@@ -101,6 +106,35 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
             let is_selected = i == state.selected_index;
             let in_hidden_section = in_hidden_flags[i];
             match item {
+                VisibleItem::SubgroupHeader {
+                    prefix,
+                    total_count,
+                    has_active,
+                    has_unread,
+                    is_collapsed,
+                } => {
+                    let arrow = if *is_collapsed { "▶" } else { "▼" };
+                    let status_icon = if *has_active {
+                        "●"
+                    } else if *has_unread {
+                        "◉"
+                    } else {
+                        "○"
+                    };
+                    let text = format!("{} {} {} ({})", arrow, status_icon, prefix, total_count);
+                    let style = if is_selected {
+                        if in_hidden_section {
+                            Style::default().fg(UNFOCUSED).bg(SELECTED_BG)
+                        } else {
+                            Style::default().fg(Color::White).bg(SELECTED_BG)
+                        }
+                    } else if in_hidden_section {
+                        Style::default().fg(UNFOCUSED)
+                    } else {
+                        Style::default().fg(Color::Rgb(0xCC, 0xCC, 0xCC))
+                    };
+                    ListItem::new(Line::from(text).style(style))
+                }
                 VisibleItem::GroupHiddenHeader {
                     count,
                     is_collapsed,
@@ -134,6 +168,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     has_active,
                     has_unread,
                     is_collapsed,
+                    in_subgroup,
                     ..
                 } => {
                     let arrow = if *is_collapsed { "▶" } else { "▼" };
@@ -144,9 +179,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     } else {
                         "○"
                     };
+                    let indent = if *in_subgroup { "  " } else { "" };
                     let text = format!(
-                        "{} {} {} ({})",
-                        arrow, status_icon, display_name, session_count
+                        "{}{} {} {} ({})",
+                        indent, arrow, status_icon, display_name, session_count
                     );
                     let style = if is_selected {
                         if in_hidden_section {
@@ -165,6 +201,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     session,
                     display_name,
                     is_unread,
+                    in_subgroup,
                     ..
                 } => {
                     let (icon, default_fg) = if in_hidden_section {
@@ -187,7 +224,13 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                         Style::default().fg(default_fg)
                     };
 
-                    let indent = if flat_view { " " } else { "  " };
+                    let indent = if flat_view {
+                        " "
+                    } else if *in_subgroup {
+                        "    "
+                    } else {
+                        "  "
+                    };
                     let left_text = format!("{}{} {}", indent, icon, label);
                     let prompt_state = state
                         .prompt_states

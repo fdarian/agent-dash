@@ -60,6 +60,13 @@ pub struct SessionGroup {
 
 #[derive(Debug, Clone)]
 pub enum VisibleItem {
+    SubgroupHeader {
+        prefix: String,
+        total_count: usize,
+        has_active: bool,
+        has_unread: bool,
+        is_collapsed: bool,
+    },
     GroupHeader {
         tmux_session_name: String,
         display_name: String,
@@ -67,11 +74,13 @@ pub enum VisibleItem {
         has_active: bool,
         has_unread: bool,
         is_collapsed: bool,
+        in_subgroup: bool,
     },
     Session {
         session: AgentSession,
         display_name: String,
         is_unread: bool,
+        in_subgroup: bool,
     },
     GroupHiddenHeader {
         tmux_session_name: String,
@@ -115,6 +124,8 @@ pub fn build_visible_items(
     hidden_section_collapsed: bool,
     group_hidden_collapsed: &HashSet<String>,
     include_hidden: bool,
+    group_name_separator: Option<&str>,
+    collapsed_subgroups: &HashSet<String>,
 ) -> Vec<VisibleItem> {
     let mut items = Vec::new();
     let mut visible_groups: Vec<(&SessionGroup, Vec<&AgentSession>)> = Vec::new();
@@ -178,142 +189,254 @@ pub fn build_visible_items(
         }
         Ordering::Equal
     });
-    for (group, visible_sessions) in visible_groups {
-        let has_active = visible_sessions
-            .iter()
-            .any(|s| s.status == SessionStatus::Active);
-        let has_unread = visible_sessions
-            .iter()
-            .any(|s| unread_pane_ids.contains(&s.pane_id));
-        let is_collapsed = collapsed_groups.contains(&group.tmux_session_name);
-        let display_name = display_name_map
-            .get(&group.tmux_session_name)
-            .cloned()
-            .unwrap_or_else(|| group.tmux_session_name.clone());
-        items.push(VisibleItem::GroupHeader {
-            tmux_session_name: group.tmux_session_name.clone(),
-            display_name: display_name.clone(),
-            session_count: visible_sessions.len(),
-            has_active,
-            has_unread,
-            is_collapsed,
-        });
-        if !is_collapsed {
-            for session in &visible_sessions {
-                items.push(VisibleItem::Session {
-                    session: (*session).clone(),
-                    display_name: display_name.clone(),
-                    is_unread: unread_pane_ids.contains(&session.pane_id),
-                });
+
+    emit_groups_with_subgrouping(
+        visible_groups,
+        &mut items,
+        collapsed_groups,
+        unread_pane_ids,
+        display_name_map,
+        hidden_pane_ids,
+        group_hidden_collapsed,
+        group_name_separator,
+        collapsed_subgroups,
+        !include_hidden,
+    );
+
+    if !include_hidden {
+        let mut hidden_groups_data: Vec<(&SessionGroup, Vec<&AgentSession>)> = Vec::new();
+        for group in groups {
+            if !hidden_groups.contains(&group.tmux_session_name) {
+                continue;
             }
-            if !include_hidden {
-                let hidden_in_group: Vec<&AgentSession> = group
-                    .sessions
+            let sessions: Vec<&AgentSession> = group.sessions.iter().collect();
+            hidden_groups_data.push((group, sessions));
+        }
+        for group in all_hidden_groups {
+            let sessions: Vec<&AgentSession> = group.sessions.iter().collect();
+            hidden_groups_data.push((group, sessions));
+        }
+
+        if !hidden_groups_data.is_empty() {
+            let hidden_item_count = hidden_groups_data.len();
+            let mut hidden_items = Vec::new();
+            emit_groups_with_subgrouping(
+                hidden_groups_data,
+                &mut hidden_items,
+                collapsed_groups,
+                unread_pane_ids,
+                display_name_map,
+                hidden_pane_ids,
+                group_hidden_collapsed,
+                group_name_separator,
+                collapsed_subgroups,
+                false,
+            );
+            items.push(VisibleItem::HiddenHeader {
+                count: hidden_item_count,
+                is_collapsed: hidden_section_collapsed,
+            });
+            if !hidden_section_collapsed {
+                items.extend(hidden_items);
+            }
+        }
+    }
+
+    items
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_groups_with_subgrouping<'a>(
+    groups: Vec<(&'a SessionGroup, Vec<&'a AgentSession>)>,
+    items: &mut Vec<VisibleItem>,
+    collapsed_groups: &HashSet<String>,
+    unread_pane_ids: &HashSet<String>,
+    display_name_map: &HashMap<String, String>,
+    hidden_pane_ids: &HashSet<String>,
+    group_hidden_collapsed: &HashSet<String>,
+    group_name_separator: Option<&str>,
+    collapsed_subgroups: &HashSet<String>,
+    with_hidden_subsection: bool,
+) {
+    if let Some(sep) = group_name_separator {
+        let mut prefix_map: indexmap::IndexMap<String, Vec<(&SessionGroup, Vec<&AgentSession>)>> =
+            indexmap::IndexMap::new();
+        for (group, sessions) in groups {
+            let display_name = display_name_map
+                .get(&group.tmux_session_name)
+                .map(String::as_str)
+                .unwrap_or(&group.tmux_session_name);
+            let prefix = display_name
+                .split_once(sep)
+                .map(|(p, _)| p.to_string())
+                .unwrap_or_else(|| display_name.to_string());
+            prefix_map
+                .entry(prefix)
+                .or_default()
+                .push((group, sessions));
+        }
+
+        for (prefix, sub_groups) in prefix_map {
+            let any_has_sep = sub_groups.iter().any(|(group, _)| {
+                let dn = display_name_map
+                    .get(&group.tmux_session_name)
+                    .map(String::as_str)
+                    .unwrap_or(&group.tmux_session_name);
+                dn.contains(sep)
+            });
+
+            if any_has_sep {
+                let total_count: usize = sub_groups.iter().map(|(_, ss)| ss.len()).sum();
+                let has_active = sub_groups
                     .iter()
-                    .filter(|s| hidden_pane_ids.contains(&s.pane_id))
-                    .collect();
-                if !hidden_in_group.is_empty() {
-                    let is_section_collapsed =
-                        group_hidden_collapsed.contains(&group.tmux_session_name);
-                    items.push(VisibleItem::GroupHiddenHeader {
-                        tmux_session_name: group.tmux_session_name.clone(),
-                        count: hidden_in_group.len(),
-                        is_collapsed: is_section_collapsed,
-                    });
-                    if !is_section_collapsed {
-                        for session in &hidden_in_group {
-                            items.push(VisibleItem::Session {
-                                session: (*session).clone(),
-                                display_name: display_name.clone(),
-                                is_unread: unread_pane_ids.contains(&session.pane_id),
-                            });
-                        }
+                    .flat_map(|(_, ss)| ss.iter())
+                    .any(|s| s.status == SessionStatus::Active);
+                let has_unread = sub_groups
+                    .iter()
+                    .flat_map(|(_, ss)| ss.iter())
+                    .any(|s| unread_pane_ids.contains(&s.pane_id));
+                let is_collapsed = collapsed_subgroups.contains(&prefix);
+                items.push(VisibleItem::SubgroupHeader {
+                    prefix: prefix.clone(),
+                    total_count,
+                    has_active,
+                    has_unread,
+                    is_collapsed,
+                });
+                if !is_collapsed {
+                    for (group, sessions) in sub_groups {
+                        let display_name = display_name_map
+                            .get(&group.tmux_session_name)
+                            .map(String::as_str)
+                            .unwrap_or(&group.tmux_session_name);
+                        let header_display = display_name
+                            .split_once(sep)
+                            .map(|(_, suffix)| suffix.to_string())
+                            .unwrap_or_else(|| display_name.to_string());
+                        emit_single_group(
+                            group,
+                            &header_display,
+                            display_name,
+                            sessions,
+                            items,
+                            collapsed_groups,
+                            unread_pane_ids,
+                            hidden_pane_ids,
+                            group_hidden_collapsed,
+                            true,
+                            with_hidden_subsection,
+                        );
+                    }
+                }
+            } else {
+                for (group, sessions) in sub_groups {
+                    let display_name = display_name_map
+                        .get(&group.tmux_session_name)
+                        .map(String::as_str)
+                        .unwrap_or(&group.tmux_session_name);
+                    emit_single_group(
+                        group,
+                        display_name,
+                        display_name,
+                        sessions,
+                        items,
+                        collapsed_groups,
+                        unread_pane_ids,
+                        hidden_pane_ids,
+                        group_hidden_collapsed,
+                        false,
+                        with_hidden_subsection,
+                    );
+                }
+            }
+        }
+    } else {
+        for (group, sessions) in groups {
+            let display_name = display_name_map
+                .get(&group.tmux_session_name)
+                .map(String::as_str)
+                .unwrap_or(&group.tmux_session_name);
+            emit_single_group(
+                group,
+                display_name,
+                display_name,
+                sessions,
+                items,
+                collapsed_groups,
+                unread_pane_ids,
+                hidden_pane_ids,
+                group_hidden_collapsed,
+                false,
+                with_hidden_subsection,
+            );
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_single_group<'a>(
+    group: &'a SessionGroup,
+    header_display: &str,
+    session_display: &str,
+    sessions: Vec<&'a AgentSession>,
+    items: &mut Vec<VisibleItem>,
+    collapsed_groups: &HashSet<String>,
+    unread_pane_ids: &HashSet<String>,
+    hidden_pane_ids: &HashSet<String>,
+    group_hidden_collapsed: &HashSet<String>,
+    in_subgroup: bool,
+    with_hidden_subsection: bool,
+) {
+    let has_active = sessions.iter().any(|s| s.status == SessionStatus::Active);
+    let has_unread = sessions
+        .iter()
+        .any(|s| unread_pane_ids.contains(&s.pane_id));
+    let is_collapsed = collapsed_groups.contains(&group.tmux_session_name);
+    items.push(VisibleItem::GroupHeader {
+        tmux_session_name: group.tmux_session_name.clone(),
+        display_name: header_display.to_string(),
+        session_count: sessions.len(),
+        has_active,
+        has_unread,
+        is_collapsed,
+        in_subgroup,
+    });
+    if !is_collapsed {
+        for session in &sessions {
+            items.push(VisibleItem::Session {
+                session: (*session).clone(),
+                display_name: session_display.to_string(),
+                is_unread: unread_pane_ids.contains(&session.pane_id),
+                in_subgroup,
+            });
+        }
+        if with_hidden_subsection {
+            let hidden_in_group: Vec<&AgentSession> = group
+                .sessions
+                .iter()
+                .filter(|s| hidden_pane_ids.contains(&s.pane_id))
+                .collect();
+            if !hidden_in_group.is_empty() {
+                let is_section_collapsed =
+                    group_hidden_collapsed.contains(&group.tmux_session_name);
+                items.push(VisibleItem::GroupHiddenHeader {
+                    tmux_session_name: group.tmux_session_name.clone(),
+                    count: hidden_in_group.len(),
+                    is_collapsed: is_section_collapsed,
+                });
+                if !is_section_collapsed {
+                    for session in &hidden_in_group {
+                        items.push(VisibleItem::Session {
+                            session: (*session).clone(),
+                            display_name: session_display.to_string(),
+                            is_unread: unread_pane_ids.contains(&session.pane_id),
+                            in_subgroup,
+                        });
                     }
                 }
             }
         }
     }
-
-    let mut hidden_items = Vec::new();
-    for group in groups {
-        if include_hidden || !hidden_groups.contains(&group.tmux_session_name) {
-            continue;
-        }
-        let display_name = display_name_map
-            .get(&group.tmux_session_name)
-            .cloned()
-            .unwrap_or_else(|| group.tmux_session_name.clone());
-        let has_active = group
-            .sessions
-            .iter()
-            .any(|s| s.status == SessionStatus::Active);
-        let has_unread = group
-            .sessions
-            .iter()
-            .any(|s| unread_pane_ids.contains(&s.pane_id));
-        let is_collapsed = collapsed_groups.contains(&group.tmux_session_name);
-        hidden_items.push(VisibleItem::GroupHeader {
-            tmux_session_name: group.tmux_session_name.clone(),
-            display_name: display_name.clone(),
-            session_count: group.sessions.len(),
-            has_active,
-            has_unread,
-            is_collapsed,
-        });
-        if !is_collapsed {
-            for session in &group.sessions {
-                hidden_items.push(VisibleItem::Session {
-                    session: session.clone(),
-                    display_name: display_name.clone(),
-                    is_unread: unread_pane_ids.contains(&session.pane_id),
-                });
-            }
-        }
-    }
-    for group in all_hidden_groups {
-        let display_name = display_name_map
-            .get(&group.tmux_session_name)
-            .cloned()
-            .unwrap_or_else(|| group.tmux_session_name.clone());
-        let has_active = group
-            .sessions
-            .iter()
-            .any(|s| s.status == SessionStatus::Active);
-        let has_unread = group
-            .sessions
-            .iter()
-            .any(|s| unread_pane_ids.contains(&s.pane_id));
-        let is_collapsed = collapsed_groups.contains(&group.tmux_session_name);
-        hidden_items.push(VisibleItem::GroupHeader {
-            tmux_session_name: group.tmux_session_name.clone(),
-            display_name: display_name.clone(),
-            session_count: group.sessions.len(),
-            has_active,
-            has_unread,
-            is_collapsed,
-        });
-        if !is_collapsed {
-            for session in &group.sessions {
-                hidden_items.push(VisibleItem::Session {
-                    session: session.clone(),
-                    display_name: display_name.clone(),
-                    is_unread: unread_pane_ids.contains(&session.pane_id),
-                });
-            }
-        }
-    }
-
-    if !hidden_items.is_empty() {
-        items.push(VisibleItem::HiddenHeader {
-            count: hidden_items.len(),
-            is_collapsed: hidden_section_collapsed,
-        });
-        if !hidden_section_collapsed {
-            items.extend(hidden_items);
-        }
-    }
-
-    items
 }
 
 pub fn resolve_selected_index(
@@ -347,6 +470,13 @@ pub fn resolve_selected_index(
             VisibleItem::HiddenHeader { .. } => {
                 if let Some(found) = new_items.iter().position(|item| {
                     matches!(item, VisibleItem::HiddenHeader { .. })
+                }) {
+                    return found;
+                }
+            }
+            VisibleItem::SubgroupHeader { prefix, .. } => {
+                if let Some(found) = new_items.iter().position(|item| {
+                    matches!(item, VisibleItem::SubgroupHeader { prefix: p, .. } if p == prefix)
                 }) {
                     return found;
                 }
@@ -429,9 +559,9 @@ pub fn build_flat_visible_items(
                 .unwrap_or_else(|| session.tmux_session_name.clone());
             VisibleItem::Session {
                 session: (*session).clone(),
-
                 display_name,
                 is_unread,
+                in_subgroup: false,
             }
         })
         .collect();
@@ -439,13 +569,15 @@ pub fn build_flat_visible_items(
     items.sort_by(|a, b| {
         let session_a = match a {
             VisibleItem::Session { session, .. } => session,
-            VisibleItem::GroupHeader { .. }
+            VisibleItem::SubgroupHeader { .. }
+            | VisibleItem::GroupHeader { .. }
             | VisibleItem::GroupHiddenHeader { .. }
             | VisibleItem::HiddenHeader { .. } => return Ordering::Equal,
         };
         let session_b = match b {
             VisibleItem::Session { session, .. } => session,
-            VisibleItem::GroupHeader { .. }
+            VisibleItem::SubgroupHeader { .. }
+            | VisibleItem::GroupHeader { .. }
             | VisibleItem::GroupHiddenHeader { .. }
             | VisibleItem::HiddenHeader { .. } => return Ordering::Equal,
         };
@@ -481,9 +613,9 @@ pub fn build_flat_visible_items(
                     .unwrap_or_else(|| session.tmux_session_name.clone());
                 items.push(VisibleItem::Session {
                     session: session.clone(),
-
                     display_name,
                     is_unread,
+                    in_subgroup: false,
                 });
             }
         }
