@@ -201,6 +201,84 @@ impl<'a> TmuxClient<'a> {
         }
         Some((pane_id, tmux_session_name))
     }
+
+    pub async fn set_window_size_manual(&self, session: &str) -> Result<()> {
+        run_command(
+            "tmux",
+            &["set-option", "-t", session, "window-size", "manual"],
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn resize_window(&self, session_window: &str, cols: u16, rows: u16) -> Result<()> {
+        let cols_str = cols.to_string();
+        let rows_str = rows.to_string();
+        run_command(
+            "tmux",
+            &[
+                "resize-window",
+                "-t",
+                session_window,
+                "-x",
+                &cols_str,
+                "-y",
+                &rows_str,
+            ],
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn unset_window_size(&self, session: &str) -> Result<()> {
+        run_command("tmux", &["set-option", "-u", "-t", session, "window-size"]).await?;
+        Ok(())
+    }
+
+    pub async fn is_pane_zoomed(&self, pane_target: &str) -> Result<bool> {
+        let output = run_command(
+            "tmux",
+            &[
+                "display-message",
+                "-t",
+                pane_target,
+                "-p",
+                "#{window_zoomed_flag}",
+            ],
+        )
+        .await?;
+        Ok(output.trim() == "1")
+    }
+
+    pub async fn toggle_pane_zoom(&self, pane_target: &str) -> Result<()> {
+        run_command("tmux", &["resize-pane", "-Z", "-t", pane_target]).await?;
+        Ok(())
+    }
+
+    pub async fn get_client_size(&self, session: &str) -> Result<Option<(u16, u16)>> {
+        let output = run_command(
+            "tmux",
+            &[
+                "display-message",
+                "-t",
+                session,
+                "-p",
+                "#{client_width}x#{client_height}",
+            ],
+        )
+        .await?;
+        let trimmed = output.trim();
+        let (w, h) = match trimmed.split_once('x') {
+            Some(pair) => pair,
+            None => return Ok(None),
+        };
+        let cols: u16 = w.parse()?;
+        let rows: u16 = h.parse()?;
+        if cols == 0 || rows == 0 {
+            return Ok(None);
+        }
+        Ok(Some((cols, rows)))
+    }
 }
 
 pub async fn capture_pane_visible(pane_target: &str) -> Result<String> {

@@ -11,6 +11,7 @@ use tokio::sync::watch;
 use crate::cache::{load_cached_sessions, save_cached_sessions, CachedSessionData};
 use crate::config::AppConfig;
 use crate::copy_mode;
+use crate::resize_pane;
 use crate::selection::{self, ContentPosition, PreviewSelection};
 use crate::session::{
     auto_select_index, build_flat_visible_items, build_visible_items, group_sessions_by_name,
@@ -246,6 +247,9 @@ pub async fn run(
     let fifo_path = pipe_watcher.fifo_path().to_string();
     crate::pipe_pane::spawn_preview_task(tx.clone(), target_rx, fifo_path);
 
+    let (resize_tx, resize_rx) = watch::channel::<Option<resize_pane::ResizeRequest>>(None);
+    let resize_handle = resize_pane::spawn_resize_task(resize_rx);
+
     let mut event_stream = EventStream::new();
 
     // Initial render
@@ -278,6 +282,8 @@ pub async fn run(
 
         terminal.draw(|frame| ui::render(frame, &mut state))?;
 
+        let _ = resize_tx.send(build_resize_request(&state));
+
         // Check toast expiry
         if let Some(deadline) = state.toast_deadline {
             if std::time::Instant::now() >= deadline {
@@ -293,6 +299,9 @@ pub async fn run(
 
     persist_state(&state);
     pipe_watcher.cleanup();
+
+    drop(resize_tx);
+    let _ = resize_handle.await;
 
     Ok(())
 }
@@ -1322,4 +1331,15 @@ fn hide_toggle_refresh(state: &mut AppState, selected_pane_target: &watch::Sende
     state.selected_index =
         resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
     update_selected_target(state, selected_pane_target);
+}
+
+fn build_resize_request(state: &AppState) -> Option<resize_pane::ResizeRequest> {
+    let pane_target = get_selected_pane_target(state)?;
+    let cols = state.preview_pane_area.width.saturating_sub(2);
+    let rows = state.preview_pane_area.height.saturating_sub(2);
+    Some(resize_pane::ResizeRequest {
+        pane_target,
+        cols,
+        rows,
+    })
 }
