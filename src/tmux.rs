@@ -257,24 +257,6 @@ impl<'a> TmuxClient<'a> {
         Ok(())
     }
 
-    pub async fn send_scroll_up(&self, pane_target: &str) -> Result<()> {
-        run_command(
-            "tmux",
-            &["send-keys", "-l", "-t", pane_target, "\x1b[<64;1;1M"],
-        )
-        .await?;
-        Ok(())
-    }
-
-    pub async fn send_scroll_down(&self, pane_target: &str) -> Result<()> {
-        run_command(
-            "tmux",
-            &["send-keys", "-l", "-t", pane_target, "\x1b[<65;1;1M"],
-        )
-        .await?;
-        Ok(())
-    }
-
     pub async fn get_client_size(&self, session: &str) -> Result<Option<(u16, u16)>> {
         let output = run_command(
             "tmux",
@@ -303,6 +285,24 @@ impl<'a> TmuxClient<'a> {
 
 pub async fn capture_pane_visible(pane_target: &str) -> Result<String> {
     run_command("tmux", &["capture-pane", "-p", "-t", pane_target]).await
+}
+
+pub async fn send_scroll_up(pane_target: &str) -> Result<()> {
+    run_command(
+        "tmux",
+        &["send-keys", "-l", "-t", pane_target, "\x1b[<64;1;1M"],
+    )
+    .await?;
+    Ok(())
+}
+
+pub async fn send_scroll_down(pane_target: &str) -> Result<()> {
+    run_command(
+        "tmux",
+        &["send-keys", "-l", "-t", pane_target, "\x1b[<65;1;1M"],
+    )
+    .await?;
+    Ok(())
 }
 
 pub struct CreatedPaneInfo {

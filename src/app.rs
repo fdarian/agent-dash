@@ -383,17 +383,13 @@ async fn process_action(
             update_selected_target(state, selected_pane_target);
         }
         Action::ForwardScrollDown(target) => {
-            let config = crate::config::load_config(false);
             tokio::spawn(async move {
-                let tmux = TmuxClient::new(&config);
-                let _ = tmux.send_scroll_down(&target).await;
+                let _ = crate::tmux::send_scroll_down(&target).await;
             });
         }
         Action::ForwardScrollUp(target) => {
-            let config = crate::config::load_config(false);
             tokio::spawn(async move {
-                let tmux = TmuxClient::new(&config);
-                let _ = tmux.send_scroll_up(&target).await;
+                let _ = crate::tmux::send_scroll_up(&target).await;
             });
         }
     }

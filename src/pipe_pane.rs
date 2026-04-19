@@ -66,7 +66,10 @@ pub fn spawn_preview_task(
 
         let mut debounce: Option<tokio::time::Instant> = None;
         let fallback_interval = tokio::time::Duration::from_secs(2);
-        let debounce_duration = tokio::time::Duration::from_millis(50);
+        let debounce_duration = match config.preview_scroll_mode {
+            crate::config::PreviewScrollMode::Virtualized => tokio::time::Duration::from_millis(16),
+            crate::config::PreviewScrollMode::Scrollback => tokio::time::Duration::from_millis(50),
+        };
 
         let mut fallback_deadline = tokio::time::Instant::now() + fallback_interval;
 
