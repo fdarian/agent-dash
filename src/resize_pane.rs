@@ -1,5 +1,6 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tokio::sync::watch;
+use tokio::task::JoinHandle;
 
 use crate::tmux::TmuxClient;
 
@@ -12,6 +13,13 @@ pub struct ResizeRequest {
     pub rows: u16,
 }
 
+#[derive(Default)]
+struct ResizeState {
+    last_applied: Option<(String, u16, u16)>,
+    configured_sessions: HashSet<String>,
+    touched_windows: HashSet<String>,
+}
+
 fn parse_session_window(pane_target: &str) -> Option<(String, String)> {
     let dot_pos = pane_target.rfind('.')?;
     let session_window = &pane_target[..dot_pos];
@@ -22,13 +30,12 @@ fn parse_session_window(pane_target: &str) -> Option<(String, String)> {
     Some((session_window.to_string(), session.to_string()))
 }
 
-pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>) {
+pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>) -> JoinHandle<()> {
     tokio::spawn(async move {
         let config = crate::config::load_config(false);
         let tmux = TmuxClient::new(&config);
 
-        let mut last_applied: Option<(String, u16, u16)> = None;
-        let mut configured_sessions: HashSet<String> = HashSet::new();
+        let mut state = ResizeState::default();
 
         let debounce_duration = tokio::time::Duration::from_millis(150);
         let mut debounce: Option<(tokio::time::Instant, String, u16, u16)> = None;
@@ -69,25 +76,18 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>)
                         }
                     };
 
-                    let target_changed = last_applied
+                    let target_changed = state
+                        .last_applied
                         .as_ref()
                         .map(|(t, _, _)| t != &session_window)
                         .unwrap_or(true);
 
                     if target_changed {
                         debounce = None;
-                        apply_resize(
-                            &tmux,
-                            &session_window,
-                            &session,
-                            cols,
-                            rows,
-                            &mut last_applied,
-                            &mut configured_sessions,
-                        )
-                        .await;
+                        apply_resize(&tmux, &session_window, &session, cols, rows, &mut state).await;
                     } else {
-                        let same_dims = last_applied
+                        let same_dims = state
+                            .last_applied
                             .as_ref()
                             .map(|(_, c, r)| *c == cols && *r == rows)
                             .unwrap_or(false);
@@ -108,21 +108,14 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>)
                             Some(s) if !s.is_empty() => s.to_string(),
                             _ => continue,
                         };
-                        apply_resize(
-                            &tmux,
-                            &session_window,
-                            &session,
-                            cols,
-                            rows,
-                            &mut last_applied,
-                            &mut configured_sessions,
-                        )
-                        .await;
+                        apply_resize(&tmux, &session_window, &session, cols, rows, &mut state).await;
                     }
                 }
             }
         }
-    });
+
+        restore_windows(&tmux, &state).await;
+    })
 }
 
 async fn apply_resize(
@@ -131,13 +124,36 @@ async fn apply_resize(
     session: &str,
     cols: u16,
     rows: u16,
-    last_applied: &mut Option<(String, u16, u16)>,
-    configured_sessions: &mut HashSet<String>,
+    state: &mut ResizeState,
 ) {
-    if !configured_sessions.contains(session) {
+    if !state.configured_sessions.contains(session) {
         let _ = tmux.set_window_size_manual(session).await;
-        configured_sessions.insert(session.to_string());
+        state.configured_sessions.insert(session.to_string());
     }
     let _ = tmux.resize_window(session_window, cols, rows).await;
-    *last_applied = Some((session_window.to_string(), cols, rows));
+    state.touched_windows.insert(session_window.to_string());
+    state.last_applied = Some((session_window.to_string(), cols, rows));
+}
+
+async fn restore_windows(tmux: &TmuxClient<'_>, state: &ResizeState) {
+    let mut by_session: HashMap<String, Vec<String>> = HashMap::new();
+    for window in &state.touched_windows {
+        let session = match window.split(':').next() {
+            Some(s) if !s.is_empty() => s.to_string(),
+            _ => continue,
+        };
+        by_session.entry(session).or_default().push(window.clone());
+    }
+
+    for (session, windows) in by_session {
+        if let Ok(Some((w, h))) = tmux.get_client_size(&session).await {
+            for window in &windows {
+                let _ = tmux.resize_window(window, w, h).await;
+            }
+        }
+    }
+
+    for session in &state.configured_sessions {
+        let _ = tmux.unset_window_size(session).await;
+    }
 }

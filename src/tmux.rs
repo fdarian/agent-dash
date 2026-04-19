@@ -229,6 +229,36 @@ impl<'a> TmuxClient<'a> {
         .await?;
         Ok(())
     }
+
+    pub async fn unset_window_size(&self, session: &str) -> Result<()> {
+        run_command("tmux", &["set-option", "-u", "-t", session, "window-size"]).await?;
+        Ok(())
+    }
+
+    pub async fn get_client_size(&self, session: &str) -> Result<Option<(u16, u16)>> {
+        let output = run_command(
+            "tmux",
+            &[
+                "display-message",
+                "-t",
+                session,
+                "-p",
+                "#{client_width}x#{client_height}",
+            ],
+        )
+        .await?;
+        let trimmed = output.trim();
+        let (w, h) = match trimmed.split_once('x') {
+            Some(pair) => pair,
+            None => return Ok(None),
+        };
+        let cols: u16 = w.parse()?;
+        let rows: u16 = h.parse()?;
+        if cols == 0 || rows == 0 {
+            return Ok(None);
+        }
+        Ok(Some((cols, rows)))
+    }
 }
 
 pub async fn capture_pane_visible(pane_target: &str) -> Result<String> {

@@ -240,7 +240,7 @@ pub async fn run(
     crate::pipe_pane::spawn_preview_task(tx.clone(), target_rx, fifo_path);
 
     let (resize_tx, resize_rx) = watch::channel::<Option<resize_pane::ResizeRequest>>(None);
-    resize_pane::spawn_resize_task(resize_rx);
+    let resize_handle = resize_pane::spawn_resize_task(resize_rx);
 
     let mut event_stream = EventStream::new();
 
@@ -290,6 +290,9 @@ pub async fn run(
     }
 
     pipe_watcher.cleanup();
+
+    drop(resize_tx);
+    let _ = resize_handle.await;
 
     Ok(())
 }
