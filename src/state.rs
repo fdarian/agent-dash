@@ -8,7 +8,8 @@ use std::path::PathBuf;
 #[serde(default)]
 struct InstanceState {
     collapsed_groups: Vec<String>,
-    selected_pane_id: Option<String>,
+    hidden_section_collapsed: Option<bool>,
+    group_hidden_collapsed: Vec<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -52,7 +53,8 @@ pub struct LoadedState {
     pub hidden_pane_ids: HashSet<String>,
     pub hidden_groups: HashSet<String>,
     pub collapsed_groups: HashSet<String>,
-    pub selected_pane_id: Option<String>,
+    pub hidden_section_collapsed: bool,
+    pub group_hidden_collapsed: HashSet<String>,
 }
 
 pub fn load_state(shared_state: bool) -> LoadedState {
@@ -60,16 +62,7 @@ pub fn load_state(shared_state: bool) -> LoadedState {
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
         Err(_) => {
-            return LoadedState {
-                unread_pane_ids: HashSet::new(),
-                prev_status_map: HashMap::new(),
-                unread_order: HashMap::new(),
-                unread_counter: 0,
-                hidden_pane_ids: HashSet::new(),
-                hidden_groups: HashSet::new(),
-                collapsed_groups: HashSet::new(),
-                selected_pane_id: None,
-            };
+            return empty_loaded_state();
         }
     };
     match serde_json::from_str::<PersistedState>(&content) {
@@ -86,19 +79,29 @@ pub fn load_state(shared_state: bool) -> LoadedState {
                 collapsed_groups: instance
                     .map(|i| i.collapsed_groups.iter().cloned().collect())
                     .unwrap_or_default(),
-                selected_pane_id: instance.and_then(|i| i.selected_pane_id.clone()),
+                hidden_section_collapsed: instance
+                    .and_then(|i| i.hidden_section_collapsed)
+                    .unwrap_or(true),
+                group_hidden_collapsed: instance
+                    .map(|i| i.group_hidden_collapsed.iter().cloned().collect())
+                    .unwrap_or_default(),
             }
         }
-        Err(_) => LoadedState {
-            unread_pane_ids: HashSet::new(),
-            prev_status_map: HashMap::new(),
-            unread_order: HashMap::new(),
-            unread_counter: 0,
-            hidden_pane_ids: HashSet::new(),
-            hidden_groups: HashSet::new(),
-            collapsed_groups: HashSet::new(),
-            selected_pane_id: None,
-        },
+        Err(_) => empty_loaded_state(),
+    }
+}
+
+fn empty_loaded_state() -> LoadedState {
+    LoadedState {
+        unread_pane_ids: HashSet::new(),
+        prev_status_map: HashMap::new(),
+        unread_order: HashMap::new(),
+        unread_counter: 0,
+        hidden_pane_ids: HashSet::new(),
+        hidden_groups: HashSet::new(),
+        collapsed_groups: HashSet::new(),
+        hidden_section_collapsed: true,
+        group_hidden_collapsed: HashSet::new(),
     }
 }
 
@@ -110,7 +113,8 @@ pub struct SaveArgs<'a> {
     pub hidden_pane_ids: &'a HashSet<String>,
     pub hidden_groups: &'a HashSet<String>,
     pub collapsed_groups: &'a HashSet<String>,
-    pub selected_pane_id: Option<&'a str>,
+    pub hidden_section_collapsed: bool,
+    pub group_hidden_collapsed: &'a HashSet<String>,
     pub shared_state: bool,
 }
 
@@ -131,7 +135,8 @@ pub fn save_state(args: SaveArgs) {
     let instance_id = resolve_instance_id(args.shared_state);
     let instance = persisted.per_instance.entry(instance_id).or_default();
     instance.collapsed_groups = args.collapsed_groups.iter().cloned().collect();
-    instance.selected_pane_id = args.selected_pane_id.map(|s| s.to_string());
+    instance.hidden_section_collapsed = Some(args.hidden_section_collapsed);
+    instance.group_hidden_collapsed = args.group_hidden_collapsed.iter().cloned().collect();
 
     let dir = state_dir();
     let _ = std::fs::create_dir_all(&dir);
