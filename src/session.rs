@@ -217,14 +217,24 @@ pub fn build_visible_items(
             .sessions
             .iter()
             .any(|s| unread_pane_ids.contains(&s.pane_id));
+        let is_collapsed = collapsed_groups.contains(&group.tmux_session_name);
         hidden_items.push(VisibleItem::GroupHeader {
             tmux_session_name: group.tmux_session_name.clone(),
             display_name: display_name.clone(),
             session_count: group.sessions.len(),
             has_active,
             has_unread,
-            is_collapsed: true,
+            is_collapsed,
         });
+        if !is_collapsed {
+            for session in &group.sessions {
+                hidden_items.push(VisibleItem::Session {
+                    session: session.clone(),
+                    display_name: display_name.clone(),
+                    is_unread: unread_pane_ids.contains(&session.pane_id),
+                });
+            }
+        }
     }
     for group in groups {
         if hidden_groups.contains(&group.tmux_session_name) {
