@@ -12,15 +12,49 @@ const SELECTED_BG: Color = Color::Rgb(0x44, 0x44, 0x44);
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, flat_view: bool) {
     let border_color = if focused { PRIMARY } else { UNFOCUSED };
-    let block = Block::default()
+    let filter_color = Color::Rgb(0x88, 0x88, 0x88);
+
+    let mut block = Block::default()
         .borders(Borders::ALL)
         .title(" [1] Sessions ")
         .border_style(Style::default().fg(border_color));
 
+    if state.session_filter_active || !state.session_filter_query.is_empty() {
+        let filter_line = if state.session_filter_query.is_empty() {
+            Line::from(vec![
+                Span::styled("/", Style::default().fg(filter_color)),
+                Span::styled(
+                    "Type to filter...",
+                    Style::default().fg(Color::Rgb(0x55, 0x55, 0x55)),
+                ),
+                Span::raw(" "),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled("/", Style::default().fg(filter_color)),
+                Span::styled(
+                    state.session_filter_query.as_str(),
+                    Style::default().fg(Color::White),
+                ),
+                Span::raw(" "),
+            ])
+        };
+        block = block.title_bottom(filter_line);
+
+        if state.session_filter_active {
+            let cursor_x = area.x + 1 + 1 + state.session_filter_cursor as u16;
+            frame.set_cursor_position((cursor_x, area.y + area.height - 1));
+        }
+    }
+
     if state.visible_items.is_empty() {
         let inner = block.inner(area);
         frame.render_widget(block, area);
-        let text = Line::from(" No agent sessions found").fg(UNFOCUSED);
+        let text = if !state.session_filter_query.is_empty() {
+            Line::from(" No matching sessions").fg(UNFOCUSED)
+        } else {
+            Line::from(" No agent sessions found").fg(UNFOCUSED)
+        };
         frame.render_widget(text, inner);
         return;
     }
