@@ -37,7 +37,7 @@ struct ConfigFile {
 pub struct AppConfig {
     pub command: String,
     pub exit_on_switch: bool,
-    pub session_name_formatter: Option<PathBuf>,
+    pub session_name_formatter: Option<Vec<String>>,
     pub default_flat_view: bool,
     pub layout: LayoutDirection,
 }
@@ -57,7 +57,7 @@ pub fn load_config(exit_on_switch: bool) -> AppConfig {
     let session_name_formatter = config_file
         .as_ref()
         .and_then(|c| c.session_name_formatter.as_ref())
-        .map(|p| expand_tilde(p));
+        .map(|s| parse_formatter_command(s));
 
     let default_flat_view = config_file
         .as_ref()
@@ -82,6 +82,17 @@ fn load_config_file() -> Option<ConfigFile> {
     let path = config_path();
     let content = std::fs::read_to_string(&path).ok()?;
     serde_json::from_str(&content).ok()
+}
+
+fn parse_formatter_command(s: &str) -> Vec<String> {
+    let mut parts = s.split_whitespace();
+    let Some(cmd) = parts.next() else {
+        return Vec::new();
+    };
+    let exe = expand_tilde(cmd).to_string_lossy().into_owned();
+    let mut result = vec![exe];
+    result.extend(parts.map(|p| p.to_string()));
+    result
 }
 
 fn expand_tilde(path: &str) -> PathBuf {

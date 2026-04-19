@@ -176,11 +176,17 @@ pub async fn run(
 
                 let mut display_names = HashMap::new();
                 for name in &unique_names {
-                    let formatted = if let Some(ref path) = formatter_path {
+                    let formatted = if let Some(ref parts) = formatter_path {
                         if let Some(cached) = formatter_cache.get(name) {
                             cached.clone()
                         } else {
-                            match tokio::process::Command::new(path).arg(name).output().await {
+                            let (cmd, pre_args) = parts.split_first().unwrap();
+                            match tokio::process::Command::new(cmd)
+                                .args(pre_args)
+                                .arg(name)
+                                .output()
+                                .await
+                            {
                                 Ok(output) if output.status.success() => {
                                     let result =
                                         String::from_utf8_lossy(&output.stdout).trim().to_string();
