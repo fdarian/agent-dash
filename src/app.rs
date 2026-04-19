@@ -649,6 +649,17 @@ fn handle_key_event(
                 state.session_filter_active = false;
                 return None;
             }
+            KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                let max = state.visible_items.len().saturating_sub(1);
+                state.selected_index = (state.selected_index + 1).min(max);
+                update_selected_target(state, selected_pane_target);
+                return None;
+            }
+            KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                state.selected_index = state.selected_index.saturating_sub(1);
+                update_selected_target(state, selected_pane_target);
+                return None;
+            }
             _ => {
                 let changed = apply_text_input(
                     &mut state.session_filter_query,
