@@ -73,6 +73,11 @@ pub enum VisibleItem {
         display_name: String,
         is_unread: bool,
     },
+    GroupHiddenHeader {
+        tmux_session_name: String,
+        count: usize,
+        is_collapsed: bool,
+    },
     HiddenHeader {
         count: usize,
         is_collapsed: bool,
@@ -108,9 +113,11 @@ pub fn build_visible_items(
     hidden_pane_ids: &HashSet<String>,
     hidden_groups: &HashSet<String>,
     hidden_section_collapsed: bool,
+    group_hidden_collapsed: &HashSet<String>,
 ) -> Vec<VisibleItem> {
     let mut items = Vec::new();
     let mut visible_groups: Vec<(&SessionGroup, Vec<&AgentSession>)> = Vec::new();
+    let mut all_hidden_groups: Vec<&SessionGroup> = Vec::new();
     for group in groups {
         if hidden_groups.contains(&group.tmux_session_name) {
             continue;
@@ -121,6 +128,7 @@ pub fn build_visible_items(
             .filter(|s| !hidden_pane_ids.contains(&s.pane_id))
             .collect();
         if visible_sessions.is_empty() {
+            all_hidden_groups.push(group);
             continue;
         }
         visible_sessions.sort_by(|a, b| {
@@ -197,6 +205,29 @@ pub fn build_visible_items(
                     is_unread: unread_pane_ids.contains(&session.pane_id),
                 });
             }
+            let hidden_in_group: Vec<&AgentSession> = group
+                .sessions
+                .iter()
+                .filter(|s| hidden_pane_ids.contains(&s.pane_id))
+                .collect();
+            if !hidden_in_group.is_empty() {
+                let is_section_collapsed =
+                    group_hidden_collapsed.contains(&group.tmux_session_name);
+                items.push(VisibleItem::GroupHiddenHeader {
+                    tmux_session_name: group.tmux_session_name.clone(),
+                    count: hidden_in_group.len(),
+                    is_collapsed: is_section_collapsed,
+                });
+                if !is_section_collapsed {
+                    for session in &hidden_in_group {
+                        items.push(VisibleItem::Session {
+                            session: (*session).clone(),
+                            display_name: display_name.clone(),
+                            is_unread: unread_pane_ids.contains(&session.pane_id),
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -236,24 +267,36 @@ pub fn build_visible_items(
             }
         }
     }
-    for group in groups {
-        if hidden_groups.contains(&group.tmux_session_name) {
-            continue;
-        }
+    for group in all_hidden_groups {
         let display_name = display_name_map
             .get(&group.tmux_session_name)
             .cloned()
             .unwrap_or_else(|| group.tmux_session_name.clone());
-        for session in &group.sessions {
-            if !hidden_pane_ids.contains(&session.pane_id) {
-                continue;
+        let has_active = group
+            .sessions
+            .iter()
+            .any(|s| s.status == SessionStatus::Active);
+        let has_unread = group
+            .sessions
+            .iter()
+            .any(|s| unread_pane_ids.contains(&s.pane_id));
+        let is_collapsed = collapsed_groups.contains(&group.tmux_session_name);
+        hidden_items.push(VisibleItem::GroupHeader {
+            tmux_session_name: group.tmux_session_name.clone(),
+            display_name: display_name.clone(),
+            session_count: group.sessions.len(),
+            has_active,
+            has_unread,
+            is_collapsed,
+        });
+        if !is_collapsed {
+            for session in &group.sessions {
+                hidden_items.push(VisibleItem::Session {
+                    session: session.clone(),
+                    display_name: display_name.clone(),
+                    is_unread: unread_pane_ids.contains(&session.pane_id),
+                });
             }
-            hidden_items.push(VisibleItem::Session {
-                session: session.clone(),
-
-                display_name: display_name.clone(),
-                is_unread: unread_pane_ids.contains(&session.pane_id),
-            });
         }
     }
 
@@ -287,6 +330,13 @@ pub fn resolve_selected_index(
             VisibleItem::GroupHeader { tmux_session_name, .. } => {
                 if let Some(found) = new_items.iter().position(|item| {
                     matches!(item, VisibleItem::GroupHeader { tmux_session_name: name, .. } if name == tmux_session_name)
+                }) {
+                    return found;
+                }
+            }
+            VisibleItem::GroupHiddenHeader { tmux_session_name, .. } => {
+                if let Some(found) = new_items.iter().position(|item| {
+                    matches!(item, VisibleItem::GroupHiddenHeader { tmux_session_name: name, .. } if name == tmux_session_name)
                 }) {
                     return found;
                 }
@@ -386,15 +436,15 @@ pub fn build_flat_visible_items(
     items.sort_by(|a, b| {
         let session_a = match a {
             VisibleItem::Session { session, .. } => session,
-            VisibleItem::GroupHeader { .. } | VisibleItem::HiddenHeader { .. } => {
-                return Ordering::Equal
-            }
+            VisibleItem::GroupHeader { .. }
+            | VisibleItem::GroupHiddenHeader { .. }
+            | VisibleItem::HiddenHeader { .. } => return Ordering::Equal,
         };
         let session_b = match b {
             VisibleItem::Session { session, .. } => session,
-            VisibleItem::GroupHeader { .. } | VisibleItem::HiddenHeader { .. } => {
-                return Ordering::Equal
-            }
+            VisibleItem::GroupHeader { .. }
+            | VisibleItem::GroupHiddenHeader { .. }
+            | VisibleItem::HiddenHeader { .. } => return Ordering::Equal,
         };
 
         let tier_a = session_priority_tier(session_a, unread_pane_ids, prompt_states);

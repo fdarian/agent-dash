@@ -25,10 +25,29 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
         return;
     }
 
-    let hidden_header_idx = state
-        .visible_items
-        .iter()
-        .position(|item| matches!(item, VisibleItem::HiddenHeader { .. }));
+    let mut in_hidden_flags = vec![false; state.visible_items.len()];
+    {
+        let mut in_global = false;
+        let mut in_group = false;
+        for (i, item) in state.visible_items.iter().enumerate() {
+            if in_global || in_group {
+                in_hidden_flags[i] = true;
+            }
+            match item {
+                VisibleItem::HiddenHeader { .. } => {
+                    in_global = true;
+                    in_group = false;
+                }
+                VisibleItem::GroupHiddenHeader { .. } => {
+                    in_group = true;
+                }
+                VisibleItem::GroupHeader { .. } if !in_global => {
+                    in_group = false;
+                }
+                _ => {}
+            }
+        }
+    }
 
     let items: Vec<ListItem> = state
         .visible_items
@@ -36,8 +55,22 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
         .enumerate()
         .map(|(i, item)| {
             let is_selected = i == state.selected_index;
-            let in_hidden_section = hidden_header_idx.is_some_and(|idx| i > idx);
+            let in_hidden_section = in_hidden_flags[i];
             match item {
+                VisibleItem::GroupHiddenHeader {
+                    count,
+                    is_collapsed,
+                    ..
+                } => {
+                    let arrow = if *is_collapsed { "▶" } else { "▼" };
+                    let text = format!("  {} Hidden ({})", arrow, count);
+                    let style = if is_selected {
+                        Style::default().fg(UNFOCUSED).bg(SELECTED_BG)
+                    } else {
+                        Style::default().fg(UNFOCUSED)
+                    };
+                    ListItem::new(Line::from(text).style(style))
+                }
                 VisibleItem::HiddenHeader {
                     count,
                     is_collapsed,

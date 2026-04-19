@@ -61,6 +61,7 @@ pub struct AppState {
     pub hidden_pane_ids: HashSet<String>,
     pub hidden_groups: HashSet<String>,
     pub hidden_section_collapsed: bool,
+    pub group_hidden_collapsed: HashSet<String>,
 }
 
 pub enum Message {
@@ -133,6 +134,7 @@ pub async fn run(
         hidden_pane_ids: loaded_state.hidden_pane_ids,
         hidden_groups: loaded_state.hidden_groups,
         hidden_section_collapsed: true,
+        group_hidden_collapsed: HashSet::new(),
     };
 
     // Load cached sessions for instant first render
@@ -688,6 +690,15 @@ fn handle_key_event(
                             state.hidden_section_collapsed = !state.hidden_section_collapsed;
                             refresh_visible_items(state);
                         }
+                        VisibleItem::GroupHiddenHeader {
+                            tmux_session_name, ..
+                        } => {
+                            let name = tmux_session_name.clone();
+                            if !state.group_hidden_collapsed.remove(&name) {
+                                state.group_hidden_collapsed.insert(name);
+                            }
+                            refresh_visible_items(state);
+                        }
                         VisibleItem::GroupHeader {
                             tmux_session_name, ..
                         } => {
@@ -757,6 +768,15 @@ fn handle_key_event(
                             state.hidden_section_collapsed = false;
                             refresh_visible_items(state);
                         }
+                        VisibleItem::GroupHiddenHeader {
+                            tmux_session_name,
+                            is_collapsed,
+                            ..
+                        } if *is_collapsed => {
+                            let name = tmux_session_name.clone();
+                            state.group_hidden_collapsed.remove(&name);
+                            refresh_visible_items(state);
+                        }
                         _ => {}
                     }
                 }
@@ -777,7 +797,9 @@ fn handle_key_event(
                     VisibleItem::GroupHeader {
                         tmux_session_name, ..
                     } => Some(tmux_session_name.clone()),
-                    VisibleItem::HiddenHeader { .. } => None,
+                    VisibleItem::HiddenHeader { .. } | VisibleItem::GroupHiddenHeader { .. } => {
+                        None
+                    }
                 };
                 if let Some(target) = target {
                     if state.config.exit_on_switch {
@@ -816,7 +838,8 @@ fn handle_key_event(
                         VisibleItem::GroupHeader {
                             tmux_session_name, ..
                         } => (tmux_session_name.clone(), tmux_session_name.clone()),
-                        VisibleItem::HiddenHeader { .. } => return None,
+                        VisibleItem::HiddenHeader { .. }
+                        | VisibleItem::GroupHiddenHeader { .. } => return None,
                     };
                     return Some(Action::CreateSession {
                         tmux_session_name,
@@ -1024,6 +1047,7 @@ fn refresh_visible_items(state: &mut AppState) {
             &state.hidden_pane_ids,
             &state.hidden_groups,
             state.hidden_section_collapsed,
+            &state.group_hidden_collapsed,
         );
     }
 }
