@@ -114,18 +114,19 @@ pub fn build_visible_items(
     hidden_groups: &HashSet<String>,
     hidden_section_collapsed: bool,
     group_hidden_collapsed: &HashSet<String>,
+    include_hidden: bool,
 ) -> Vec<VisibleItem> {
     let mut items = Vec::new();
     let mut visible_groups: Vec<(&SessionGroup, Vec<&AgentSession>)> = Vec::new();
     let mut all_hidden_groups: Vec<&SessionGroup> = Vec::new();
     for group in groups {
-        if hidden_groups.contains(&group.tmux_session_name) {
+        if !include_hidden && hidden_groups.contains(&group.tmux_session_name) {
             continue;
         }
         let mut visible_sessions: Vec<&AgentSession> = group
             .sessions
             .iter()
-            .filter(|s| !hidden_pane_ids.contains(&s.pane_id))
+            .filter(|s| include_hidden || !hidden_pane_ids.contains(&s.pane_id))
             .collect();
         if visible_sessions.is_empty() {
             all_hidden_groups.push(group);
@@ -205,26 +206,28 @@ pub fn build_visible_items(
                     is_unread: unread_pane_ids.contains(&session.pane_id),
                 });
             }
-            let hidden_in_group: Vec<&AgentSession> = group
-                .sessions
-                .iter()
-                .filter(|s| hidden_pane_ids.contains(&s.pane_id))
-                .collect();
-            if !hidden_in_group.is_empty() {
-                let is_section_collapsed =
-                    group_hidden_collapsed.contains(&group.tmux_session_name);
-                items.push(VisibleItem::GroupHiddenHeader {
-                    tmux_session_name: group.tmux_session_name.clone(),
-                    count: hidden_in_group.len(),
-                    is_collapsed: is_section_collapsed,
-                });
-                if !is_section_collapsed {
-                    for session in &hidden_in_group {
-                        items.push(VisibleItem::Session {
-                            session: (*session).clone(),
-                            display_name: display_name.clone(),
-                            is_unread: unread_pane_ids.contains(&session.pane_id),
-                        });
+            if !include_hidden {
+                let hidden_in_group: Vec<&AgentSession> = group
+                    .sessions
+                    .iter()
+                    .filter(|s| hidden_pane_ids.contains(&s.pane_id))
+                    .collect();
+                if !hidden_in_group.is_empty() {
+                    let is_section_collapsed =
+                        group_hidden_collapsed.contains(&group.tmux_session_name);
+                    items.push(VisibleItem::GroupHiddenHeader {
+                        tmux_session_name: group.tmux_session_name.clone(),
+                        count: hidden_in_group.len(),
+                        is_collapsed: is_section_collapsed,
+                    });
+                    if !is_section_collapsed {
+                        for session in &hidden_in_group {
+                            items.push(VisibleItem::Session {
+                                session: (*session).clone(),
+                                display_name: display_name.clone(),
+                                is_unread: unread_pane_ids.contains(&session.pane_id),
+                            });
+                        }
                     }
                 }
             }
@@ -233,7 +236,7 @@ pub fn build_visible_items(
 
     let mut hidden_items = Vec::new();
     for group in groups {
-        if !hidden_groups.contains(&group.tmux_session_name) {
+        if include_hidden || !hidden_groups.contains(&group.tmux_session_name) {
             continue;
         }
         let display_name = display_name_map
@@ -410,10 +413,13 @@ pub fn build_flat_visible_items(
     hidden_pane_ids: &HashSet<String>,
     hidden_groups: &HashSet<String>,
     hidden_section_collapsed: bool,
+    include_hidden: bool,
 ) -> Vec<VisibleItem> {
     let (hidden_sessions, visible_sessions): (Vec<&AgentSession>, Vec<&AgentSession>) =
         sessions.iter().partition(|s| {
-            hidden_pane_ids.contains(&s.pane_id) || hidden_groups.contains(&s.tmux_session_name)
+            !include_hidden
+                && (hidden_pane_ids.contains(&s.pane_id)
+                    || hidden_groups.contains(&s.tmux_session_name))
         });
 
     let mut items: Vec<VisibleItem> = visible_sessions

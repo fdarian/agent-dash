@@ -2,6 +2,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
 
 use crate::app::AppState;
+use crate::filter_query::parse_filter_query;
 use crate::session::{PromptState, SessionStatus, VisibleItem};
 
 const PRIMARY: Color = Color::Rgb(0xD9, 0x77, 0x57);
@@ -13,6 +14,9 @@ const SELECTED_BG: Color = Color::Rgb(0x44, 0x44, 0x44);
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, flat_view: bool) {
     let border_color = if focused { PRIMARY } else { UNFOCUSED };
     let filter_color = Color::Rgb(0x88, 0x88, 0x88);
+    let flag_color = Color::Rgb(0x61, 0x96, 0xCC);
+
+    let parsed = parse_filter_query(&state.session_filter_query);
 
     let mut block = Block::default()
         .borders(Borders::ALL)
@@ -30,14 +34,20 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                 Span::raw(" "),
             ])
         } else {
-            Line::from(vec![
-                Span::styled("/", Style::default().fg(filter_color)),
-                Span::styled(
-                    state.session_filter_query.as_str(),
-                    Style::default().fg(Color::White),
-                ),
-                Span::raw(" "),
-            ])
+            let mut spans = vec![Span::styled("/", Style::default().fg(filter_color))];
+            for (i, token) in state.session_filter_query.split_whitespace().enumerate() {
+                if i > 0 {
+                    spans.push(Span::raw(" "));
+                }
+                let lower = token.to_lowercase();
+                if lower == "is:h" || lower == "is:hidden" {
+                    spans.push(Span::styled(token, Style::default().fg(flag_color)));
+                } else {
+                    spans.push(Span::styled(token, Style::default().fg(Color::White)));
+                }
+            }
+            spans.push(Span::raw(" "));
+            Line::from(spans)
         };
         block = block.title_bottom(filter_line);
 
@@ -185,9 +195,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                         .unwrap_or(&PromptState::None);
                     let inner_width = area.width.saturating_sub(2) as usize;
 
-                    let show_group_tag = !state.session_filter_query.is_empty()
-                        && !in_hidden_section
-                        && !session.title.is_empty();
+                    let show_group_tag =
+                        !parsed.text.is_empty() && !in_hidden_section && !session.title.is_empty();
 
                     if *prompt_state == PromptState::None || in_hidden_section {
                         if show_group_tag {
