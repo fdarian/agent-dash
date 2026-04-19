@@ -1,5 +1,6 @@
 /target
 .claude/worktrees/**
+.worktrees/**
 
 # Dependencies
 node_modules/
