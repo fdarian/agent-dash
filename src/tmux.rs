@@ -1,4 +1,4 @@
-use crate::config::AppConfig;
+use crate::config::{AppConfig, PreviewScrollMode};
 use crate::session::{parse_session_status, AgentSession};
 use anyhow::{anyhow, Result};
 use tokio::process::Command;
@@ -83,11 +83,13 @@ impl<'a> TmuxClient<'a> {
     }
 
     pub async fn capture_pane_content(&self, pane_target: &str) -> Result<String> {
-        run_command(
-            "tmux",
-            &["capture-pane", "-e", "-t", pane_target, "-p", "-S", "-"],
-        )
-        .await
+        let args: &[&str] = match self.config.preview_scroll_mode {
+            PreviewScrollMode::Scrollback => {
+                &["capture-pane", "-e", "-t", pane_target, "-p", "-S", "-"]
+            }
+            PreviewScrollMode::Virtualized => &["capture-pane", "-e", "-t", pane_target, "-p"],
+        };
+        run_command("tmux", args).await
     }
 
     pub async fn start_pipe_pane(&self, pane_target: &str, fifo_path: &str) -> Result<()> {
@@ -283,6 +285,28 @@ impl<'a> TmuxClient<'a> {
 
 pub async fn capture_pane_visible(pane_target: &str) -> Result<String> {
     run_command("tmux", &["capture-pane", "-p", "-t", pane_target]).await
+}
+
+pub async fn capture_pane_visible_colored(pane_target: &str) -> Result<String> {
+    run_command("tmux", &["capture-pane", "-e", "-p", "-t", pane_target]).await
+}
+
+pub async fn send_scroll_up(pane_target: &str) -> Result<()> {
+    run_command(
+        "tmux",
+        &["send-keys", "-l", "-t", pane_target, "\x1b[<64;1;1M"],
+    )
+    .await?;
+    Ok(())
+}
+
+pub async fn send_scroll_down(pane_target: &str) -> Result<()> {
+    run_command(
+        "tmux",
+        &["send-keys", "-l", "-t", pane_target, "\x1b[<65;1;1M"],
+    )
+    .await?;
+    Ok(())
 }
 
 pub struct CreatedPaneInfo {

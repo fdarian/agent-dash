@@ -8,6 +8,30 @@ pub enum LayoutDirection {
     Horizontal,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PreviewScrollMode {
+    #[default]
+    Scrollback,
+    Virtualized,
+}
+
+impl<'de> Deserialize<'de> for PreviewScrollMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "scrollback" => Ok(PreviewScrollMode::Scrollback),
+            "virtualized" => Ok(PreviewScrollMode::Virtualized),
+            _ => Err(serde::de::Error::unknown_variant(
+                &s,
+                &["scrollback", "virtualized"],
+            )),
+        }
+    }
+}
+
 impl<'de> Deserialize<'de> for LayoutDirection {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -34,6 +58,7 @@ struct ConfigFile {
     layout: Option<LayoutDirection>,
     shared_state: Option<bool>,
     group_name_separator: Option<String>,
+    preview_scroll_mode: Option<PreviewScrollMode>,
 }
 
 pub struct AppConfig {
@@ -44,6 +69,7 @@ pub struct AppConfig {
     pub layout: LayoutDirection,
     pub shared_state: bool,
     pub group_name_separator: Option<String>,
+    pub preview_scroll_mode: PreviewScrollMode,
 }
 
 fn config_path() -> PathBuf {
@@ -82,6 +108,11 @@ pub fn load_config(exit_on_switch: bool) -> AppConfig {
         .as_ref()
         .and_then(|c| c.group_name_separator.clone());
 
+    let preview_scroll_mode = config_file
+        .as_ref()
+        .and_then(|c| c.preview_scroll_mode)
+        .unwrap_or_default();
+
     AppConfig {
         command,
         exit_on_switch,
@@ -90,6 +121,7 @@ pub fn load_config(exit_on_switch: bool) -> AppConfig {
         layout,
         shared_state,
         group_name_separator,
+        preview_scroll_mode,
     }
 }
 

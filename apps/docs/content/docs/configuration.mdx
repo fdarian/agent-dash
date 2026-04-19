@@ -37,6 +37,15 @@ Set to `"flat"` to disable session grouping by default. When unset, sessions are
 
 Path to an executable that formats session display names. Supports `~/` expansion for home directory paths. The formatter receives the raw session name and should output the formatted name.
 
+### previewScrollMode
+
+Controls how scrolling works in the preview pane.
+
+| Value | Description |
+|-------|-------------|
+| `"scrollback"` | Captures the full tmux scrollback history so you can scroll through past output (default) |
+| `"virtualized"` | Forwards scroll events to the running app (e.g. Claude Code) so it handles its own viewport |
+
 ## Data Storage
 
 | Path | Purpose |

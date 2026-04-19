@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 use tokio::sync::watch;
 
 use crate::cache::{load_cached_sessions, save_cached_sessions, CachedSessionData};
-use crate::config::AppConfig;
+use crate::config::{AppConfig, PreviewScrollMode};
 use crate::copy_mode;
 use crate::resize_pane;
 use crate::selection::{self, ContentPosition, PreviewSelection};
@@ -89,6 +89,8 @@ pub enum Action {
         cwd_target: String,
     },
     KillPane(String),
+    ForwardScrollDown(String),
+    ForwardScrollUp(String),
 }
 
 pub async fn run(
@@ -270,11 +272,13 @@ pub async fn run(
                     Event::Key(key) => {
                         let action = handle_key_event(&mut state, key, &target_tx);
                         if let Some(action) = action {
-                            process_action(&mut state, action, &target_tx).await;
+                            process_action(&mut state, action, &target_tx, &tx).await;
                         }
                     }
                     Event::Mouse(mouse) => {
-                        handle_mouse_event(&mut state, mouse);
+                        if let Some(action) = handle_mouse_event(&mut state, mouse) {
+                            process_action(&mut state, action, &target_tx, &tx).await;
+                        }
                     }
                     _ => {}
                 }
@@ -314,6 +318,7 @@ async fn process_action(
     state: &mut AppState,
     action: Action,
     selected_pane_target: &watch::Sender<Option<String>>,
+    tx: &mpsc::UnboundedSender<Message>,
 ) {
     match action {
         Action::SwitchToPane(target) => {
@@ -381,6 +386,28 @@ async fn process_action(
             state.selected_index =
                 resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
             update_selected_target(state, selected_pane_target);
+        }
+        Action::ForwardScrollDown(target) => {
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let _ = crate::tmux::send_scroll_down(&target).await;
+                // Give tmux time to deliver the scroll sequence and the pane to repaint before capturing.
+                tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
+                if let Ok(content) = crate::tmux::capture_pane_visible_colored(&target).await {
+                    let _ = tx.send(Message::PreviewUpdated(content));
+                }
+            });
+        }
+        Action::ForwardScrollUp(target) => {
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let _ = crate::tmux::send_scroll_up(&target).await;
+                // Give tmux time to deliver the scroll sequence and the pane to repaint before capturing.
+                tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
+                if let Ok(content) = crate::tmux::capture_pane_visible_colored(&target).await {
+                    let _ = tx.send(Message::PreviewUpdated(content));
+                }
+            });
         }
     }
 }
@@ -759,9 +786,12 @@ fn handle_key_event(
                         update_selected_target(state, selected_pane_target);
                     }
                 }
-                Focus::Preview => {
-                    scroll_preview_down(state);
-                }
+                Focus::Preview => match state.config.preview_scroll_mode {
+                    PreviewScrollMode::Virtualized => {
+                        return get_selected_pane_target(state).map(Action::ForwardScrollDown);
+                    }
+                    PreviewScrollMode::Scrollback => scroll_preview_down(state),
+                },
             }
             None
         }
@@ -775,9 +805,12 @@ fn handle_key_event(
                         update_selected_target(state, selected_pane_target);
                     }
                 }
-                Focus::Preview => {
-                    scroll_preview_up(state);
-                }
+                Focus::Preview => match state.config.preview_scroll_mode {
+                    PreviewScrollMode::Virtualized => {
+                        return get_selected_pane_target(state).map(Action::ForwardScrollUp);
+                    }
+                    PreviewScrollMode::Scrollback => scroll_preview_up(state),
+                },
             }
             None
         }
@@ -1143,9 +1176,9 @@ fn handle_key_event(
     }
 }
 
-fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) {
+fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) -> Option<Action> {
     if state.pending_confirm_target.is_some() || state.show_help {
-        return;
+        return None;
     }
 
     if state.copy_mode.is_some() && matches!(mouse.kind, MouseEventKind::Down(_)) {
@@ -1162,7 +1195,7 @@ fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) {
         MouseEventKind::Down(MouseButton::Left) => {
             if !in_preview {
                 state.preview_selection = None;
-                return;
+                return None;
             }
             if let Some(pos) = selection::mouse_to_content_position(
                 mouse.column,
@@ -1219,10 +1252,21 @@ fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) {
                 }
             }
         }
-        MouseEventKind::ScrollDown if in_preview => scroll_preview_down(state),
-        MouseEventKind::ScrollUp if in_preview => scroll_preview_up(state),
+        MouseEventKind::ScrollDown if in_preview => match state.config.preview_scroll_mode {
+            PreviewScrollMode::Virtualized => {
+                return get_selected_pane_target(state).map(Action::ForwardScrollDown);
+            }
+            PreviewScrollMode::Scrollback => scroll_preview_down(state),
+        },
+        MouseEventKind::ScrollUp if in_preview => match state.config.preview_scroll_mode {
+            PreviewScrollMode::Virtualized => {
+                return get_selected_pane_target(state).map(Action::ForwardScrollUp);
+            }
+            PreviewScrollMode::Scrollback => scroll_preview_up(state),
+        },
         _ => {}
     }
+    None
 }
 
 fn refresh_visible_items(state: &mut AppState) {

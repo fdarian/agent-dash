@@ -66,7 +66,10 @@ pub fn spawn_preview_task(
 
         let mut debounce: Option<tokio::time::Instant> = None;
         let fallback_interval = tokio::time::Duration::from_secs(2);
-        let debounce_duration = tokio::time::Duration::from_millis(50);
+        let debounce_duration = match config.preview_scroll_mode {
+            crate::config::PreviewScrollMode::Virtualized => tokio::time::Duration::from_millis(16),
+            crate::config::PreviewScrollMode::Scrollback => tokio::time::Duration::from_millis(50),
+        };
 
         let mut fallback_deadline = tokio::time::Instant::now() + fallback_interval;
 
@@ -123,8 +126,9 @@ pub fn spawn_preview_task(
                             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                         }
                         Ok(_) => {
-                            // Data arrived — reset debounce timer
-                            debounce = Some(tokio::time::Instant::now() + debounce_duration);
+                            if debounce.is_none() {
+                                debounce = Some(tokio::time::Instant::now() + debounce_duration);
+                            }
                         }
                         Err(_) => {
                             // EWOULDBLOCK or other error — no data available, that's fine
