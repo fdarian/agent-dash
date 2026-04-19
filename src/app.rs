@@ -1126,6 +1126,7 @@ fn refresh_visible_items(state: &mut AppState) {
             &state.hidden_pane_ids,
             &state.hidden_groups,
             state.hidden_section_collapsed,
+            false,
         );
     } else {
         let groups = group_sessions_by_name(&state.sessions);
@@ -1140,6 +1141,7 @@ fn refresh_visible_items(state: &mut AppState) {
             &state.hidden_groups,
             state.hidden_section_collapsed,
             &state.group_hidden_collapsed,
+            false,
         );
     }
 
