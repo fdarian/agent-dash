@@ -32,6 +32,7 @@ struct ConfigFile {
     command: Option<String>,
     default_view: Option<String>,
     layout: Option<LayoutDirection>,
+    shared_state: Option<bool>,
 }
 
 pub struct AppConfig {
@@ -40,6 +41,7 @@ pub struct AppConfig {
     pub session_name_formatter: Option<Vec<String>>,
     pub default_flat_view: bool,
     pub layout: LayoutDirection,
+    pub shared_state: bool,
 }
 
 fn config_path() -> PathBuf {
@@ -69,12 +71,18 @@ pub fn load_config(exit_on_switch: bool) -> AppConfig {
         .and_then(|c| c.layout)
         .unwrap_or_default();
 
+    let shared_state = config_file
+        .as_ref()
+        .and_then(|c| c.shared_state)
+        .unwrap_or(false);
+
     AppConfig {
         command,
         exit_on_switch,
         session_name_formatter,
         default_flat_view,
         layout,
+        shared_state,
     }
 }
 
