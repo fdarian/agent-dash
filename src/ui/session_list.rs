@@ -112,6 +112,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     has_active,
                     has_unread,
                     is_collapsed,
+                    ..
                 } => {
                     let arrow = if *is_collapsed { "▶" } else { "▼" };
                     let status_icon = if *has_active {

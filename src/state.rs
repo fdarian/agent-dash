@@ -8,6 +8,7 @@ use std::path::PathBuf;
 #[serde(default)]
 struct InstanceState {
     collapsed_groups: Vec<String>,
+    collapsed_hidden_groups: Vec<String>,
     hidden_section_collapsed: Option<bool>,
     group_hidden_collapsed: Vec<String>,
 }
@@ -53,6 +54,7 @@ pub struct LoadedState {
     pub hidden_pane_ids: HashSet<String>,
     pub hidden_groups: HashSet<String>,
     pub collapsed_groups: HashSet<String>,
+    pub collapsed_hidden_groups: HashSet<String>,
     pub hidden_section_collapsed: bool,
     pub group_hidden_collapsed: HashSet<String>,
 }
@@ -79,6 +81,9 @@ pub fn load_state(shared_state: bool) -> LoadedState {
                 collapsed_groups: instance
                     .map(|i| i.collapsed_groups.iter().cloned().collect())
                     .unwrap_or_default(),
+                collapsed_hidden_groups: instance
+                    .map(|i| i.collapsed_hidden_groups.iter().cloned().collect())
+                    .unwrap_or_default(),
                 hidden_section_collapsed: instance
                     .and_then(|i| i.hidden_section_collapsed)
                     .unwrap_or(true),
@@ -100,6 +105,7 @@ fn empty_loaded_state() -> LoadedState {
         hidden_pane_ids: HashSet::new(),
         hidden_groups: HashSet::new(),
         collapsed_groups: HashSet::new(),
+        collapsed_hidden_groups: HashSet::new(),
         hidden_section_collapsed: true,
         group_hidden_collapsed: HashSet::new(),
     }
@@ -118,6 +124,7 @@ pub struct SaveArgs<'a> {
 
 pub struct InstanceSaveArgs<'a> {
     pub collapsed_groups: &'a HashSet<String>,
+    pub collapsed_hidden_groups: &'a HashSet<String>,
     pub hidden_section_collapsed: bool,
     pub group_hidden_collapsed: &'a HashSet<String>,
 }
@@ -140,6 +147,8 @@ pub fn save_state(args: SaveArgs) {
         let instance_id = resolve_instance_id(args.shared_state);
         let instance = persisted.per_instance.entry(instance_id).or_default();
         instance.collapsed_groups = inst_args.collapsed_groups.iter().cloned().collect();
+        instance.collapsed_hidden_groups =
+            inst_args.collapsed_hidden_groups.iter().cloned().collect();
         instance.hidden_section_collapsed = Some(inst_args.hidden_section_collapsed);
         instance.group_hidden_collapsed =
             inst_args.group_hidden_collapsed.iter().cloned().collect();
