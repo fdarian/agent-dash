@@ -716,6 +716,26 @@ fn handle_key_event(
             }
             None
         }
+        KeyCode::Char('H') => {
+            if matches!(state.focus, Focus::Sessions) {
+                if let Some(VisibleItem::GroupHeader { session_name, .. }) =
+                    state.visible_items.get(state.selected_index).cloned()
+                {
+                    let group_name = session_name.clone();
+                    state.hidden_pane_ids.retain(|pid| {
+                        !state
+                            .sessions
+                            .iter()
+                            .any(|s| s.session_name == group_name && s.pane_id == *pid)
+                    });
+                    if !state.hidden_groups.remove(&group_name) {
+                        state.hidden_groups.insert(group_name);
+                    }
+                    hide_toggle_refresh(state, selected_pane_target);
+                }
+            }
+            None
+        }
         KeyCode::Char('l') => {
             if matches!(state.focus, Focus::Sessions) {
                 if let Some(item) = state.visible_items.get(state.selected_index).cloned() {
