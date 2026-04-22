@@ -32,12 +32,7 @@ pub const KEYBINDS: &[KeybindEntry] = &[
     },
     KeybindEntry {
         key: "H",
-        description: "Hide/unhide group",
-        context: "sessions",
-    },
-    KeybindEntry {
-        key: "h",
-        description: "Hide/unhide session",
+        description: "Hide/unhide session or group",
         context: "sessions",
     },
     KeybindEntry {
