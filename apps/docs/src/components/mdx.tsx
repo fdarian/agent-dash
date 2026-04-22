@@ -1,11 +1,33 @@
-import defaultMdxComponents from 'fumadocs-ui/mdx';
 import type { MDXComponents } from 'mdx/types';
+import type { AnchorHTMLAttributes, HTMLAttributes } from 'react';
+import { Callout } from './docs/callout';
+import { Pre } from './docs/code-block';
 
-export function getMDXComponents(components?: MDXComponents) {
+function Anchor(props: AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const href = props.href ?? '';
+  const isExternal = /^https?:\/\//.test(href);
+  return (
+    <a
+      {...props}
+      className={`inline ${props.className ?? ''}`}
+      target={isExternal ? '_blank' : props.target}
+      rel={isExternal ? 'noopener noreferrer' : props.rel}
+    />
+  );
+}
+
+function InlineCode(props: HTMLAttributes<HTMLElement>) {
+  return <code {...props} className={`inline ${props.className ?? ''}`} />;
+}
+
+export function getMDXComponents(components?: MDXComponents): MDXComponents {
   return {
-    ...defaultMdxComponents,
+    pre: Pre,
+    a: Anchor,
+    code: InlineCode,
+    Callout,
     ...components,
-  } satisfies MDXComponents;
+  };
 }
 
 export const useMDXComponents = getMDXComponents;

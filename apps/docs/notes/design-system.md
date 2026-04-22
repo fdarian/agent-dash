@@ -1,69 +1,73 @@
 # Design System
 
-The docs site follows a **technical blueprint** aesthetic inspired by [Zed](https://zed.dev), with Agent Dash's warm orange brand identity.
+The docs site is an engineering-blueprint aesthetic: monospace display, oklch earth palette, warm orange accent, paper-grain noise. The CSS lives in `src/app/global.css` under `.ad-*` class prefixes.
 
-## Colors
+## Palette
 
-| Token | Dark | Light | Usage |
-|-------|------|-------|-------|
-| `--color-brand` | `#D97757` | `#D97757` | Primary accent, CTA buttons, active links |
-| `--color-brand-dark` | — | `#c06040` | Primary accent in light mode (higher contrast) |
-| `--color-sidebar` | `hsl(228, 15%, 6.5%)` | `hsl(228, 5%, 91%)` | Sidebar bg, diamond fills |
-| `fd-background` | `hsl(228, 13%, 7.5%)` | default | Page background |
-| `fd-border` | `hsl(228, 8%, 18%)` | default | Grid lines, borders, diamond strokes |
+All colors are CSS custom properties driven by a single `:root` (light) + `.dark` override.
+
+| Token       | Light                      | Dark                       | Usage |
+|-------------|----------------------------|----------------------------|-------|
+| `--bg`      | `oklch(97% 0.006 85)`      | `oklch(18% 0.008 155)`     | Page background |
+| `--bg-2`    | `oklch(94% 0.006 85)`      | `oklch(15% 0.008 155)`     | Subtle shade, meta-bar fills, tight backgrounds |
+| `--panel`   | `oklch(99% 0.004 85)`      | `oklch(21% 0.008 155)`     | Card/panel surfaces (buttons, pager, callouts) |
+| `--ink`     | `oklch(20% 0.008 155)`     | `oklch(94% 0.006 85)`      | Primary text |
+| `--ink-2`   | `oklch(40% 0.008 155)`     | `oklch(72% 0.006 85)`      | Secondary text |
+| `--ink-3`   | `oklch(58% 0.008 155)`     | `oklch(52% 0.006 85)`      | Dim text, labels |
+| `--rule`    | `oklch(86% 0.006 85)`      | `oklch(28% 0.008 155)`     | All borders and grid lines |
+| `--accent`  | `#D97757`                  | `#D97757`                  | Primary accent, links, CTAs |
+| `--ok`      | `oklch(62% 0.14 150)`      | `oklch(72% 0.14 150)`      | Pulsing eyebrow dot |
+| `--blue`    | `oklch(58% 0.1 230)`       | `oklch(72% 0.1 230)`       | `.callout.note` dot |
+| `--warn`    | `oklch(70% 0.12 75)`       | `oklch(78% 0.12 75)`       | `.callout.warn` dot |
+
+Fumadocs' own `--color-fd-*` tokens are mapped to these in `global.css` so Fumadocs internals (search dialog, etc.) inherit the palette.
 
 ## Typography
 
-- **Font**: Archivo (Google Fonts) — bold geometric grotesque, loaded via `next/font`
-- **Headings**: `tracking-[-0.02em]` to `tracking-[-0.03em]`, `font-bold`
-- **Code/terminal**: system monospace (`ui-monospace, SF Mono, Cascadia Mono, Menlo`)
+- **Sans** (`--font-inter-tight`): Inter Tight via `next/font/google` — body, sidebar text
+- **Mono** (`--font-jetbrains-mono`): JetBrains Mono — headings, TUI, code, nav, buttons, tables
+- Headings are almost all mono; only `h3` uses sans for contrast within a section
 
-## Structural Grid (Landing Page)
+## Structural frame
 
-The grid is **structural**, not decorative wallpaper. Lines frame content sections:
+- **Landing** (`.ad-wrap` + `.ad-frame`): 1240px max width, vertical rules on left/right, `.ad-rule` horizontal dividers with 7×7 rotated-square markers at each end
+- **Docs** (`.ad-shell`): 1440px, three-column grid — `240px | 1fr | 220px` — with a left and right vertical rule
+- **Ruler ticks** (`.ad-ticks-l`, `.ad-ticks-r`): 24px repeating gradient along the landing frame edges, desktop-only
 
-- **Frame container**: `max-w-6xl` with `border-l border-r` creating vertical edges
-- **Section dividers**: `GridLine` component renders `border-t` with `Diamond` SVG markers at each intersection
-- **Ruler ticks**: repeating-linear-gradient along vertical edges (24px spacing), visible on `lg:` only
-- **Dashed center line**: vertical dashed line at 50% width
-- **Diamonds**: 9x9 SVG, rotated 45deg, filled with `--color-sidebar`, stroked with `--color-fd-border` at 1px
-- **Mobile**: frame has `mx-4 sm:mx-6` padding; rulers and diamonds hidden below `lg:`
+## Paper-grain overlay
 
-## Micro-Grid (Hero)
+`.noise-overlay` on the root layout: fixed, `opacity: 0.035`, background is an inline SVG `<feTurbulence>` — no webp fetch, no external asset.
 
-Subtle orange grid in the hero section, fading in from bottom:
-- 24px cell size, `--color-brand` at 3% opacity
-- CSS mask: `transparent 40% → black 100%` (bottom fade-in)
+## Section labels (landing)
 
-## Noise Texture
+`.ad-section-label` renders `01  the core loop  —————————` between sections: numbered accent prefix, uppercase mono label, a `flex:1` rule line.
 
-Paper-like grain applied globally via a fixed overlay:
-- `/public/noise.webp` (from Zed's technique)
-- `opacity: 0.012`, `background-size: 180px`, repeated
-- Rendered in root `layout.tsx` as `<div className="noise-overlay" />`
+## Live TUI
 
-## Fancy Button (AlignUI-inspired)
+`components/landing.tsx` renders a TUI window in two sizes (`sm` hero, `lg` spec). Sessions, ANSI-colored lines, blinking cursor, a foot strip with keybinds. Content animates (setTimeout/setInterval) and is clientside.
 
-CTA buttons use a glossy effect via pseudo-elements:
-- `::before`: 1px gradient inner border (white→transparent) using `mask-composite: exclude`
-- `::after`: white→transparent gradient at `opacity: 0.16`, hover bumps to `0.24`
-- Shadow: `inset 0 1px 0 rgba(255,255,255,0.12), 0 1px 3px rgba(0,0,0,0.2), 0 2px 8px rgba(217,119,87,0.25)`
+## Code blocks (docs)
 
-## Border Radius Convention
+MDX `pre` is replaced with `Pre` (server) → `CodeShell` (client). Renders as `.ad-code` with a header (language + copy button) and a line-numbered body. No syntax highlighting — raw text only. If you want Shiki-tokenized output back, wire it into `CodeShell` and be careful about server/client children divergence.
 
-Minimal radii to match the blueprint/technical aesthetic:
-- Feature cards: `rounded` (4px)
-- Terminal mockup, code blocks, video placeholder: `rounded-sm` (2px)
-- Buttons: `rounded-md` (6px)
-- Badges/pills: `rounded-full`
+## Callouts
 
-## Dark/Light Theme
+MDX `<Callout kind="tip|note|warn" title="...">` renders `.ad-doc-callout` — a bordered card with a colored dot + title row. `kind` controls the dot color.
 
-- Theme toggle via `next-themes` (RootProvider handles it)
-- Landing page nav has a `ThemeToggle` component (`src/components/theme-toggle.tsx`)
-- Fumadocs docs layout has its own built-in toggle
-- Terminal mockups and code blocks are always dark regardless of theme
+## Numbered H2
 
-## Docs Sidebar
+Docs section numbers are CSS-generated via `counter-reset` on `.ad-main` and `counter(ad-section, decimal-leading-zero)` on `h2::before`. MDX authors just write `## Heading` — don't add a number span.
 
-Distinctly darker than the main content area (set via `#nd-sidebar` CSS override with `!important`).
+## Buttons
+
+- `.ad-btn` — monospace, pill-rounded, 1px border, subtle hover
+- `.ad-btn.primary` — accent fill, inset highlight, stronger shadow
+- `.ad-btn .key` — inline small-caps keybind pill inside the button
+
+## Keybind board (landing)
+
+`.ad-keygrid` — 4-col grid of `.ad-kb` cells. Each cell has a `.k` keycap (mono, bottom-weighted border) + description. `.k.accent` fills the keycap with the brand orange.
+
+## TOC meta
+
+Right rail footer block (`.ad-toc .meta`) with Updated / Version / Read time / "edit on github" link. Values passed from page component; `editUrl` points at the MDX file on GitHub.

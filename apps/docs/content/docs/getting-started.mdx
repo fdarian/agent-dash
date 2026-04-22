@@ -1,50 +1,101 @@
 ---
-title: Getting Started
-description: Quick start guide for Agent Dash
+title: Getting started — in ninety seconds.
+description: You already have tmux. You already have Claude. Agent Dash finds the sessions you have and lays them side by side. This page walks through the first minute.
 ---
+
+<div className="ad-meta-bar">
+  <span><b>PREREQ</b> tmux ≥ 3.2 · claude CLI</span>
+  <span><b>TIME</b> ~90s</span>
+  <span><b>OS</b> macOS · Linux</span>
+  <span><b>SHELL</b> any</span>
+</div>
 
 ## Launch
 
-Start Agent Dash from your terminal:
+Start Agent Dash from any terminal. It connects to your running `tmux` server and discovers agent sessions automatically — no config, no registration.
 
 ```bash
-agent-dash
+$ agent-dash
+# or, if you prefer it to exit when you attach to a pane:
+$ agent-dash --exit
 ```
 
-Agent Dash will automatically discover all agent sessions running in your tmux server.
+If nothing shows up, Agent Dash isn't finding any Claude processes. Start one in any tmux pane and it will appear on the next scan tick.
 
-## Interface Overview
+## The interface, in two panes
 
-The interface has two main panes:
+Agent Dash is a dual-pane TUI. On the left: every session it's found, grouped by tmux session name. On the right: a live preview of the one you've selected, rendered with full ANSI fidelity.
 
-1. **Session List** (left/top) — shows all discovered agent sessions, grouped by tmux session
-2. **Preview Pane** (right/bottom) — shows a live preview of the selected session's output
+<ul className="prompt">
+  <li><b>Session list</b> — left pane. One row per Claude process. Groups collapse with <span className="ad-kb-inline"><kbd>l</kbd></span>.</li>
+  <li><b>Preview pane</b> — right pane. Low-latency FIFO stream with a `capture-pane` fallback.</li>
+  <li><b>Status bar</b> — bottom strip. Active/unread counts on the left, pinned keybinds on the right.</li>
+</ul>
 
-### Navigation
+### Navigating sessions
 
-- Press `j`/`k` or arrow keys to navigate sessions
-- Press `0` to focus the preview pane, `1` to focus the session list
-- Press `o` to switch to the selected session's tmux pane
-- Press `O` to open the session in a tmux popup
+Movement is vim-shaped. <span className="ad-kb-inline"><kbd>j</kbd></span> and <span className="ad-kb-inline"><kbd>k</kbd></span> step through sessions, arrow keys work if you prefer. <span className="ad-kb-inline"><kbd>0</kbd></span> focuses the preview pane; <span className="ad-kb-inline"><kbd>1</kbd></span> focuses the list.
 
-### Session Groups
+### Switching panes
 
-Sessions are grouped by their tmux session name. You can:
+When you want to actually type into a session, press <span className="ad-kb-inline"><kbd>o</kbd></span>. Agent Dash will attach your terminal to that tmux pane directly. <span className="ad-kb-inline"><kbd>O</kbd></span> opens it in a popup instead, leaving Agent Dash in place.
 
-- Press `l` to expand/collapse a group
-- Press `` ` `` to toggle flat view (ungrouped)
-- Press `h` to hide a session or group
+| Key | Action |
+|-----|--------|
+| `j` / `↓` | Next session |
+| `k` / `↑` | Previous session |
+| `o` | Switch to the tmux pane |
+| `O` | Open the pane in a popup |
+| `r` | Mark session as read |
+| `?` | Toggle the help overlay |
 
-### Copy Mode
+## Session groups
 
-Press `v` to enter copy mode in the preview pane. This freezes the content and enables vim-like navigation:
+Sessions sharing a tmux session name are grouped together. Use <span className="ad-kb-inline"><kbd>l</kbd></span> to expand a group and <span className="ad-kb-inline"><kbd>h</kbd></span> to collapse or hide. If you'd rather see a flat list, the backtick toggles it:
 
-- `hjkl` for movement
-- `w`/`b`/`e` for word motions
-- `v` to start selection, `y` to yank
-- `/` to search forward, `?` to search backward
-- `Esc` to exit copy mode
+```text
+# toggle between grouped and flat view
+` — toggle flat view
+h — hide a session or group
+l — expand a group or the hidden section
+```
 
-### Help
+<Callout kind="note" title="Note · hidden sessions aren't gone">
+  Hidden sessions live in a collapsed "`─── Hidden (n) ───`" row at the bottom of the list. Expand it with <span className="ad-kb-inline"><kbd>l</kbd></span> to see or un-hide them.
+</Callout>
 
-Press `?` at any time to open the help overlay with all available keybinds. Use `/` to filter keybinds by name.
+## Copy mode
+
+Press <span className="ad-kb-inline"><kbd>v</kbd></span> in the preview pane to freeze it and enter copy mode — the same motions you know from vim, plus forward/backward search.
+
+<ul className="prompt">
+  <li><b>Movement</b> — `hjkl`, `w b e`, `0 $`, `gg G`.</li>
+  <li><b>Selection</b> — <span className="ad-kb-inline"><kbd>v</kbd></span> starts a selection, <span className="ad-kb-inline"><kbd>y</kbd></span> yanks to the system clipboard.</li>
+  <li><b>Search</b> — <span className="ad-kb-inline"><kbd>/</kbd></span> forward, <span className="ad-kb-inline"><kbd>?</kbd></span> backward, <span className="ad-kb-inline"><kbd>n</kbd></span> / <span className="ad-kb-inline"><kbd>N</kbd></span> to step through matches.</li>
+  <li><b>Exit</b> — <span className="ad-kb-inline"><kbd>Esc</kbd></span> returns to live preview.</li>
+</ul>
+
+## Where state lives
+
+Agent Dash persists everything you'd expect: read markers, collapsed groups, hidden sessions, and cached previews. You can inspect or clear any of it by hand.
+
+| Path | Purpose |
+|------|---------|
+| `~/.config/agent-dash/config.json` | Configuration |
+| `~/.config/agent-dash/state.json` | Read markers, visibility, collapse state |
+| `~/.config/agent-dash/cache/` | Preview + session cache |
+| `/tmp/agent-dash-{pid}-preview.fifo` | Live preview FIFO |
+
+<Callout kind="warn" title="Warning · FIFO cleanup">
+  FIFOs are created with `O_NONBLOCK` in `/tmp`. If Agent Dash crashes hard, a stale FIFO may be left behind — it's harmless, and the next launch will replace it.
+</Callout>
+
+## What next
+
+You've got the loop. From here, a few common places to go:
+
+<ul className="prompt">
+  <li>Press <span className="ad-kb-inline"><kbd>?</kbd></span> inside Agent Dash for the full, searchable keybind overlay.</li>
+  <li>Read the [configuration reference](/docs/configuration) to remap layout, rename formatter, or change the default view.</li>
+  <li>Learn how the [preview pipeline](/docs/configuration#previewscrollmode) works if you want to contribute to the Rust internals.</li>
+</ul>
