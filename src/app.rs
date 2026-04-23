@@ -868,23 +868,7 @@ fn handle_key_event(
                             update_selected_target(state, selected_pane_target);
                             persist_ui_state(state);
                         }
-                        VisibleItem::Session { session, .. } => {
-                            let pane_id = session.pane_id.clone();
-                            if state.hidden_groups.contains(&session.tmux_session_name) {
-                                // Unhide this session from a group-level hide:
-                                // remove group hide, individually hide all siblings instead
-                                let group_name = session.tmux_session_name.clone();
-                                state.hidden_groups.remove(&group_name);
-                                for s in &state.sessions {
-                                    if s.tmux_session_name == group_name && s.pane_id != pane_id {
-                                        state.hidden_pane_ids.insert(s.pane_id.clone());
-                                    }
-                                }
-                            } else if !state.hidden_pane_ids.remove(&pane_id) {
-                                state.hidden_pane_ids.insert(pane_id);
-                            }
-                            hide_toggle_refresh(state, selected_pane_target);
-                        }
+                        _ => {}
                     }
                 }
             }
@@ -893,6 +877,23 @@ fn handle_key_event(
         KeyCode::Char('H') => {
             if matches!(state.focus, Focus::Sessions) {
                 match state.visible_items.get(state.selected_index).cloned() {
+                    Some(VisibleItem::Session { session, .. }) => {
+                        let pane_id = session.pane_id.clone();
+                        if state.hidden_groups.contains(&session.tmux_session_name) {
+                            // Unhide this session from a group-level hide:
+                            // remove group hide, individually hide all siblings instead
+                            let group_name = session.tmux_session_name.clone();
+                            state.hidden_groups.remove(&group_name);
+                            for s in &state.sessions {
+                                if s.tmux_session_name == group_name && s.pane_id != pane_id {
+                                    state.hidden_pane_ids.insert(s.pane_id.clone());
+                                }
+                            }
+                        } else if !state.hidden_pane_ids.remove(&pane_id) {
+                            state.hidden_pane_ids.insert(pane_id);
+                        }
+                        hide_toggle_refresh(state, selected_pane_target);
+                    }
                     Some(VisibleItem::GroupHeader {
                         tmux_session_name, ..
                     }) => {
