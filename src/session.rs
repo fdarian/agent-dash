@@ -1,5 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Agent {
+    #[default]
+    Claude,
+    Opencode,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionStatus {
@@ -23,26 +31,56 @@ pub struct AgentSession {
     #[serde(rename = "sessionName")]
     pub tmux_session_name: String,
     pub status: SessionStatus,
+    #[serde(default)]
+    pub agent: Agent,
+    pub session_id: Option<String>,
 }
 
 const BRAILLE_START: u32 = 0x2800;
 const BRAILLE_END: u32 = 0x28FF;
 
-pub fn parse_session_status(pane_title: &str) -> SessionStatus {
-    match pane_title.chars().next() {
-        Some(ch) => {
-            let code = ch as u32;
-            if (BRAILLE_START..=BRAILLE_END).contains(&code) {
+pub fn parse_session_status(
+    agent: Agent,
+    pane_title: &str,
+    pane_content: Option<&str>,
+) -> SessionStatus {
+    match agent {
+        Agent::Claude => match pane_title.chars().next() {
+            Some(ch) => {
+                let code = ch as u32;
+                if (BRAILLE_START..=BRAILLE_END).contains(&code) {
+                    SessionStatus::Active
+                } else {
+                    SessionStatus::Idle
+                }
+            }
+            None => SessionStatus::Idle,
+        },
+        // opencode title is static, so check visible content for "esc interrupt"
+        Agent::Opencode => {
+            let content = match pane_content {
+                Some(c) => c,
+                None => return SessionStatus::Idle,
+            };
+            let busy = content
+                .lines()
+                .rev()
+                .filter(|l| !l.trim().is_empty())
+                .take(5)
+                .any(|l| l.contains("esc interrupt"));
+            if busy {
                 SessionStatus::Active
             } else {
                 SessionStatus::Idle
             }
         }
-        None => SessionStatus::Idle,
     }
 }
 
-pub fn detect_prompt_state(visible_text: &str) -> PromptState {
+pub fn detect_prompt_state(agent: Agent, visible_text: &str) -> PromptState {
+    if agent == Agent::Opencode {
+        return PromptState::None;
+    }
     let last_line = visible_text.lines().rev().find(|l| !l.trim().is_empty());
     match last_line {
         Some(line) if line.contains("ctrl-g to edit") => PromptState::Plan,

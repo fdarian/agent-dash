@@ -3,7 +3,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
 
 use crate::app::AppState;
 use crate::filter_query::parse_filter_query;
-use crate::session::{PromptState, SessionStatus, VisibleItem};
+use crate::session::{Agent, PromptState, SessionStatus, VisibleItem};
 
 const PRIMARY: Color = Color::Rgb(0xD9, 0x77, 0x57);
 const UNFOCUSED: Color = Color::Rgb(0x66, 0x66, 0x66);
@@ -214,7 +214,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                             _ => ("○", IDLE),
                         }
                     };
-                    let label = if session.title.is_empty() {
+                    // opencode title is static "OpenCode"; use tmux session name instead
+                    let label = if session.title.is_empty()
+                        || (session.agent == Agent::Opencode && session.title == "OpenCode")
+                    {
                         display_name.as_str()
                     } else {
                         session.title.as_str()
@@ -239,8 +242,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                         .unwrap_or(&PromptState::None);
                     let inner_width = area.width.saturating_sub(2) as usize;
 
+                    let effective_title_differs = !(session.title.is_empty()
+                        || session.agent == Agent::Opencode && session.title == "OpenCode");
                     let show_group_tag =
-                        !parsed.text.is_empty() && !in_hidden_section && !session.title.is_empty();
+                        !parsed.text.is_empty() && !in_hidden_section && effective_title_differs;
 
                     if *prompt_state == PromptState::None || in_hidden_section {
                         if show_group_tag {

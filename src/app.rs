@@ -15,7 +15,7 @@ use crate::resize_pane;
 use crate::selection::{self, ContentPosition, PreviewSelection};
 use crate::session::{
     auto_select_index, build_flat_visible_items, build_visible_items, group_sessions_by_name,
-    resolve_selected_index, AgentSession, PromptState, SessionStatus, VisibleItem,
+    resolve_selected_index, Agent, AgentSession, PromptState, SessionStatus, VisibleItem,
 };
 use crate::state;
 use crate::tmux::TmuxClient;
@@ -211,14 +211,15 @@ pub async fn run(
                     display_names.insert(name.clone(), formatted);
                 }
 
-                // Detect prompt states for idle sessions
+                // Detect prompt states for idle Claude sessions (opencode returns None)
                 let mut prompt_set = tokio::task::JoinSet::new();
                 for session in sessions.iter().filter(|s| s.status == SessionStatus::Idle) {
                     let target = session.pane_target.clone();
                     let pane_id = session.pane_id.clone();
+                    let agent = session.agent;
                     prompt_set.spawn(async move {
                         let state = match crate::tmux::capture_pane_visible(&target).await {
-                            Ok(text) => crate::session::detect_prompt_state(&text),
+                            Ok(text) => crate::session::detect_prompt_state(agent, &text),
                             Err(_) => crate::session::PromptState::None,
                         };
                         (pane_id, state)
@@ -345,12 +346,23 @@ async fn process_action(
                     if state.config.exit_on_switch {
                         state.should_quit = true;
                     } else {
+                        let inferred_agent = if config.command.ends_with("opencode") {
+                            Agent::Opencode
+                        } else {
+                            Agent::Claude
+                        };
                         let new_session = AgentSession {
                             pane_id: pane_info.pane_id,
                             pane_target: pane_info.pane_target,
                             title: pane_info.pane_title.clone(),
                             tmux_session_name: pane_info.tmux_session_name.clone(),
-                            status: crate::session::parse_session_status(&pane_info.pane_title),
+                            status: crate::session::parse_session_status(
+                                inferred_agent,
+                                &pane_info.pane_title,
+                                None,
+                            ),
+                            agent: inferred_agent,
+                            session_id: None,
                         };
                         state
                             .prev_status_map
@@ -577,25 +589,22 @@ fn apply_text_input(query: &mut String, cursor: &mut usize, key: KeyEvent) -> bo
             *cursor = pos;
             true
         }
-        (KeyCode::Backspace, _) => {
-            if *cursor > 0 {
-                let byte_at_cursor = query
-                    .char_indices()
-                    .nth(*cursor - 1)
-                    .map(|(i, _)| i)
-                    .unwrap_or(query.len());
-                let next_byte = query
-                    .char_indices()
-                    .nth(*cursor)
-                    .map(|(i, _)| i)
-                    .unwrap_or(query.len());
-                query.drain(byte_at_cursor..next_byte);
-                *cursor -= 1;
-                true
-            } else {
-                false
-            }
+        (KeyCode::Backspace, _) if *cursor > 0 => {
+            let byte_at_cursor = query
+                .char_indices()
+                .nth(*cursor - 1)
+                .map(|(i, _)| i)
+                .unwrap_or(query.len());
+            let next_byte = query
+                .char_indices()
+                .nth(*cursor)
+                .map(|(i, _)| i)
+                .unwrap_or(query.len());
+            query.drain(byte_at_cursor..next_byte);
+            *cursor -= 1;
+            true
         }
+        (KeyCode::Backspace, _) => false,
         (KeyCode::Delete, _) => {
             let len = query.chars().count();
             if *cursor < len {
@@ -1338,7 +1347,7 @@ fn refresh_visible_items(state: &mut AppState) {
                 })
                 .collect();
 
-            scored.sort_by(|a, b| b.0.cmp(&a.0));
+            scored.sort_by_key(|b| std::cmp::Reverse(b.0));
             state.visible_items = scored.into_iter().map(|(_, item)| item).collect();
         }
     }
