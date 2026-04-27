@@ -12,6 +12,7 @@ mod app;
 mod cache;
 mod config;
 mod copy_mode;
+mod enrichment;
 mod filter_query;
 mod selection;
 mod session;

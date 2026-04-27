@@ -4,6 +4,7 @@ use ratatui::widgets::{
 };
 
 use crate::app::AppState;
+use crate::session::VisibleItem;
 
 const PRIMARY: Color = Color::Rgb(0xD9, 0x77, 0x57);
 const UNFOCUSED: Color = Color::Rgb(0x66, 0x66, 0x66);
@@ -13,10 +14,33 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool
 
     let border_color = if focused { PRIMARY } else { UNFOCUSED };
 
-    let title = if state.copy_mode.is_some() {
-        " [0] Preview [COPY] "
+    let session_id_suffix = state
+        .visible_items
+        .get(state.selected_index)
+        .and_then(|item| match item {
+            VisibleItem::Session { session, .. } => session.session_id.as_deref(),
+            _ => None,
+        })
+        .map(|id| {
+            let prefix = id.strip_prefix("ses_").unwrap_or(id);
+            format!(" · {} ", &prefix[..prefix.len().min(8)])
+        })
+        .unwrap_or_default();
+
+    let title_str;
+    let title = if session_id_suffix.is_empty() {
+        if state.copy_mode.is_some() {
+            " [0] Preview [COPY] "
+        } else {
+            " [0] Preview "
+        }
     } else {
-        " [0] Preview "
+        title_str = if state.copy_mode.is_some() {
+            format!(" [0] Preview [COPY]{}", session_id_suffix)
+        } else {
+            format!(" [0] Preview{}", session_id_suffix)
+        };
+        title_str.as_str()
     };
 
     let block = Block::default()

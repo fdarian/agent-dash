@@ -85,6 +85,9 @@ impl<'a> TmuxClient<'a> {
                     status,
                     agent,
                     session_id: None,
+                    cwd: None,
+                    model: None,
+                    agent_role: None,
                 });
             }
         }

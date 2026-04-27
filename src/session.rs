@@ -34,6 +34,12 @@ pub struct AgentSession {
     #[serde(default)]
     pub agent: Agent,
     pub session_id: Option<String>,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub agent_role: Option<String>,
 }
 
 const BRAILLE_START: u32 = 0x2800;

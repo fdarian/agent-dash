@@ -175,7 +175,39 @@ pub async fn run(
         let tmux = TmuxClient::new(&config);
         let mut formatter_cache: HashMap<String, String> = HashMap::new();
         loop {
-            if let Ok(sessions) = tmux.discover_sessions().await {
+            if let Ok(mut sessions) = tmux.discover_sessions().await {
+                // Merge per-pane enrichment files written by agent plugins.
+                // Missing or malformed files are silently ignored — base detection
+                // remains the fallback.
+                for session in sessions.iter_mut() {
+                    if let Some(enrichment) = crate::enrichment::read(&session.pane_id) {
+                        if enrichment.agent == session.agent {
+                            if let Some(status) = enrichment.status_as_session_status() {
+                                session.status = status;
+                            }
+                            if enrichment.session_id.is_some() {
+                                session.session_id = enrichment.session_id;
+                            }
+                            if let Some(title) = enrichment.title {
+                                session.title = title;
+                            }
+                            if enrichment.cwd.is_some() {
+                                session.cwd = enrichment.cwd;
+                            }
+                            if enrichment.model.is_some() {
+                                session.model = enrichment.model;
+                            }
+                            if enrichment.agent_role.is_some() {
+                                session.agent_role = enrichment.agent_role;
+                            }
+                        }
+                    }
+                }
+
+                // TODO: opportunistic cleanup of orphaned enrichment files (pane no longer
+                // exists) — plugins are expected to delete on exit, so this is best-effort.
+                // See plan Phase B step 3.
+
                 let unique_names: Vec<String> = sessions
                     .iter()
                     .map(|s| s.tmux_session_name.clone())
@@ -363,6 +395,9 @@ async fn process_action(
                             ),
                             agent: inferred_agent,
                             session_id: None,
+                            cwd: None,
+                            model: None,
+                            agent_role: None,
                         };
                         state
                             .prev_status_map
