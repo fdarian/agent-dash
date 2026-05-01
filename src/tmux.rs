@@ -1,5 +1,5 @@
 use crate::config::{AppConfig, PreviewScrollMode};
-use crate::session::{parse_session_status, AgentSession};
+use crate::session::{parse_session_status, Agent, AgentSession};
 use anyhow::{anyhow, Result};
 use tokio::process::Command;
 
@@ -53,31 +53,44 @@ impl<'a> TmuxClient<'a> {
         let mut set = tokio::task::JoinSet::new();
         for (i, p) in parsed.iter().enumerate() {
             let pid = p.pane_pid.clone();
+            let pane_target = p.pane_target.clone();
             set.spawn(async move {
-                let is_claude = check_for_claude_process(&pid).await;
-                (i, is_claude)
+                let agent = detect_agent(&pid).await;
+                let content = if agent == Some(Agent::Opencode) {
+                    capture_pane_visible(&pane_target).await.ok()
+                } else {
+                    None
+                };
+                (i, agent, content)
             });
         }
 
-        let mut claude_indices = std::collections::HashSet::new();
+        let mut agent_map: std::collections::HashMap<usize, (Agent, Option<String>)> =
+            std::collections::HashMap::new();
         while let Some(result) = set.join_next().await {
-            if let Ok((i, true)) = result {
-                claude_indices.insert(i);
+            if let Ok((i, Some(agent), content)) = result {
+                agent_map.insert(i, (agent, content));
             }
         }
 
-        let sessions = parsed
-            .into_iter()
-            .enumerate()
-            .filter(|(i, _)| claude_indices.contains(i))
-            .map(|(_, p)| AgentSession {
-                pane_id: p.pane_id,
-                pane_target: p.pane_target,
-                title: p.pane_title.clone(),
-                tmux_session_name: p.tmux_session_name,
-                status: parse_session_status(&p.pane_title),
-            })
-            .collect();
+        let mut sessions = Vec::new();
+        for (i, p) in parsed.into_iter().enumerate() {
+            if let Some((agent, content)) = agent_map.remove(&i) {
+                let status = parse_session_status(agent, &p.pane_title, content.as_deref());
+                sessions.push(AgentSession {
+                    pane_id: p.pane_id,
+                    pane_target: p.pane_target,
+                    title: p.pane_title,
+                    tmux_session_name: p.tmux_session_name,
+                    status,
+                    agent,
+                    session_id: None,
+                    cwd: None,
+                    model: None,
+                    agent_role: None,
+                });
+            }
+        }
 
         Ok(sessions)
     }
@@ -331,29 +344,37 @@ async fn run_command(cmd: &str, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-async fn check_for_claude_process(parent_pid: &str) -> bool {
+async fn detect_agent(parent_pid: &str) -> Option<Agent> {
     if let Ok(comm) = run_command("ps", &["-o", "comm=", "-p", parent_pid]).await {
-        if comm.trim().ends_with("claude") {
-            return true;
+        let trimmed = comm.trim();
+        if trimmed.ends_with("claude") {
+            return Some(Agent::Claude);
+        }
+        if trimmed.ends_with("opencode") {
+            return Some(Agent::Opencode);
         }
     }
 
     let children = match run_command("pgrep", &["-P", parent_pid]).await {
         Ok(output) => output,
-        Err(_) => return false,
+        Err(_) => return None,
     };
 
     for child_pid in children.lines().filter(|l| !l.is_empty()) {
         if let Ok(comm) = run_command("ps", &["-o", "comm=", "-p", child_pid]).await {
-            if comm.trim().ends_with("claude") {
-                return true;
+            let trimmed = comm.trim();
+            if trimmed.ends_with("claude") {
+                return Some(Agent::Claude);
+            }
+            if trimmed.ends_with("opencode") {
+                return Some(Agent::Opencode);
             }
         }
         // Recursive check via Box::pin for async recursion
-        if Box::pin(check_for_claude_process(child_pid)).await {
-            return true;
+        if let Some(agent) = Box::pin(detect_agent(child_pid)).await {
+            return Some(agent);
         }
     }
 
-    false
+    None
 }

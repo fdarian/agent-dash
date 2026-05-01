@@ -1,0 +1,46 @@
+{
+  "description": "agent-dash enrichment: writes per-pane session metadata for agent-dash to read",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-dash hook-write session-start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-dash hook-write prompt-submit"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-dash hook-write stop"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-dash hook-write session-end",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

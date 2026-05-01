@@ -24,6 +24,12 @@ export const NAV_GROUPS: NavGroup[] = [
         href: '/docs/getting-started',
         tick: '●',
       },
+      {
+        id: 'agents',
+        title: 'Supported agents',
+        href: '/docs/agents',
+        tick: '○',
+      },
     ],
   },
   {
