@@ -1,0 +1,109 @@
+---
+title: Supported agents
+description: Claude Code and opencode are both supported. Detection is automatic — no config required. Optional plugins unlock richer session metadata.
+---
+
+Agent Dash automatically detects any tmux pane whose process tree contains a `claude` or `opencode` binary. No configuration is required to get started.
+
+## Detection tiers
+
+There are two tiers of support for each agent:
+
+- **Tier 0 (automatic)** — Works out of the box with zero setup. Agent Dash finds your sessions through process detection and content heuristics.
+- **Tier 1 (plugin)** — An optional plugin writes structured metadata to a small JSON file per pane, giving agent-dash a stable session ID, accurate status, cwd, and model name.
+
+Installing only one plugin is fine. The other agent continues working at Tier 0.
+
+## Feature comparison
+
+| Field | Claude Tier 0 | Claude + plugin | opencode Tier 0 | opencode + plugin |
+|---|---|---|---|---|
+| Pane discovery | yes | yes | yes | yes |
+| Busy / idle status | yes | yes | yes | yes |
+| Stable session ID | — | yes | — | yes |
+| Current working directory | — | yes | — | yes |
+| Model name | — | yes | — | yes |
+| Session title | partial | yes | falls back to tmux session name | yes |
+| Plan / Ask state | yes | yes | — | — |
+| Agent role (Build / Plan / etc.) | — | yes | — | — |
+
+**How Tier 0 status works:**
+- Claude Code — detects the braille Unicode spinner (U+2800–U+28FF) in the pane title.
+- opencode — scans pane content for the `"esc interrupt"` substring that opencode displays while busy.
+
+Plan / Ask state is not available for opencode because opencode has no equivalent concept.
+
+## Claude Code plugin
+
+The Claude Code plugin hooks into Claude Code's lifecycle events (`SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd`) via the `agent-dash hook-write` subcommand, which is built into the `agent-dash` binary — no extra install needed.
+
+### Install (option A — plugin directory)
+
+Symlink the plugin folder into `~/.claude/plugins/`:
+
+```sh
+mkdir -p ~/.claude/plugins
+ln -sf /path/to/agent-dash/plugins/claude ~/.claude/plugins/agent-dash
+```
+
+Claude Code picks up plugins from `~/.claude/plugins/*/hooks/hooks.json` automatically. Restart Claude Code (or open a new session) after linking.
+
+### Install (option B — settings.json)
+
+Merge the hook entries directly into `~/.claude/settings.json` under the `"hooks"` key:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "agent-dash hook-write session-start" }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "agent-dash hook-write prompt-submit" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "agent-dash hook-write stop" }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "agent-dash hook-write session-end" }] }
+    ]
+  }
+}
+```
+
+<Callout kind="note" title="Prerequisite">
+  `agent-dash` must be on your `PATH`. Verify with `which agent-dash`.
+</Callout>
+
+If `$TMUX_PANE` is not set (i.e., Claude Code launched outside tmux), `hook-write` exits silently without writing anything.
+
+## opencode plugin
+
+The opencode plugin is a TypeScript plugin that subscribes to opencode session lifecycle events and writes enrichment data per pane.
+
+### Install
+
+Symlink the plugin into the opencode global plugin directory:
+
+```sh
+mkdir -p ~/.config/opencode/plugins
+ln -sf /path/to/agent-dash/plugins/opencode/plugin.ts ~/.config/opencode/plugins/agent-dash.ts
+```
+
+Then restart opencode — plugins are loaded at startup.
+
+For project-level installation instead of global, symlink to `.opencode/plugins/agent-dash.ts` inside your project directory.
+
+If `$TMUX_PANE` is not set (opencode running outside tmux), the plugin is a no-op.
+
+## Enrichment file
+
+Both plugins write to the same path:
+
+```
+~/.config/agent-dash/panes/{pane_id}.json
+```
+
+For example, pane `%86` → `~/.config/agent-dash/panes/%86.json`. Each write is atomic (tempfile + rename). The file is deleted automatically when the session ends.
+
+Agent Dash always falls back to Tier 0 detection if the file is missing or malformed — no errors are surfaced to the UI.

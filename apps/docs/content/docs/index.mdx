@@ -20,10 +20,11 @@ Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crosste
 
 ## How It Works
 
-Agent Dash connects to your tmux server and discovers agent sessions by detecting Claude CLI processes running in tmux panes. It uses a combination of:
+Agent Dash connects to your tmux server and discovers agent sessions by detecting supported agent processes (`claude`, `opencode`) running in tmux panes. It uses a combination of:
 
 - **FIFO pipe monitoring** for low-latency preview updates
 - **`tmux capture-pane` polling** as a fallback
-- **Recursive `pgrep`** for Claude process detection
-- **Braille Unicode detection** (U+2800–U+28FF) in pane titles for activity status
-- **Last-line parsing** for prompt state (Plan/Ask mode)
+- **Recursive `pgrep`** for agent process detection
+- **Braille Unicode detection** (U+2800–U+28FF) in pane titles for Claude Code activity status
+- **Content scanning** for opencode busy/idle status
+- **Last-line parsing** for Claude Code prompt state (Plan/Ask mode)

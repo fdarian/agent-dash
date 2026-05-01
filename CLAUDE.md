@@ -26,6 +26,11 @@ Agent Dash is a Rust TUI application for managing and monitoring agent sessions 
 - See `apps/docs/CLAUDE.md` for docs-specific guidance
 - See `apps/docs/notes/design-system.md` for the design system
 
+## Internal docs
+
+- `docs/agent-detection.md` — how agents are detected and how busy/idle status is determined per agent
+- `docs/enrichment.md` — the plugin tier: enrichment file schema, Claude hooks plugin, opencode plugin
+
 ## Non-obvious details
 
 - Session "active" status is detected via braille Unicode range (0x2800-0x28FF) in pane title — Claude CLI sets these
