@@ -304,10 +304,6 @@ pub async fn capture_pane_visible(pane_target: &str) -> Result<String> {
     run_command("tmux", &["capture-pane", "-p", "-t", pane_target]).await
 }
 
-pub async fn capture_pane_visible_colored(pane_target: &str) -> Result<String> {
-    run_command("tmux", &["capture-pane", "-e", "-p", "-t", pane_target]).await
-}
-
 pub async fn send_scroll_up(pane_target: &str) -> Result<()> {
     run_command(
         "tmux",
