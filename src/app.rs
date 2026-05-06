@@ -98,10 +98,14 @@ pub enum Action {
     ForwardScrollDown {
         target: String,
         agent: Agent,
+        col: u16,
+        row: u16,
     },
     ForwardScrollUp {
         target: String,
         agent: Agent,
+        col: u16,
+        row: u16,
     },
 }
 
@@ -446,12 +450,17 @@ async fn process_action(
                 resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
             update_selected_target(state, selected_pane_target);
         }
-        Action::ForwardScrollDown { target, agent } => {
+        Action::ForwardScrollDown {
+            target,
+            agent,
+            col,
+            row,
+        } => {
             let tx = tx.clone();
             tokio::spawn(async move {
                 match agent {
                     Agent::Opencode => {
-                        let _ = crate::tmux::send_page_down(&target).await;
+                        let _ = crate::tmux::send_scroll_down_at(&target, col, row).await;
                     }
                     Agent::Claude => {
                         let _ = crate::tmux::send_scroll_down(&target).await;
@@ -463,12 +472,17 @@ async fn process_action(
                 }
             });
         }
-        Action::ForwardScrollUp { target, agent } => {
+        Action::ForwardScrollUp {
+            target,
+            agent,
+            col,
+            row,
+        } => {
             let tx = tx.clone();
             tokio::spawn(async move {
                 match agent {
                     Agent::Opencode => {
-                        let _ = crate::tmux::send_page_up(&target).await;
+                        let _ = crate::tmux::send_scroll_up_at(&target, col, row).await;
                     }
                     Agent::Claude => {
                         let _ = crate::tmux::send_scroll_up(&target).await;
@@ -858,8 +872,16 @@ fn handle_key_event(
                     let agent = get_selected_agent(state).unwrap_or(Agent::Claude);
                     match state.config.effective_scroll_mode(agent) {
                         PreviewScrollMode::Virtualized => {
-                            return get_selected_pane_target(state)
-                                .map(|target| Action::ForwardScrollDown { target, agent });
+                            let col = state.preview_pane_area.width / 2;
+                            let row = state.preview_pane_area.height / 2;
+                            return get_selected_pane_target(state).map(|target| {
+                                Action::ForwardScrollDown {
+                                    target,
+                                    agent,
+                                    col,
+                                    row,
+                                }
+                            });
                         }
                         PreviewScrollMode::Scrollback => scroll_preview_down(state),
                     }
@@ -881,8 +903,16 @@ fn handle_key_event(
                     let agent = get_selected_agent(state).unwrap_or(Agent::Claude);
                     match state.config.effective_scroll_mode(agent) {
                         PreviewScrollMode::Virtualized => {
-                            return get_selected_pane_target(state)
-                                .map(|target| Action::ForwardScrollUp { target, agent });
+                            let col = state.preview_pane_area.width / 2;
+                            let row = state.preview_pane_area.height / 2;
+                            return get_selected_pane_target(state).map(|target| {
+                                Action::ForwardScrollUp {
+                                    target,
+                                    agent,
+                                    col,
+                                    row,
+                                }
+                            });
                         }
                         PreviewScrollMode::Scrollback => scroll_preview_up(state),
                     }
@@ -1333,8 +1363,16 @@ fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) -> Option<Action>
             let agent = get_selected_agent(state).unwrap_or(Agent::Claude);
             match state.config.effective_scroll_mode(agent) {
                 PreviewScrollMode::Virtualized => {
-                    return get_selected_pane_target(state)
-                        .map(|target| Action::ForwardScrollDown { target, agent });
+                    let col = mouse.column.saturating_sub(state.preview_pane_area.x);
+                    let row = mouse.row.saturating_sub(state.preview_pane_area.y);
+                    return get_selected_pane_target(state).map(|target| {
+                        Action::ForwardScrollDown {
+                            target,
+                            agent,
+                            col,
+                            row,
+                        }
+                    });
                 }
                 PreviewScrollMode::Scrollback => scroll_preview_down(state),
             }
@@ -1343,8 +1381,14 @@ fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) -> Option<Action>
             let agent = get_selected_agent(state).unwrap_or(Agent::Claude);
             match state.config.effective_scroll_mode(agent) {
                 PreviewScrollMode::Virtualized => {
-                    return get_selected_pane_target(state)
-                        .map(|target| Action::ForwardScrollUp { target, agent });
+                    let col = mouse.column.saturating_sub(state.preview_pane_area.x);
+                    let row = mouse.row.saturating_sub(state.preview_pane_area.y);
+                    return get_selected_pane_target(state).map(|target| Action::ForwardScrollUp {
+                        target,
+                        agent,
+                        col,
+                        row,
+                    });
                 }
                 PreviewScrollMode::Scrollback => scroll_preview_up(state),
             }
