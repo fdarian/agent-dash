@@ -345,13 +345,9 @@ async fn run_command(cmd: &str, args: &[&str]) -> Result<String> {
 }
 
 async fn detect_agent(parent_pid: &str) -> Option<Agent> {
-    if let Ok(comm) = run_command("ps", &["-o", "comm=", "-p", parent_pid]).await {
-        let trimmed = comm.trim();
-        if trimmed.ends_with("claude") {
-            return Some(Agent::Claude);
-        }
-        if trimmed.ends_with("opencode") {
-            return Some(Agent::Opencode);
+    if let Ok(output) = run_command("ps", &["-o", "comm=,args=", "-p", parent_pid]).await {
+        if let Some(agent) = parse_process_agent(&output) {
+            return Some(agent);
         }
     }
 
@@ -361,13 +357,9 @@ async fn detect_agent(parent_pid: &str) -> Option<Agent> {
     };
 
     for child_pid in children.lines().filter(|l| !l.is_empty()) {
-        if let Ok(comm) = run_command("ps", &["-o", "comm=", "-p", child_pid]).await {
-            let trimmed = comm.trim();
-            if trimmed.ends_with("claude") {
-                return Some(Agent::Claude);
-            }
-            if trimmed.ends_with("opencode") {
-                return Some(Agent::Opencode);
+        if let Ok(output) = run_command("ps", &["-o", "comm=,args=", "-p", child_pid]).await {
+            if let Some(agent) = parse_process_agent(&output) {
+                return Some(agent);
             }
         }
         // Recursive check via Box::pin for async recursion
@@ -377,4 +369,94 @@ async fn detect_agent(parent_pid: &str) -> Option<Agent> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_process_agent_exact_match() {
+        assert_eq!(parse_process_agent("claude claude"), Some(Agent::Claude));
+        assert_eq!(parse_process_agent("opencode opencode"), Some(Agent::Opencode));
+    }
+
+    #[test]
+    fn test_parse_process_agent_with_flags() {
+        assert_eq!(
+            parse_process_agent("claude claude --model opus --agent guide"),
+            Some(Agent::Claude)
+        );
+        assert_eq!(
+            parse_process_agent("opencode opencode --model anthropic/claude-sonnet-4-5"),
+            Some(Agent::Opencode)
+        );
+    }
+
+    #[test]
+    fn test_parse_process_agent_with_subcommand() {
+        assert_eq!(parse_process_agent("opencode opencode acp"), None);
+        assert_eq!(parse_process_agent("claude claude mcp serve"), None);
+        assert_eq!(parse_process_agent("claude claude doctor"), None);
+    }
+
+    #[test]
+    fn test_parse_process_agent_login_shell_prefix() {
+        assert_eq!(parse_process_agent("-claude -claude"), Some(Agent::Claude));
+        assert_eq!(
+            parse_process_agent("-opencode -opencode"),
+            Some(Agent::Opencode)
+        );
+    }
+
+    #[test]
+    fn test_parse_process_agent_other_process() {
+        assert_eq!(parse_process_agent("oagent oagent serve"), None);
+        assert_eq!(parse_process_agent("node node script.js"), None);
+        assert_eq!(parse_process_agent("zsh zsh"), None);
+        assert_eq!(parse_process_agent("/bin/zsh /bin/zsh"), None);
+    }
+
+    #[test]
+    fn test_parse_process_agent_empty() {
+        assert_eq!(parse_process_agent(""), None);
+        assert_eq!(parse_process_agent("   "), None);
+    }
+}
+
+fn parse_process_agent(ps_output: &str) -> Option<Agent> {
+    let trimmed = ps_output.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    // Split into comm and args. ps -o comm=,args= outputs: "<comm> <args>"
+    // where <args> includes the executable name as the first token.
+    let (comm, args) = match trimmed.split_once(char::is_whitespace) {
+        Some((c, a)) => (c, a.trim_start()),
+        None => (trimmed, ""),
+    };
+
+    // Strip leading '-' (login shell indicator) from comm
+    let comm = comm.strip_prefix('-').unwrap_or(comm);
+
+    let agent = if comm == "claude" {
+        Agent::Claude
+    } else if comm == "opencode" {
+        Agent::Opencode
+    } else {
+        return None;
+    };
+
+    // Reject processes with a positional subcommand.
+    // A valid agent session command has only flags after the executable,
+    // e.g. "claude --model opus" or "opencode --flag value".
+    // Positional subcommands like "opencode acp" or "claude mcp serve"
+    // indicate a non-interactive tool invocation, not a session.
+    let mut tokens = args.split_whitespace();
+    tokens.next(); // skip executable name (first token of args)
+    match tokens.next() {
+        Some(token) if !token.starts_with('-') => None,
+        _ => Some(agent),
+    }
 }

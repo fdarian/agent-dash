@@ -4,11 +4,24 @@
 
 Every 200 ms the polling task in `src/app.rs` calls `tmux list-panes` and, for each pane with a live process, calls `detect_agent` (`src/tmux.rs:347`).
 
-`detect_agent` walks the pane's process tree recursively via `pgrep` and matches the leaf process name:
+`detect_agent` walks the pane's process tree recursively via `pgrep` and inspects each process's executable name (`comm`) and command-line arguments (`args`). A process is considered an agent session only when:
 
-- `claude` -> `Agent::Claude`
-- `opencode` -> `Agent::Opencode`
-- anything else -> keep walking children; return `None` if tree is exhausted
+1. The executable basename is exactly `claude` or `opencode` (case-sensitive, after stripping any leading `-` login-shell prefix).
+2. The command has no positional subcommand after the executable — only flags (arguments starting with `-`) are allowed.
+
+Examples of accepted processes:
+- `claude`
+- `claude --model opus --agent guide`
+- `opencode`
+- `opencode --model anthropic/claude-sonnet-4-5`
+
+Examples of rejected processes:
+- `oagent serve` (wrong executable name)
+- `opencode acp` (positional subcommand)
+- `claude mcp serve` (positional subcommand)
+- `claude doctor` (positional subcommand)
+
+If no matching process is found in the tree, `detect_agent` returns `None`.
 
 The result is stored as `AgentSession.agent` (`src/session.rs`, `Agent` enum at line 5).
 
