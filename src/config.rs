@@ -1,3 +1,4 @@
+use crate::session::Agent;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -51,6 +52,12 @@ impl<'de> Deserialize<'de> for LayoutDirection {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ClaudeCodeConfigFile {
+    preview_scroll_mode: Option<PreviewScrollMode>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ConfigFile {
     session_name_formatter: Option<String>,
     command: Option<String>,
@@ -58,7 +65,7 @@ struct ConfigFile {
     layout: Option<LayoutDirection>,
     shared_state: Option<bool>,
     group_name_separator: Option<String>,
-    preview_scroll_mode: Option<PreviewScrollMode>,
+    claude_code: Option<ClaudeCodeConfigFile>,
 }
 
 pub struct AppConfig {
@@ -69,7 +76,16 @@ pub struct AppConfig {
     pub layout: LayoutDirection,
     pub shared_state: bool,
     pub group_name_separator: Option<String>,
-    pub preview_scroll_mode: PreviewScrollMode,
+    pub claude_code_preview_scroll_mode: PreviewScrollMode,
+}
+
+impl AppConfig {
+    pub fn effective_scroll_mode(&self, agent: Agent) -> PreviewScrollMode {
+        match agent {
+            Agent::Opencode => PreviewScrollMode::Virtualized,
+            Agent::Claude => self.claude_code_preview_scroll_mode,
+        }
+    }
 }
 
 fn config_path() -> PathBuf {
@@ -108,9 +124,10 @@ pub fn load_config(exit_on_switch: bool) -> AppConfig {
         .as_ref()
         .and_then(|c| c.group_name_separator.clone());
 
-    let preview_scroll_mode = config_file
+    let claude_code_preview_scroll_mode = config_file
         .as_ref()
-        .and_then(|c| c.preview_scroll_mode)
+        .and_then(|c| c.claude_code.as_ref())
+        .and_then(|cc| cc.preview_scroll_mode)
         .unwrap_or_default();
 
     AppConfig {
@@ -121,7 +138,7 @@ pub fn load_config(exit_on_switch: bool) -> AppConfig {
         layout,
         shared_state,
         group_name_separator,
-        preview_scroll_mode,
+        claude_code_preview_scroll_mode,
     }
 }
 

@@ -95,8 +95,12 @@ impl<'a> TmuxClient<'a> {
         Ok(sessions)
     }
 
-    pub async fn capture_pane_content(&self, pane_target: &str) -> Result<String> {
-        let args: &[&str] = match self.config.preview_scroll_mode {
+    pub async fn capture_pane_content(
+        &self,
+        pane_target: &str,
+        scroll_mode: PreviewScrollMode,
+    ) -> Result<String> {
+        let args: &[&str] = match scroll_mode {
             PreviewScrollMode::Scrollback => {
                 &["capture-pane", "-e", "-t", pane_target, "-p", "-S", "-"]
             }
@@ -300,25 +304,15 @@ pub async fn capture_pane_visible(pane_target: &str) -> Result<String> {
     run_command("tmux", &["capture-pane", "-p", "-t", pane_target]).await
 }
 
-pub async fn capture_pane_visible_colored(pane_target: &str) -> Result<String> {
-    run_command("tmux", &["capture-pane", "-e", "-p", "-t", pane_target]).await
-}
-
-pub async fn send_scroll_up(pane_target: &str) -> Result<()> {
-    run_command(
-        "tmux",
-        &["send-keys", "-l", "-t", pane_target, "\x1b[<64;1;1M"],
-    )
-    .await?;
+pub async fn send_scroll_up(pane_target: &str, col: u16, row: u16) -> Result<()> {
+    let seq = format!("\x1b[<64;{col};{row}M");
+    run_command("tmux", &["send-keys", "-l", "-t", pane_target, &seq]).await?;
     Ok(())
 }
 
-pub async fn send_scroll_down(pane_target: &str) -> Result<()> {
-    run_command(
-        "tmux",
-        &["send-keys", "-l", "-t", pane_target, "\x1b[<65;1;1M"],
-    )
-    .await?;
+pub async fn send_scroll_down(pane_target: &str, col: u16, row: u16) -> Result<()> {
+    let seq = format!("\x1b[<65;{col};{row}M");
+    run_command("tmux", &["send-keys", "-l", "-t", pane_target, &seq]).await?;
     Ok(())
 }
 
