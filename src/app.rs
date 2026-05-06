@@ -832,17 +832,12 @@ fn handle_key_event(
                     }
                 }
                 Focus::Preview => {
-                    let agent = get_selected_agent(state).unwrap_or(Agent::Claude);
-                    match state.config.effective_scroll_mode(agent) {
-                        PreviewScrollMode::Virtualized => {
-                            let col = state.preview_pane_area.width / 2;
-                            let row = state.preview_pane_area.height / 2;
-                            return get_selected_pane_target(state).map(|target| {
-                                Action::ForwardScrollDown { target, col, row }
-                            });
-                        }
-                        PreviewScrollMode::Scrollback => scroll_preview_down(state),
+                    let col = state.preview_pane_area.width / 2;
+                    let row = state.preview_pane_area.height / 2;
+                    if let Some((target, col, row)) = forward_scroll_target(state, col, row) {
+                        return Some(Action::ForwardScrollDown { target, col, row });
                     }
+                    scroll_preview_down(state);
                 }
             }
             None
@@ -858,17 +853,12 @@ fn handle_key_event(
                     }
                 }
                 Focus::Preview => {
-                    let agent = get_selected_agent(state).unwrap_or(Agent::Claude);
-                    match state.config.effective_scroll_mode(agent) {
-                        PreviewScrollMode::Virtualized => {
-                            let col = state.preview_pane_area.width / 2;
-                            let row = state.preview_pane_area.height / 2;
-                            return get_selected_pane_target(state).map(|target| {
-                                Action::ForwardScrollUp { target, col, row }
-                            });
-                        }
-                        PreviewScrollMode::Scrollback => scroll_preview_up(state),
+                    let col = state.preview_pane_area.width / 2;
+                    let row = state.preview_pane_area.height / 2;
+                    if let Some((target, col, row)) = forward_scroll_target(state, col, row) {
+                        return Some(Action::ForwardScrollUp { target, col, row });
                     }
+                    scroll_preview_up(state);
                 }
             }
             None
@@ -1313,28 +1303,20 @@ fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) -> Option<Action>
             }
         }
         MouseEventKind::ScrollDown if in_preview => {
-            let agent = get_selected_agent(state).unwrap_or(Agent::Claude);
-            match state.config.effective_scroll_mode(agent) {
-                PreviewScrollMode::Virtualized => {
-                    let col = mouse.column.saturating_sub(state.preview_pane_area.x);
-                    let row = mouse.row.saturating_sub(state.preview_pane_area.y);
-                    return get_selected_pane_target(state)
-                        .map(|target| Action::ForwardScrollDown { target, col, row });
-                }
-                PreviewScrollMode::Scrollback => scroll_preview_down(state),
+            let col = mouse.column.saturating_sub(state.preview_pane_area.x);
+            let row = mouse.row.saturating_sub(state.preview_pane_area.y);
+            if let Some((target, col, row)) = forward_scroll_target(state, col, row) {
+                return Some(Action::ForwardScrollDown { target, col, row });
             }
+            scroll_preview_down(state);
         }
         MouseEventKind::ScrollUp if in_preview => {
-            let agent = get_selected_agent(state).unwrap_or(Agent::Claude);
-            match state.config.effective_scroll_mode(agent) {
-                PreviewScrollMode::Virtualized => {
-                    let col = mouse.column.saturating_sub(state.preview_pane_area.x);
-                    let row = mouse.row.saturating_sub(state.preview_pane_area.y);
-                    return get_selected_pane_target(state)
-                        .map(|target| Action::ForwardScrollUp { target, col, row });
-                }
-                PreviewScrollMode::Scrollback => scroll_preview_up(state),
+            let col = mouse.column.saturating_sub(state.preview_pane_area.x);
+            let row = mouse.row.saturating_sub(state.preview_pane_area.y);
+            if let Some((target, col, row)) = forward_scroll_target(state, col, row) {
+                return Some(Action::ForwardScrollUp { target, col, row });
             }
+            scroll_preview_up(state);
         }
         _ => {}
     }
@@ -1433,6 +1415,18 @@ fn get_selected_agent(state: &AppState) -> Option<Agent> {
             VisibleItem::Session { session, .. } => Some(session.agent),
             _ => None,
         })
+}
+
+fn forward_scroll_target(state: &AppState, col: u16, row: u16) -> Option<(String, u16, u16)> {
+    let agent = get_selected_agent(state)?;
+    if !matches!(
+        state.config.effective_scroll_mode(agent),
+        PreviewScrollMode::Virtualized
+    ) {
+        return None;
+    }
+    let target = get_selected_pane_target(state)?;
+    Some((target, col, row))
 }
 
 fn update_selected_target(
