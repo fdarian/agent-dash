@@ -26,6 +26,12 @@ pub enum Focus {
     Preview,
 }
 
+#[derive(Clone)]
+pub struct PreviewTarget {
+    pub pane_target: String,
+    pub agent: Agent,
+}
+
 pub struct AppState {
     pub should_quit: bool,
     pub config: AppConfig,
@@ -89,8 +95,14 @@ pub enum Action {
         cwd_target: String,
     },
     KillPane(String),
-    ForwardScrollDown(String),
-    ForwardScrollUp(String),
+    ForwardScrollDown {
+        target: String,
+        agent: Agent,
+    },
+    ForwardScrollUp {
+        target: String,
+        agent: Agent,
+    },
 }
 
 pub async fn run(
@@ -166,7 +178,7 @@ pub async fn run(
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
 
-    let (target_tx, target_rx) = watch::channel(Option::<String>::None);
+    let (target_tx, target_rx) = watch::channel(Option::<PreviewTarget>::None);
 
     // Session polling task (every 2s)
     let poll_tx = tx.clone();
@@ -350,7 +362,7 @@ pub async fn run(
 async fn process_action(
     state: &mut AppState,
     action: Action,
-    selected_pane_target: &watch::Sender<Option<String>>,
+    selected_pane_target: &watch::Sender<Option<PreviewTarget>>,
     tx: &mpsc::UnboundedSender<Message>,
 ) {
     match action {
@@ -434,22 +446,34 @@ async fn process_action(
                 resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
             update_selected_target(state, selected_pane_target);
         }
-        Action::ForwardScrollDown(target) => {
+        Action::ForwardScrollDown { target, agent } => {
             let tx = tx.clone();
             tokio::spawn(async move {
-                let _ = crate::tmux::send_scroll_down(&target).await;
-                // Give tmux time to deliver the scroll sequence and the pane to repaint before capturing.
+                match agent {
+                    Agent::Opencode => {
+                        let _ = crate::tmux::send_page_down(&target).await;
+                    }
+                    Agent::Claude => {
+                        let _ = crate::tmux::send_scroll_down(&target).await;
+                    }
+                }
                 tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
                 if let Ok(content) = crate::tmux::capture_pane_visible_colored(&target).await {
                     let _ = tx.send(Message::PreviewUpdated(content));
                 }
             });
         }
-        Action::ForwardScrollUp(target) => {
+        Action::ForwardScrollUp { target, agent } => {
             let tx = tx.clone();
             tokio::spawn(async move {
-                let _ = crate::tmux::send_scroll_up(&target).await;
-                // Give tmux time to deliver the scroll sequence and the pane to repaint before capturing.
+                match agent {
+                    Agent::Opencode => {
+                        let _ = crate::tmux::send_page_up(&target).await;
+                    }
+                    Agent::Claude => {
+                        let _ = crate::tmux::send_scroll_up(&target).await;
+                    }
+                }
                 tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
                 if let Ok(content) = crate::tmux::capture_pane_visible_colored(&target).await {
                     let _ = tx.send(Message::PreviewUpdated(content));
@@ -462,7 +486,7 @@ async fn process_action(
 fn handle_message(
     state: &mut AppState,
     msg: Message,
-    selected_pane_target: &watch::Sender<Option<String>>,
+    selected_pane_target: &watch::Sender<Option<PreviewTarget>>,
 ) {
     match msg {
         Message::SessionsUpdated(sessions, display_names, prompt_states) => {
@@ -676,7 +700,7 @@ fn apply_text_input(query: &mut String, cursor: &mut usize, key: KeyEvent) -> bo
 fn handle_key_event(
     state: &mut AppState,
     key: KeyEvent,
-    selected_pane_target: &watch::Sender<Option<String>>,
+    selected_pane_target: &watch::Sender<Option<PreviewTarget>>,
 ) -> Option<Action> {
     // Confirm dialog takes priority over all other input
     if state.pending_confirm_target.is_some() {
@@ -830,12 +854,16 @@ fn handle_key_event(
                         update_selected_target(state, selected_pane_target);
                     }
                 }
-                Focus::Preview => match state.config.preview_scroll_mode {
-                    PreviewScrollMode::Virtualized => {
-                        return get_selected_pane_target(state).map(Action::ForwardScrollDown);
+                Focus::Preview => {
+                    let agent = get_selected_agent(state).unwrap_or(Agent::Claude);
+                    match state.config.effective_scroll_mode(agent) {
+                        PreviewScrollMode::Virtualized => {
+                            return get_selected_pane_target(state)
+                                .map(|target| Action::ForwardScrollDown { target, agent });
+                        }
+                        PreviewScrollMode::Scrollback => scroll_preview_down(state),
                     }
-                    PreviewScrollMode::Scrollback => scroll_preview_down(state),
-                },
+                }
             }
             None
         }
@@ -849,12 +877,16 @@ fn handle_key_event(
                         update_selected_target(state, selected_pane_target);
                     }
                 }
-                Focus::Preview => match state.config.preview_scroll_mode {
-                    PreviewScrollMode::Virtualized => {
-                        return get_selected_pane_target(state).map(Action::ForwardScrollUp);
+                Focus::Preview => {
+                    let agent = get_selected_agent(state).unwrap_or(Agent::Claude);
+                    match state.config.effective_scroll_mode(agent) {
+                        PreviewScrollMode::Virtualized => {
+                            return get_selected_pane_target(state)
+                                .map(|target| Action::ForwardScrollUp { target, agent });
+                        }
+                        PreviewScrollMode::Scrollback => scroll_preview_up(state),
                     }
-                    PreviewScrollMode::Scrollback => scroll_preview_up(state),
-                },
+                }
             }
             None
         }
@@ -1297,18 +1329,26 @@ fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) -> Option<Action>
                 }
             }
         }
-        MouseEventKind::ScrollDown if in_preview => match state.config.preview_scroll_mode {
-            PreviewScrollMode::Virtualized => {
-                return get_selected_pane_target(state).map(Action::ForwardScrollDown);
+        MouseEventKind::ScrollDown if in_preview => {
+            let agent = get_selected_agent(state).unwrap_or(Agent::Claude);
+            match state.config.effective_scroll_mode(agent) {
+                PreviewScrollMode::Virtualized => {
+                    return get_selected_pane_target(state)
+                        .map(|target| Action::ForwardScrollDown { target, agent });
+                }
+                PreviewScrollMode::Scrollback => scroll_preview_down(state),
             }
-            PreviewScrollMode::Scrollback => scroll_preview_down(state),
-        },
-        MouseEventKind::ScrollUp if in_preview => match state.config.preview_scroll_mode {
-            PreviewScrollMode::Virtualized => {
-                return get_selected_pane_target(state).map(Action::ForwardScrollUp);
+        }
+        MouseEventKind::ScrollUp if in_preview => {
+            let agent = get_selected_agent(state).unwrap_or(Agent::Claude);
+            match state.config.effective_scroll_mode(agent) {
+                PreviewScrollMode::Virtualized => {
+                    return get_selected_pane_target(state)
+                        .map(|target| Action::ForwardScrollUp { target, agent });
+                }
+                PreviewScrollMode::Scrollback => scroll_preview_up(state),
             }
-            PreviewScrollMode::Scrollback => scroll_preview_up(state),
-        },
+        }
         _ => {}
     }
     None
@@ -1398,9 +1438,31 @@ fn get_selected_pane_target(state: &AppState) -> Option<String> {
         })
 }
 
-fn update_selected_target(state: &AppState, selected_pane_target: &watch::Sender<Option<String>>) {
-    let target = get_selected_pane_target(state);
-    let _ = selected_pane_target.send(target);
+fn get_selected_agent(state: &AppState) -> Option<Agent> {
+    state
+        .visible_items
+        .get(state.selected_index)
+        .and_then(|item| match item {
+            VisibleItem::Session { session, .. } => Some(session.agent),
+            _ => None,
+        })
+}
+
+fn update_selected_target(
+    state: &AppState,
+    selected_pane_target: &watch::Sender<Option<PreviewTarget>>,
+) {
+    let value = state
+        .visible_items
+        .get(state.selected_index)
+        .and_then(|item| match item {
+            VisibleItem::Session { session, .. } => Some(PreviewTarget {
+                pane_target: session.pane_target.clone(),
+                agent: session.agent,
+            }),
+            _ => None,
+        });
+    let _ = selected_pane_target.send(value);
 }
 
 fn scroll_preview_down(state: &mut AppState) {
@@ -1447,7 +1509,10 @@ fn save_with(state: &AppState, instance: Option<state::InstanceSaveArgs<'_>>) {
     });
 }
 
-fn hide_toggle_refresh(state: &mut AppState, selected_pane_target: &watch::Sender<Option<String>>) {
+fn hide_toggle_refresh(
+    state: &mut AppState,
+    selected_pane_target: &watch::Sender<Option<PreviewTarget>>,
+) {
     persist_state(state);
     let old_items = std::mem::take(&mut state.visible_items);
     refresh_visible_items(state);

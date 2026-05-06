@@ -95,8 +95,12 @@ impl<'a> TmuxClient<'a> {
         Ok(sessions)
     }
 
-    pub async fn capture_pane_content(&self, pane_target: &str) -> Result<String> {
-        let args: &[&str] = match self.config.preview_scroll_mode {
+    pub async fn capture_pane_content(
+        &self,
+        pane_target: &str,
+        scroll_mode: PreviewScrollMode,
+    ) -> Result<String> {
+        let args: &[&str] = match scroll_mode {
             PreviewScrollMode::Scrollback => {
                 &["capture-pane", "-e", "-t", pane_target, "-p", "-S", "-"]
             }
@@ -319,6 +323,16 @@ pub async fn send_scroll_down(pane_target: &str) -> Result<()> {
         &["send-keys", "-l", "-t", pane_target, "\x1b[<65;1;1M"],
     )
     .await?;
+    Ok(())
+}
+
+pub async fn send_page_up(pane_target: &str) -> Result<()> {
+    run_command("tmux", &["send-keys", "-t", pane_target, "PPage"]).await?;
+    Ok(())
+}
+
+pub async fn send_page_down(pane_target: &str) -> Result<()> {
+    run_command("tmux", &["send-keys", "-t", pane_target, "NPage"]).await?;
     Ok(())
 }
 

@@ -1,8 +1,10 @@
 use std::os::unix::fs::OpenOptionsExt;
 use tokio::io::AsyncReadExt;
 use tokio::sync::{mpsc, watch};
+use tokio::time::Duration;
 
-use crate::app::Message;
+use crate::app::{Message, PreviewTarget};
+use crate::config::PreviewScrollMode;
 use crate::tmux::TmuxClient;
 
 pub struct PipePaneWatcher {
@@ -42,14 +44,14 @@ impl Drop for PipePaneWatcher {
 
 pub fn spawn_preview_task(
     tx: mpsc::UnboundedSender<Message>,
-    mut target_rx: watch::Receiver<Option<String>>,
+    mut target_rx: watch::Receiver<Option<PreviewTarget>>,
     fifo_path: String,
 ) {
     tokio::spawn(async move {
         let config = crate::config::load_config(false);
         let tmux = TmuxClient::new(&config);
         let mut previous_content = String::new();
-        let mut current_target: Option<String> = None;
+        let mut current_target: Option<PreviewTarget> = None;
 
         // Open FIFO with O_RDWR to avoid blocking when no writer is connected
         let fifo_file = match std::fs::OpenOptions::new()
@@ -66,10 +68,8 @@ pub fn spawn_preview_task(
 
         let mut debounce: Option<tokio::time::Instant> = None;
         let fallback_interval = tokio::time::Duration::from_secs(2);
-        let debounce_duration = match config.preview_scroll_mode {
-            crate::config::PreviewScrollMode::Virtualized => tokio::time::Duration::from_millis(16),
-            crate::config::PreviewScrollMode::Scrollback => tokio::time::Duration::from_millis(50),
-        };
+        let mut debounce_duration = Duration::from_millis(50);
+        let mut current_scroll_mode = PreviewScrollMode::Scrollback;
 
         let mut fallback_deadline = tokio::time::Instant::now() + fallback_interval;
 
@@ -90,7 +90,7 @@ pub fn spawn_preview_task(
 
                     // Stop old pipe-pane
                     if let Some(old) = current_target.take() {
-                        let _ = tmux.stop_pipe_pane(&old).await;
+                        let _ = tmux.stop_pipe_pane(&old.pane_target).await;
                     }
 
                     // Drain FIFO to discard stale data
@@ -101,17 +101,24 @@ pub fn spawn_preview_task(
                         }
                     }
 
-                    current_target = new_target.clone();
+                    current_target = new_target;
                     previous_content.clear();
 
-                    if let Some(ref target) = current_target {
+                    if let Some(ref pt) = current_target {
+                        current_scroll_mode = config.effective_scroll_mode(pt.agent);
+                        debounce_duration = match current_scroll_mode {
+                            PreviewScrollMode::Virtualized => Duration::from_millis(16),
+                            PreviewScrollMode::Scrollback => Duration::from_millis(50),
+                        };
                         // Immediate capture for new target
-                        if let Ok(content) = tmux.capture_pane_content(target).await {
+                        if let Ok(content) =
+                            tmux.capture_pane_content(&pt.pane_target, current_scroll_mode).await
+                        {
                             previous_content = content.clone();
                             let _ = tx.send(Message::PreviewUpdated(content));
                         }
                         // Start pipe-pane for new target
-                        let _ = tmux.start_pipe_pane(target, &fifo_path).await;
+                        let _ = tmux.start_pipe_pane(&pt.pane_target, &fifo_path).await;
                     }
 
                     debounce = None;
@@ -140,8 +147,10 @@ pub fn spawn_preview_task(
                 // Debounce fired — capture pane content
                 _ = debounce_sleep, if debounce.is_some() => {
                     debounce = None;
-                    if let Some(ref target) = current_target {
-                        if let Ok(content) = tmux.capture_pane_content(target).await {
+                    if let Some(ref pt) = current_target {
+                        if let Ok(content) =
+                            tmux.capture_pane_content(&pt.pane_target, current_scroll_mode).await
+                        {
                             if content != previous_content {
                                 previous_content = content.clone();
                                 let _ = tx.send(Message::PreviewUpdated(content));
@@ -153,8 +162,10 @@ pub fn spawn_preview_task(
 
                 // Fallback poll (safety net)
                 _ = fallback_sleep => {
-                    if let Some(ref target) = current_target {
-                        if let Ok(content) = tmux.capture_pane_content(target).await {
+                    if let Some(ref pt) = current_target {
+                        if let Ok(content) =
+                            tmux.capture_pane_content(&pt.pane_target, current_scroll_mode).await
+                        {
                             if content != previous_content {
                                 previous_content = content.clone();
                                 let _ = tx.send(Message::PreviewUpdated(content));
