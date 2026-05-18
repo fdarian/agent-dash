@@ -4,6 +4,7 @@ use ratatui::widgets::Paragraph;
 use crate::app::{AppState, Focus};
 use crate::config::LayoutDirection;
 
+pub mod bottom_bar;
 pub mod confirm_dialog;
 pub mod help_overlay;
 pub mod keybinds;
@@ -11,20 +12,23 @@ pub mod pane_preview;
 pub mod session_list;
 
 pub fn render(frame: &mut Frame, state: &mut AppState) {
+    let [main_area, bar_area] =
+        Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
+
     match state.focus {
         Focus::Sessions => {
             if state.sessions_expanded {
-                session_list::render(frame, frame.area(), state, true, state.flat_view);
+                session_list::render(frame, main_area, state, true, state.flat_view);
                 state.preview_pane_area = Rect::default();
             } else {
                 let chunks = match state.config.layout {
                     LayoutDirection::Vertical => {
                         Layout::vertical([Constraint::Percentage(30), Constraint::Min(1)])
-                            .split(frame.area())
+                            .split(main_area)
                     }
                     LayoutDirection::Horizontal => {
                         Layout::horizontal([Constraint::Length(40), Constraint::Min(1)])
-                            .split(frame.area())
+                            .split(main_area)
                     }
                 };
                 session_list::render(frame, chunks[0], state, true, state.flat_view);
@@ -33,10 +37,12 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
             }
         }
         Focus::Preview => {
-            state.preview_pane_area = frame.area();
-            pane_preview::render(frame, frame.area(), state, true);
+            state.preview_pane_area = main_area;
+            pane_preview::render(frame, main_area, state, true);
         }
     }
+
+    bottom_bar::render(frame, bar_area, state);
 
     // Overlays rendered on top of main layout
     if state.pending_confirm_target.is_some() {
