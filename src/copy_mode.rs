@@ -3,6 +3,7 @@ use ratatui::prelude::*;
 
 use crate::app::{Action, AppState};
 use crate::selection::{self, ContentPosition, PreviewSelection};
+use crate::ui::theme::Palette;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum SearchDirection {
@@ -725,13 +726,14 @@ pub fn apply_search_highlights(
     current_match_index: Option<usize>,
     scroll_offset: u16,
     visible_height: u16,
+    palette: Palette,
 ) {
     let normal_style = Style::default()
-        .bg(Color::Rgb(0x88, 0x88, 0x00))
-        .fg(Color::Black);
+        .bg(palette.search_match_bg)
+        .fg(palette.search_match_fg);
     let current_style = Style::default()
-        .bg(Color::Rgb(0xFF, 0xFF, 0x00))
-        .fg(Color::Black);
+        .bg(palette.search_current_bg)
+        .fg(palette.search_current_fg);
 
     for (idx, m) in matches.iter().enumerate() {
         if m.row < scroll_offset || m.row >= scroll_offset + visible_height {

@@ -1,4 +1,5 @@
 use crate::session::Agent;
+use crate::ui::theme::ThemeMode;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -65,6 +66,7 @@ struct ConfigFile {
     layout: Option<LayoutDirection>,
     shared_state: Option<bool>,
     group_name_separator: Option<String>,
+    theme: Option<ThemeMode>,
     claude_code: Option<ClaudeCodeConfigFile>,
 }
 
@@ -76,6 +78,7 @@ pub struct AppConfig {
     pub layout: LayoutDirection,
     pub shared_state: bool,
     pub group_name_separator: Option<String>,
+    pub theme: ThemeMode,
     pub claude_code_preview_scroll_mode: PreviewScrollMode,
 }
 
@@ -124,6 +127,11 @@ pub fn load_config(exit_on_switch: bool) -> AppConfig {
         .as_ref()
         .and_then(|c| c.group_name_separator.clone());
 
+    let theme = config_file
+        .as_ref()
+        .and_then(|c| c.theme)
+        .unwrap_or(ThemeMode::Dark);
+
     let claude_code_preview_scroll_mode = config_file
         .as_ref()
         .and_then(|c| c.claude_code.as_ref())
@@ -138,6 +146,7 @@ pub fn load_config(exit_on_switch: bool) -> AppConfig {
         layout,
         shared_state,
         group_name_separator,
+        theme,
         claude_code_preview_scroll_mode,
     }
 }

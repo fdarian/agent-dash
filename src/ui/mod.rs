@@ -10,6 +10,7 @@ pub mod help_overlay;
 pub mod keybinds;
 pub mod pane_preview;
 pub mod session_list;
+pub mod theme;
 
 pub fn render(frame: &mut Frame, state: &mut AppState) {
     let [main_area, bar_area] =
@@ -61,11 +62,8 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
             toast_width,
             1,
         );
-        let toast = Paragraph::new(format!(" {} ", msg)).style(
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Rgb(0xD9, 0x77, 0x57)),
-        );
+        let toast = Paragraph::new(format!(" {} ", msg))
+            .style(Style::default().fg(Color::Black).bg(state.theme.primary));
         frame.render_widget(toast, toast_area);
     }
 }

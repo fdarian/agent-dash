@@ -3,8 +3,6 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::AppState;
 
-const PRIMARY: Color = Color::Rgb(0xD9, 0x77, 0x57);
-
 pub fn render(frame: &mut Frame, state: &AppState) {
     let area = frame.area();
 
@@ -21,16 +19,15 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Confirm ")
-        .border_style(Style::default().fg(PRIMARY))
+        .border_style(Style::default().fg(state.theme.primary))
         .style(Style::default().bg(bg_color));
 
     let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);
 
     if let Some(ref target) = state.pending_confirm_target {
-        let message =
-            Line::from(format!("Close session {}?", target)).fg(Color::Rgb(0xCC, 0xCC, 0xCC));
-        let hint = Line::from("[Enter] Confirm  [Esc] Cancel").fg(Color::Rgb(0x66, 0x66, 0x66));
+        let message = Line::from(format!("Close session {}?", target)).fg(state.theme.text);
+        let hint = Line::from("[Enter] Confirm  [Esc] Cancel").fg(state.theme.border_unfocused);
 
         let msg_area = Rect::new(inner.x + 1, inner.y, inner.width.saturating_sub(2), 1);
         let hint_area = Rect::new(inner.x + 1, inner.y + 1, inner.width.saturating_sub(2), 1);

@@ -24,6 +24,8 @@ mod pipe_pane;
 mod resize_pane;
 mod tmux;
 
+use ui::theme::{Palette, ThemeMode};
+
 #[derive(clap::Subcommand)]
 enum Command {
     /// Write a per-pane enrichment file from a Claude Code hook event.
@@ -47,6 +49,25 @@ struct Cli {
     command: Option<Command>,
 }
 
+fn resolve_palette(config: &config::AppConfig) -> Palette {
+    // 1. Env override
+    if let Ok(val) = std::env::var("AGENT_DASH_THEME") {
+        let mode = match val.to_lowercase().as_str() {
+            "light" => ThemeMode::Light,
+            _ => ThemeMode::Dark,
+        };
+        return Palette::for_mode(mode);
+    }
+
+    // 2. Config file preference
+    if config.theme != ThemeMode::Dark {
+        return Palette::for_mode(config.theme);
+    }
+
+    // 3. Default
+    Palette::dark()
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -65,6 +86,9 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    let config = config::load_config(cli.exit);
+    let palette = resolve_palette(&config);
+
     // Terminal setup
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -73,7 +97,7 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Run app
-    let result = app::run(&mut terminal, cli.exit, cli.exit_immediately).await;
+    let result = app::run(&mut terminal, cli.exit, cli.exit_immediately, palette).await;
 
     // Teardown
     disable_raw_mode()?;

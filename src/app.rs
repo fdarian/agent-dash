@@ -20,6 +20,7 @@ use crate::session::{
 use crate::state;
 use crate::tmux::TmuxClient;
 use crate::ui;
+use crate::ui::theme::Palette;
 
 pub enum Focus {
     Sessions,
@@ -76,6 +77,7 @@ pub struct AppState {
     pub group_hidden_collapsed: HashSet<String>,
     pub collapsed_subgroups: HashSet<String>,
     pub collapsed_hidden_subgroups: HashSet<String>,
+    pub theme: Palette,
 }
 
 pub enum Message {
@@ -111,6 +113,7 @@ pub async fn run(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     exit_on_switch: bool,
     exit_immediately: bool,
+    palette: Palette,
 ) -> Result<()> {
     let config = crate::config::load_config(exit_on_switch);
     let formatter_path = config.session_name_formatter.clone();
@@ -166,6 +169,7 @@ pub async fn run(
         group_hidden_collapsed: loaded_state.group_hidden_collapsed,
         collapsed_subgroups: HashSet::new(),
         collapsed_hidden_subgroups: HashSet::new(),
+        theme: palette,
     };
 
     // Load cached sessions for instant first render

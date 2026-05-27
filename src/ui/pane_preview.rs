@@ -6,13 +6,14 @@ use ratatui::widgets::{
 use crate::app::AppState;
 use crate::session::VisibleItem;
 
-const PRIMARY: Color = Color::Rgb(0xD9, 0x77, 0x57);
-const UNFOCUSED: Color = Color::Rgb(0x66, 0x66, 0x66);
-
 pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool) {
     state.preview_area_height = area.height;
 
-    let border_color = if focused { PRIMARY } else { UNFOCUSED };
+    let border_color = if focused {
+        state.theme.primary
+    } else {
+        state.theme.border_unfocused
+    };
 
     let session_id_suffix = state
         .visible_items
@@ -72,6 +73,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool
                 copy.current_match_index,
                 state.preview_scroll_offset,
                 inner_area.height,
+                state.theme,
             );
         }
     }
@@ -82,6 +84,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool
             sel,
             state.preview_scroll_offset,
             inner_area.height,
+            state.theme,
         );
     }
 
@@ -122,20 +125,17 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool
         if copy.search_active {
             let search_y = inner_area.y + inner_area.height.saturating_sub(1);
             let search_area = Rect::new(inner_area.x, search_y, inner_area.width, 1);
-            let bg = Color::Rgb(0x33, 0x33, 0x33);
+            let bg = state.theme.bg_subtle;
             let prefix = if copy.search_direction == crate::copy_mode::SearchDirection::Backward {
                 "?"
             } else {
                 "/"
             };
             let spans = vec![
-                Span::styled(
-                    prefix,
-                    Style::default().fg(Color::Rgb(0x88, 0x88, 0x88)).bg(bg),
-                ),
+                Span::styled(prefix, Style::default().fg(state.theme.text_subtle).bg(bg)),
                 Span::styled(
                     copy.search_query.as_str(),
-                    Style::default().fg(Color::White).bg(bg),
+                    Style::default().fg(state.theme.text).bg(bg),
                 ),
             ];
             let search_paragraph = Paragraph::new(Line::from(spans)).style(Style::default().bg(bg));

@@ -130,19 +130,19 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         if i > 0 {
             spans.push(Span::styled(
                 "  ",
-                Style::default().fg(Color::Rgb(0x44, 0x44, 0x44)),
+                Style::default().fg(state.theme.bg_selected),
             ));
         }
         spans.push(Span::styled(
             entry.key,
             Style::default()
-                .fg(Color::Rgb(0xD9, 0x77, 0x57))
+                .fg(state.theme.primary)
                 .add_modifier(Modifier::BOLD),
         ));
         spans.push(Span::raw(" "));
         spans.push(Span::styled(
             entry.desc,
-            Style::default().fg(Color::Rgb(0x88, 0x88, 0x88)),
+            Style::default().fg(state.theme.text_subtle),
         ));
     }
 

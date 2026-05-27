@@ -1,5 +1,7 @@
 use ratatui::prelude::*;
 
+use crate::ui::theme::Palette;
+
 pub struct ContentPosition {
     pub row: u16,
     pub col: u16,
@@ -10,10 +12,6 @@ pub struct PreviewSelection {
     pub cursor: ContentPosition,
     pub is_dragging: bool,
 }
-
-const SELECTION_BG: Style = Style::new()
-    .bg(Color::Rgb(0x44, 0x44, 0x88))
-    .fg(Color::White);
 
 pub fn mouse_to_content_position(
     mouse_col: u16,
@@ -102,7 +100,11 @@ pub fn apply_selection_highlight(
     selection: &PreviewSelection,
     scroll_offset: u16,
     visible_height: u16,
+    palette: Palette,
 ) {
+    let selection_style = Style::new()
+        .bg(palette.selection_bg)
+        .fg(palette.selection_fg);
     let (start_row, start_col, end_row, end_col) = ordered_bounds(selection);
 
     let visible_start = scroll_offset;
@@ -132,7 +134,7 @@ pub fn apply_selection_highlight(
             &mut text.lines[content_row as usize].spans,
             sel_start,
             sel_end,
-            SELECTION_BG,
+            selection_style,
         );
     }
 }

@@ -5,16 +5,14 @@ use crate::app::AppState;
 use crate::filter_query::parse_filter_query;
 use crate::session::{Agent, PromptState, SessionStatus, VisibleItem};
 
-const PRIMARY: Color = Color::Rgb(0xD9, 0x77, 0x57);
-const UNFOCUSED: Color = Color::Rgb(0x66, 0x66, 0x66);
-const UNREAD: Color = Color::Rgb(0xE5, 0xC0, 0x7B);
-const IDLE: Color = Color::Rgb(0xAA, 0xAA, 0xAA);
-const SELECTED_BG: Color = Color::Rgb(0x44, 0x44, 0x44);
-
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, flat_view: bool) {
-    let border_color = if focused { PRIMARY } else { UNFOCUSED };
-    let filter_color = Color::Rgb(0x88, 0x88, 0x88);
-    let flag_color = Color::Rgb(0x61, 0x96, 0xCC);
+    let border_color = if focused {
+        state.theme.primary
+    } else {
+        state.theme.border_unfocused
+    };
+    let filter_color = state.theme.text_subtle;
+    let flag_color = state.theme.accent_flag;
 
     let parsed = parse_filter_query(&state.session_filter_query);
 
@@ -29,7 +27,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                 Span::styled("/", Style::default().fg(filter_color)),
                 Span::styled(
                     "Type to filter...",
-                    Style::default().fg(Color::Rgb(0x55, 0x55, 0x55)),
+                    Style::default().fg(state.theme.text_muted),
                 ),
                 Span::raw(" "),
             ])
@@ -43,7 +41,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                 if lower == "is:h" || lower == "is:hidden" {
                     spans.push(Span::styled(token, Style::default().fg(flag_color)));
                 } else {
-                    spans.push(Span::styled(token, Style::default().fg(Color::White)));
+                    spans.push(Span::styled(token, Style::default().fg(state.theme.text)));
                 }
             }
             spans.push(Span::raw(" "));
@@ -61,9 +59,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
         let inner = block.inner(area);
         frame.render_widget(block, area);
         let text = if !state.session_filter_query.is_empty() {
-            Line::from(" No matching sessions").fg(UNFOCUSED)
+            Line::from(" No matching sessions").fg(state.theme.border_unfocused)
         } else {
-            Line::from(" No agent sessions found").fg(UNFOCUSED)
+            Line::from(" No agent sessions found").fg(state.theme.border_unfocused)
         };
         frame.render_widget(text, inner);
         return;
@@ -125,14 +123,18 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     let text = format!("{} {} {} ({})", arrow, status_icon, prefix, total_count);
                     let style = if is_selected {
                         if in_hidden_section {
-                            Style::default().fg(UNFOCUSED).bg(SELECTED_BG)
+                            Style::default()
+                                .fg(state.theme.selected_dim_fg)
+                                .bg(state.theme.bg_selected)
                         } else {
-                            Style::default().fg(Color::White).bg(SELECTED_BG)
+                            Style::default()
+                                .fg(state.theme.selected_fg)
+                                .bg(state.theme.bg_selected)
                         }
                     } else if in_hidden_section {
-                        Style::default().fg(UNFOCUSED)
+                        Style::default().fg(state.theme.border_unfocused)
                     } else {
-                        Style::default().fg(Color::Rgb(0xCC, 0xCC, 0xCC))
+                        Style::default().fg(state.theme.text)
                     };
                     ListItem::new(Line::from(text).style(style))
                 }
@@ -144,9 +146,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     let arrow = if *is_collapsed { "▶" } else { "▼" };
                     let text = format!("  {} Hidden ({})", arrow, count);
                     let style = if is_selected {
-                        Style::default().fg(UNFOCUSED).bg(SELECTED_BG)
+                        Style::default()
+                            .fg(state.theme.selected_dim_fg)
+                            .bg(state.theme.bg_selected)
                     } else {
-                        Style::default().fg(UNFOCUSED)
+                        Style::default().fg(state.theme.border_unfocused)
                     };
                     ListItem::new(Line::from(text).style(style))
                 }
@@ -157,9 +161,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     let arrow = if *is_collapsed { "▶" } else { "▼" };
                     let text = format!("{} Hidden ({})", arrow, count);
                     let style = if is_selected {
-                        Style::default().fg(UNFOCUSED).bg(SELECTED_BG)
+                        Style::default()
+                            .fg(state.theme.selected_dim_fg)
+                            .bg(state.theme.bg_selected)
                     } else {
-                        Style::default().fg(UNFOCUSED)
+                        Style::default().fg(state.theme.border_unfocused)
                     };
                     ListItem::new(Line::from(text).style(style))
                 }
@@ -187,14 +193,18 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     );
                     let style = if is_selected {
                         if in_hidden_section {
-                            Style::default().fg(UNFOCUSED).bg(SELECTED_BG)
+                            Style::default()
+                                .fg(state.theme.selected_dim_fg)
+                                .bg(state.theme.bg_selected)
                         } else {
-                            Style::default().fg(Color::White).bg(SELECTED_BG)
+                            Style::default()
+                                .fg(state.theme.selected_fg)
+                                .bg(state.theme.bg_selected)
                         }
                     } else if in_hidden_section {
-                        Style::default().fg(UNFOCUSED)
+                        Style::default().fg(state.theme.border_unfocused)
                     } else {
-                        Style::default().fg(Color::Rgb(0xCC, 0xCC, 0xCC))
+                        Style::default().fg(state.theme.text)
                     };
                     ListItem::new(Line::from(text).style(style))
                 }
@@ -206,12 +216,12 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     ..
                 } => {
                     let (icon, default_fg) = if in_hidden_section {
-                        ("○", UNFOCUSED)
+                        ("○", state.theme.border_unfocused)
                     } else {
                         match (&session.status, *is_unread) {
-                            (SessionStatus::Active, _) => ("●", PRIMARY),
-                            (_, true) => ("◉", UNREAD),
-                            _ => ("○", IDLE),
+                            (SessionStatus::Active, _) => ("●", state.theme.primary),
+                            (_, true) => ("◉", state.theme.accent_warning),
+                            _ => ("○", state.theme.text_dim),
                         }
                     };
                     // opencode title is static "OpenCode"; use tmux session name instead
@@ -223,7 +233,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                         session.title.as_str()
                     };
                     let base_style = if is_selected {
-                        Style::default().fg(Color::White).bg(SELECTED_BG)
+                        Style::default()
+                            .fg(state.theme.selected_fg)
+                            .bg(state.theme.bg_selected)
                     } else {
                         Style::default().fg(default_fg)
                     };
@@ -254,9 +266,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                             let left_width = inner_width.saturating_sub(tag_width + 1);
                             let left_padded = truncate_or_pad(&left_text, left_width);
                             let tag_style = if is_selected {
-                                Style::default().fg(UNFOCUSED).bg(SELECTED_BG)
+                                Style::default()
+                                    .fg(state.theme.selected_dim_fg)
+                                    .bg(state.theme.bg_selected)
                             } else {
-                                Style::default().fg(UNFOCUSED)
+                                Style::default().fg(state.theme.border_unfocused)
                             };
                             ListItem::new(Line::from(vec![
                                 Span::styled(left_padded, base_style),
@@ -267,8 +281,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                         }
                     } else {
                         let (badge_text, badge_fg) = match prompt_state {
-                            PromptState::Plan => ("plan", Color::Rgb(0x61, 0xAF, 0xEF)),
-                            PromptState::Ask => ("ask", Color::Rgb(0xE5, 0xC0, 0x7B)),
+                            PromptState::Plan => ("plan", state.theme.accent_info),
+                            PromptState::Ask => ("ask", state.theme.accent_warning),
                             PromptState::None => unreachable!(),
                         };
                         let badge_width = badge_text.len();
@@ -277,7 +291,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
 
                         let mut badge_style = Style::default().fg(badge_fg);
                         if is_selected {
-                            badge_style = badge_style.bg(SELECTED_BG);
+                            badge_style = badge_style.bg(state.theme.bg_selected);
                         }
 
                         ListItem::new(Line::from(vec![

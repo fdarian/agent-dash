@@ -372,7 +372,10 @@ mod tests {
     #[test]
     fn test_parse_process_agent_exact_match() {
         assert_eq!(parse_process_agent("claude claude"), Some(Agent::Claude));
-        assert_eq!(parse_process_agent("opencode opencode"), Some(Agent::Opencode));
+        assert_eq!(
+            parse_process_agent("opencode opencode"),
+            Some(Agent::Opencode)
+        );
     }
 
     #[test]

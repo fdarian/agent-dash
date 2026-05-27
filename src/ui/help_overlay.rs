@@ -4,8 +4,6 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
 use super::keybinds::filter_keybinds;
 use crate::app::AppState;
 
-const PRIMARY: Color = Color::Rgb(0xD9, 0x77, 0x57);
-
 pub fn render(frame: &mut Frame, state: &AppState) {
     let area = frame.area();
 
@@ -22,7 +20,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Help - Keybinds ")
-        .border_style(Style::default().fg(PRIMARY))
+        .border_style(Style::default().fg(state.theme.primary))
         .style(Style::default().bg(bg_color));
 
     let inner = block.inner(popup_area);
@@ -40,19 +38,19 @@ pub fn render(frame: &mut Frame, state: &AppState) {
 
         if state.help_filter_query.is_empty() {
             let spans = vec![
-                Span::styled("/", Style::default().fg(Color::Rgb(0x88, 0x88, 0x88))),
+                Span::styled("/", Style::default().fg(state.theme.text_subtle)),
                 Span::styled(
                     "Type to filter...",
-                    Style::default().fg(Color::Rgb(0x66, 0x66, 0x66)),
+                    Style::default().fg(state.theme.border_unfocused),
                 ),
             ];
             frame.render_widget(Line::from(spans), filter_area);
         } else {
             let spans = vec![
-                Span::styled("/", Style::default().fg(Color::Rgb(0x88, 0x88, 0x88))),
+                Span::styled("/", Style::default().fg(state.theme.text_subtle)),
                 Span::styled(
                     state.help_filter_query.as_str(),
-                    Style::default().fg(Color::White),
+                    Style::default().fg(state.theme.text),
                 ),
             ];
             frame.render_widget(Line::from(spans), filter_area);
@@ -68,7 +66,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     let entries = filter_keybinds(filter_query);
 
     if entries.is_empty() {
-        let text = Line::from("No matching keybinds").fg(Color::Rgb(0x66, 0x66, 0x66));
+        let text = Line::from("No matching keybinds").fg(state.theme.border_unfocused);
         frame.render_widget(text, list_area);
         return;
     }
@@ -78,8 +76,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
         .map(|entry| {
             let key_padded = format!("{:<8}", entry.key);
             ListItem::new(
-                Line::from(format!("{} {}", key_padded, entry.description))
-                    .fg(Color::Rgb(0xCC, 0xCC, 0xCC)),
+                Line::from(format!("{} {}", key_padded, entry.description)).fg(state.theme.text),
             )
         })
         .collect();
