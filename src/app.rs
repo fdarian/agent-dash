@@ -371,8 +371,17 @@ pub async fn run(
 
         if state.resize_paused {
             if !resize_restore_sent {
+                let switch_to = state.pending_switch_target.take();
+                // When restoring for a switch, defer any mapped-exit command until after the
+                // switch completes so it still runs last (see request_exit).
+                let then_exec = if switch_to.is_some() {
+                    state.pending_exit_cmd.take()
+                } else {
+                    None
+                };
                 let _ = resize_tx.send(resize_pane::ResizeCommand::Restore {
-                    switch_to: state.pending_switch_target.take(),
+                    switch_to,
+                    then_exec,
                 });
                 resize_restore_sent = true;
             }
@@ -508,7 +517,7 @@ async fn process_action(
     }
 }
 
-fn spawn_command(command: String) {
+pub(crate) fn spawn_command(command: String) {
     tokio::spawn(async move {
         let _ = tokio::process::Command::new("sh")
             .arg("-c")

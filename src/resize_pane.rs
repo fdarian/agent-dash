@@ -15,7 +15,10 @@ pub struct ResizeRequest {
 
 pub enum ResizeCommand {
     Apply(Option<ResizeRequest>),
-    Restore { switch_to: Option<String> },
+    Restore {
+        switch_to: Option<String>,
+        then_exec: Option<String>,
+    },
 }
 
 #[derive(Default)]
@@ -65,15 +68,16 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<ResizeCommand>) -> Join
                     enum LocalCmd {
                         Apply(String, u16, u16),
                         Idle,
-                        Restore(Option<String>),
+                        Restore(Option<String>, Option<String>),
                     }
 
                     let local_cmd = {
                         let cmd = request_rx.borrow_and_update();
                         match &*cmd {
-                            ResizeCommand::Restore { switch_to } => {
-                                LocalCmd::Restore(switch_to.clone())
-                            }
+                            ResizeCommand::Restore {
+                                switch_to,
+                                then_exec,
+                            } => LocalCmd::Restore(switch_to.clone(), then_exec.clone()),
                             ResizeCommand::Apply(None) => LocalCmd::Idle,
                             ResizeCommand::Apply(Some(r)) => {
                                 LocalCmd::Apply(r.pane_target.clone(), r.cols, r.rows)
@@ -86,10 +90,13 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<ResizeCommand>) -> Join
                             debounce = None;
                             continue;
                         }
-                        LocalCmd::Restore(switch_to) => {
+                        LocalCmd::Restore(switch_to, then_exec) => {
                             restore_windows(&tmux, &state).await;
                             if let Some(target) = switch_to {
                                 let _ = tmux.switch_to_pane(&target).await;
+                            }
+                            if let Some(cmd) = then_exec {
+                                crate::app::spawn_command(cmd);
                             }
                             state = ResizeState::default();
                             debounce = None;
