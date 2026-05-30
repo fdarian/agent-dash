@@ -43,7 +43,10 @@ fn parse_session_window(pane_target: &str) -> Option<(String, String)> {
     Some((session_window.to_string(), session.to_string()))
 }
 
-pub fn spawn_resize_task(mut request_rx: watch::Receiver<ResizeCommand>) -> JoinHandle<()> {
+pub fn spawn_resize_task(
+    mut request_rx: watch::Receiver<ResizeCommand>,
+    recapture_tx: tokio::sync::mpsc::UnboundedSender<()>,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         let config = crate::config::load_config(false);
         let tmux = TmuxClient::new(&config);
@@ -148,6 +151,7 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<ResizeCommand>) -> Join
                 _ = debounce_sleep, if debounce.is_some() => {
                     if let Some((_, pane_target, session_window, cols, rows)) = debounce.take() {
                         apply_resize(&tmux, &pane_target, &session_window, cols, rows, &mut state).await;
+                        let _ = recapture_tx.send(());
                     }
                 }
             }

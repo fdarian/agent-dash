@@ -316,14 +316,18 @@ pub async fn run(
         }
     });
 
+    // Couples a completed window resize to an immediate preview re-capture, so the
+    // on-screen content reflects the new width without waiting for the 2s fallback.
+    let (recapture_tx, recapture_rx) = mpsc::unbounded_channel::<()>();
+
     // Preview task — pipe-pane notification with fallback polling
     let mut pipe_watcher = crate::pipe_pane::PipePaneWatcher::new();
     let fifo_path = pipe_watcher.fifo_path().to_string();
-    crate::pipe_pane::spawn_preview_task(tx.clone(), target_rx, fifo_path);
+    crate::pipe_pane::spawn_preview_task(tx.clone(), target_rx, recapture_rx, fifo_path);
 
     let (resize_tx, resize_rx) =
         watch::channel::<resize_pane::ResizeCommand>(resize_pane::ResizeCommand::Apply(None));
-    let resize_handle = resize_pane::spawn_resize_task(resize_rx);
+    let resize_handle = resize_pane::spawn_resize_task(resize_rx, recapture_tx);
 
     let mut event_stream = EventStream::new();
 
