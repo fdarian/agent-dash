@@ -80,6 +80,9 @@ pub struct AppState {
     pub theme: Palette,
     /// When set, the exit action runs this shell command instead of quitting.
     pub map_exit: Option<String>,
+    /// Holds a pending exit command to be spawned after the current action completes.
+    /// Set by `request_exit` when `map_exit` is configured; drained in the event loop.
+    pub pending_exit_cmd: Option<String>,
     /// When true, the resize task is paused and windows are restored.
     pub resize_paused: bool,
 }
@@ -111,7 +114,6 @@ pub enum Action {
         col: u16,
         row: u16,
     },
-    RunCommand(String),
 }
 
 pub async fn run(
@@ -177,6 +179,7 @@ pub async fn run(
         collapsed_hidden_subgroups: HashSet::new(),
         theme: palette,
         map_exit,
+        pending_exit_cmd: None,
         resize_paused: false,
     };
 
@@ -380,6 +383,11 @@ pub async fn run(
             }
         }
 
+        if let Some(cmd) = state.pending_exit_cmd.take() {
+            state.resize_paused = true;
+            spawn_command(cmd);
+        }
+
         if state.should_quit {
             break;
         }
@@ -423,7 +431,7 @@ async fn process_action(
                 {
                     let _ = tmux.switch_to_pane(&pane_info.pane_target).await;
                     if state.config.exit_on_switch {
-                        state.should_quit = true;
+                        request_exit(state);
                     } else {
                         let inferred_agent = if config.command.ends_with("opencode") {
                             Agent::Opencode
@@ -491,16 +499,26 @@ async fn process_action(
                 let _ = crate::tmux::send_scroll_up(&target, col, row).await;
             });
         }
-        Action::RunCommand(command) => {
-            state.resize_paused = true;
-            tokio::spawn(async move {
-                let _ = tokio::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(&command)
-                    .status()
-                    .await;
-            });
-        }
+    }
+}
+
+fn spawn_command(command: String) {
+    tokio::spawn(async move {
+        let _ = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&command)
+            .status()
+            .await;
+    });
+}
+
+/// Triggers the exit action. If `map_exit` is configured, stashes the command
+/// in `pending_exit_cmd` so it can be spawned after the current action completes
+/// (ensuring any tmux switch runs first). Otherwise sets `should_quit` directly.
+fn request_exit(state: &mut AppState) {
+    match state.map_exit.clone() {
+        Some(cmd) => state.pending_exit_cmd = Some(cmd),
+        None => state.should_quit = true,
     }
 }
 
@@ -805,7 +823,7 @@ fn handle_key_event(
                     };
                     if let Some(target) = target {
                         if state.config.exit_on_switch {
-                            state.should_quit = true;
+                            request_exit(state);
                         }
                         return Some(Action::SwitchToPane(target));
                     }
@@ -848,13 +866,10 @@ fn handle_key_event(
     }
 
     match key.code {
-        KeyCode::Char('q') => match state.map_exit.clone() {
-            Some(command) => Some(Action::RunCommand(command)),
-            None => {
-                state.should_quit = true;
-                None
-            }
-        },
+        KeyCode::Char('q') => {
+            request_exit(state);
+            None
+        }
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.should_quit = true;
             None
@@ -1118,7 +1133,7 @@ fn handle_key_event(
                 };
                 if let Some(target) = target {
                     if state.config.exit_on_switch {
-                        state.should_quit = true;
+                        request_exit(state);
                     }
                     return Some(Action::SwitchToPane(target));
                 }
