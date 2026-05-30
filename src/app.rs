@@ -85,6 +85,8 @@ pub struct AppState {
     pub pending_exit_cmd: Option<String>,
     /// When true, the resize task is paused and windows are restored.
     pub resize_paused: bool,
+    /// Pane target to switch to after the resize restore completes.
+    pub pending_switch_target: Option<String>,
 }
 
 pub enum Message {
@@ -184,6 +186,7 @@ pub async fn run(
         map_exit,
         pending_exit_cmd: None,
         resize_paused: false,
+        pending_switch_target: None,
     };
 
     // Load cached sessions for instant first render
@@ -368,7 +371,9 @@ pub async fn run(
 
         if state.resize_paused {
             if !resize_restore_sent {
-                let _ = resize_tx.send(resize_pane::ResizeCommand::Restore);
+                let _ = resize_tx.send(resize_pane::ResizeCommand::Restore {
+                    switch_to: state.pending_switch_target.take(),
+                });
                 resize_restore_sent = true;
             }
         } else {
@@ -413,9 +418,7 @@ async fn process_action(
     match action {
         Action::SwitchToPane(target) => {
             state.resize_paused = true;
-            let config = crate::config::load_config(false);
-            let tmux = TmuxClient::new(&config);
-            let _ = tmux.switch_to_pane(&target).await;
+            state.pending_switch_target = Some(target);
         }
         Action::OpenPopup(target) => {
             let config = crate::config::load_config(false);
