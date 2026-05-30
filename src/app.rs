@@ -78,6 +78,13 @@ pub struct AppState {
     pub collapsed_subgroups: HashSet<String>,
     pub collapsed_hidden_subgroups: HashSet<String>,
     pub theme: Palette,
+    /// When set, the exit action runs this shell command instead of quitting.
+    pub map_exit: Option<String>,
+    /// Holds a pending exit command to be spawned after the current action completes.
+    /// Set by `request_exit` when `map_exit` is configured; drained in the event loop.
+    pub pending_exit_cmd: Option<String>,
+    /// When true, the resize task is paused and windows are restored.
+    pub resize_paused: bool,
 }
 
 pub enum Message {
@@ -113,6 +120,7 @@ pub async fn run(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     exit_on_switch: bool,
     exit_immediately: bool,
+    map_exit: Option<String>,
     palette: Palette,
 ) -> Result<()> {
     let config = crate::config::load_config(exit_on_switch);
@@ -170,6 +178,9 @@ pub async fn run(
         collapsed_subgroups: HashSet::new(),
         collapsed_hidden_subgroups: HashSet::new(),
         theme: palette,
+        map_exit,
+        pending_exit_cmd: None,
+        resize_paused: false,
     };
 
     // Load cached sessions for instant first render
@@ -304,7 +315,8 @@ pub async fn run(
     let fifo_path = pipe_watcher.fifo_path().to_string();
     crate::pipe_pane::spawn_preview_task(tx.clone(), target_rx, fifo_path);
 
-    let (resize_tx, resize_rx) = watch::channel::<Option<resize_pane::ResizeRequest>>(None);
+    let (resize_tx, resize_rx) =
+        watch::channel::<resize_pane::ResizeCommand>(resize_pane::ResizeCommand::Apply(None));
     let resize_handle = resize_pane::spawn_resize_task(resize_rx);
 
     let mut event_stream = EventStream::new();
@@ -316,11 +328,14 @@ pub async fn run(
         return Ok(());
     }
 
+    let mut resize_restore_sent = false;
+
     loop {
         tokio::select! {
             Some(Ok(event)) = event_stream.next() => {
                 match event {
                     Event::Key(key) => {
+                        state.resize_paused = false;
                         let action = handle_key_event(&mut state, key, &target_tx);
                         if let Some(action) = action {
                             process_action(&mut state, action, &target_tx).await;
@@ -330,6 +345,13 @@ pub async fn run(
                         if let Some(action) = handle_mouse_event(&mut state, mouse) {
                             process_action(&mut state, action, &target_tx).await;
                         }
+                    }
+                    // On terminal resize (including abduco reattach, which re-applies the
+                    // pty size and fires SIGWINCH), the physical screen is wiped but
+                    // ratatui's diff renderer still believes the old frame is on screen.
+                    // Clear to reset the buffer so the next draw repaints every cell.
+                    Event::Resize(_, _) => {
+                        terminal.clear()?;
                     }
                     _ => {}
                 }
@@ -341,7 +363,17 @@ pub async fn run(
 
         terminal.draw(|frame| ui::render(frame, &mut state))?;
 
-        let _ = resize_tx.send(build_resize_request(&state));
+        if state.resize_paused {
+            if !resize_restore_sent {
+                let _ = resize_tx.send(resize_pane::ResizeCommand::Restore);
+                resize_restore_sent = true;
+            }
+        } else {
+            resize_restore_sent = false;
+            let _ = resize_tx.send(resize_pane::ResizeCommand::Apply(build_resize_request(
+                &state,
+            )));
+        }
 
         // Check toast expiry
         if let Some(deadline) = state.toast_deadline {
@@ -349,6 +381,11 @@ pub async fn run(
                 state.toast_message = None;
                 state.toast_deadline = None;
             }
+        }
+
+        if let Some(cmd) = state.pending_exit_cmd.take() {
+            state.resize_paused = true;
+            spawn_command(cmd);
         }
 
         if state.should_quit {
@@ -372,6 +409,7 @@ async fn process_action(
 ) {
     match action {
         Action::SwitchToPane(target) => {
+            state.resize_paused = true;
             let config = crate::config::load_config(false);
             let tmux = TmuxClient::new(&config);
             let _ = tmux.switch_to_pane(&target).await;
@@ -393,7 +431,7 @@ async fn process_action(
                 {
                     let _ = tmux.switch_to_pane(&pane_info.pane_target).await;
                     if state.config.exit_on_switch {
-                        state.should_quit = true;
+                        request_exit(state);
                     } else {
                         let inferred_agent = if config.command.ends_with("opencode") {
                             Agent::Opencode
@@ -461,6 +499,26 @@ async fn process_action(
                 let _ = crate::tmux::send_scroll_up(&target, col, row).await;
             });
         }
+    }
+}
+
+fn spawn_command(command: String) {
+    tokio::spawn(async move {
+        let _ = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&command)
+            .status()
+            .await;
+    });
+}
+
+/// Triggers the exit action. If `map_exit` is configured, stashes the command
+/// in `pending_exit_cmd` so it can be spawned after the current action completes
+/// (ensuring any tmux switch runs first). Otherwise sets `should_quit` directly.
+fn request_exit(state: &mut AppState) {
+    match state.map_exit.clone() {
+        Some(cmd) => state.pending_exit_cmd = Some(cmd),
+        None => state.should_quit = true,
     }
 }
 
@@ -765,7 +823,7 @@ fn handle_key_event(
                     };
                     if let Some(target) = target {
                         if state.config.exit_on_switch {
-                            state.should_quit = true;
+                            request_exit(state);
                         }
                         return Some(Action::SwitchToPane(target));
                     }
@@ -809,7 +867,7 @@ fn handle_key_event(
 
     match key.code {
         KeyCode::Char('q') => {
-            state.should_quit = true;
+            request_exit(state);
             None
         }
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1075,7 +1133,7 @@ fn handle_key_event(
                 };
                 if let Some(target) = target {
                     if state.config.exit_on_switch {
-                        state.should_quit = true;
+                        request_exit(state);
                     }
                     return Some(Action::SwitchToPane(target));
                 }
