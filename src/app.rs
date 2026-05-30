@@ -85,6 +85,10 @@ pub struct AppState {
     pub pending_exit_cmd: Option<String>,
     /// When true, the resize task is paused and windows are restored.
     pub resize_paused: bool,
+    /// When set, the run loop will open this note path in $EDITOR after the current event.
+    pub pending_note_edit: Option<std::path::PathBuf>,
+    /// Cached set of note paths that have non-empty content (used for glyph rendering).
+    pub notes_with_content: std::collections::HashSet<std::path::PathBuf>,
 }
 
 pub enum Message {
@@ -184,6 +188,8 @@ pub async fn run(
         map_exit,
         pending_exit_cmd: None,
         resize_paused: false,
+        pending_note_edit: None,
+        notes_with_content: crate::notes::refresh_notes_index(&crate::notes::notes_dir()),
     };
 
     // Load cached sessions for instant first render
@@ -384,6 +390,16 @@ pub async fn run(
                 state.toast_message = None;
                 state.toast_deadline = None;
             }
+        }
+
+        if let Some(path) = state.pending_note_edit.take() {
+            if let Err(err) = crate::notes::open_in_editor(terminal, &path) {
+                state.toast_message = Some(format!("Note error: {}", err));
+                state.toast_deadline =
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(4));
+            }
+            state.notes_with_content =
+                crate::notes::refresh_notes_index(&crate::notes::notes_dir());
         }
 
         if let Some(cmd) = state.pending_exit_cmd.take() {
@@ -1285,6 +1301,27 @@ fn handle_key_event(
             state.selected_index =
                 resolve_selected_index(&state.visible_items, &old_items, state.selected_index);
             update_selected_target(state, selected_pane_target);
+            None
+        }
+        KeyCode::Char('n') => {
+            if matches!(state.focus, Focus::Sessions) {
+                if let Some(item) = state.visible_items.get(state.selected_index) {
+                    let note_path = match item {
+                        VisibleItem::Session { session, .. } => {
+                            Some(crate::notes::session_note_path(session))
+                        }
+                        VisibleItem::GroupHeader {
+                            tmux_session_name, ..
+                        } => Some(crate::notes::group_note_path(tmux_session_name)),
+                        VisibleItem::SubgroupHeader { .. }
+                        | VisibleItem::HiddenHeader { .. }
+                        | VisibleItem::GroupHiddenHeader { .. } => None,
+                    };
+                    if let Some(path) = note_path {
+                        state.pending_note_edit = Some(path);
+                    }
+                }
+            }
             None
         }
         _ => None,
