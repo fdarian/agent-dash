@@ -80,6 +80,10 @@ fn current_entries(state: &AppState) -> Vec<BarEntry> {
                 desc: "switch pane",
             },
             BarEntry {
+                key: "n",
+                desc: "note",
+            },
+            BarEntry {
                 key: "r",
                 desc: "mark read",
             },

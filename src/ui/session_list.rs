@@ -272,10 +272,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                             } else {
                                 Style::default().fg(state.theme.border_unfocused)
                             };
-                            ListItem::new(Line::from(vec![
+                            let spans = vec![
                                 Span::styled(left_padded, base_style),
                                 Span::styled(tag, tag_style),
-                            ]))
+                            ];
+                            ListItem::new(Line::from(spans))
                         } else {
                             ListItem::new(Line::from(left_text).style(base_style))
                         }
@@ -294,10 +295,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                             badge_style = badge_style.bg(state.theme.bg_selected);
                         }
 
-                        ListItem::new(Line::from(vec![
+                        let spans = vec![
                             Span::styled(left_padded, base_style),
                             Span::styled(badge_text, badge_style),
-                        ]))
+                        ];
+                        ListItem::new(Line::from(spans))
                     }
                 }
             }

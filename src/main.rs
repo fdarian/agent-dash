@@ -20,6 +20,7 @@ mod session;
 mod state;
 mod ui;
 
+mod notes;
 mod pipe_pane;
 mod resize_pane;
 mod tmux;

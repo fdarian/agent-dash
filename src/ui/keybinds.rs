@@ -56,6 +56,11 @@ pub const KEYBINDS: &[KeybindEntry] = &[
         context: "sessions",
     },
     KeybindEntry {
+        key: "n",
+        description: "Edit note for session or group",
+        context: "sessions",
+    },
+    KeybindEntry {
         key: "x",
         description: "Close session pane",
         context: "sessions",
