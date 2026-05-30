@@ -336,6 +336,13 @@ pub async fn run(
                             process_action(&mut state, action, &target_tx).await;
                         }
                     }
+                    // On terminal resize (including abduco reattach, which re-applies the
+                    // pty size and fires SIGWINCH), the physical screen is wiped but
+                    // ratatui's diff renderer still believes the old frame is on screen.
+                    // Clear to reset the buffer so the next draw repaints every cell.
+                    Event::Resize(_, _) => {
+                        terminal.clear()?;
+                    }
                     _ => {}
                 }
             }
