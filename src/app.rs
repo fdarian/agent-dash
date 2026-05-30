@@ -121,13 +121,16 @@ pub async fn run(
     exit_on_switch: bool,
     exit_immediately: bool,
     map_exit: Option<String>,
+    no_auto_focus: bool,
     palette: Palette,
 ) -> Result<()> {
     let config = crate::config::load_config(exit_on_switch);
     let formatter_path = config.session_name_formatter.clone();
     let loaded_state = state::load_state(config.shared_state);
 
-    let focused_pane_info = {
+    let focused_pane_info = if no_auto_focus {
+        None
+    } else {
         let tmux = TmuxClient::new(&config);
         tmux.get_focused_pane_info().await
     };

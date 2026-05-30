@@ -49,6 +49,8 @@ struct Cli {
     /// When set, any exit path runs the command and keeps agent-dash open; use Ctrl-C to quit.
     #[arg(long, value_name = "COMMAND")]
     map_exit: Option<String>,
+    #[arg(long)]
+    no_auto_focus: bool,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -106,6 +108,7 @@ async fn main() -> Result<()> {
         cli.exit,
         cli.exit_immediately,
         cli.map_exit,
+        cli.no_auto_focus,
         palette,
     )
     .await;
