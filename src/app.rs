@@ -400,11 +400,18 @@ pub async fn run(
             }
         } else {
             resize_restore_sent = false;
+            // `immediate` is best-effort: `Apply` rides a watch channel, so a following
+            // same-dims `Apply{immediate:false}` can coalesce over this one before the
+            // resize task reads it — in which case the resize just falls back to the
+            // debounce path. Never incorrect, only an occasional ~150ms delay.
             let _ = resize_tx.send(resize_pane::ResizeCommand::Apply(build_resize_request(
                 &state,
             )));
-            state.resize_immediate = false;
         }
+        // Clear unconditionally: a future keypress could set both `resize_immediate` and
+        // `resize_paused` in one iteration, skipping the `else` branch; the flag must not
+        // leak into the first post-restore Apply. `build_resize_request` above already read it.
+        state.resize_immediate = false;
 
         // Check toast expiry
         if let Some(deadline) = state.toast_deadline {

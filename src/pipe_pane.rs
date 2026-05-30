@@ -145,8 +145,8 @@ pub fn spawn_preview_task(
                     }
                 }
 
-                // Resize completed — schedule an immediate re-capture so the preview
-                // reflects the new pane width without waiting for FIFO/fallback.
+                // Resize completed — schedule a debounced (~50ms) re-capture so the preview
+                // reflects the new pane width without waiting for FIFO/the 2s fallback.
                 Some(()) = recapture_rx.recv() => {
                     if debounce.is_none() {
                         debounce = Some(tokio::time::Instant::now() + debounce_duration);
