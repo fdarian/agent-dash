@@ -45,6 +45,7 @@ impl Drop for PipePaneWatcher {
 pub fn spawn_preview_task(
     tx: mpsc::UnboundedSender<Message>,
     mut target_rx: watch::Receiver<Option<PreviewTarget>>,
+    mut recapture_rx: mpsc::UnboundedReceiver<()>,
     fifo_path: String,
 ) {
     tokio::spawn(async move {
@@ -141,6 +142,14 @@ pub fn spawn_preview_task(
                             // EWOULDBLOCK or other error — no data available, that's fine
                             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                         }
+                    }
+                }
+
+                // Resize completed — schedule a debounced (~50ms) re-capture so the preview
+                // reflects the new pane width without waiting for FIFO/the 2s fallback.
+                Some(()) = recapture_rx.recv() => {
+                    if debounce.is_none() {
+                        debounce = Some(tokio::time::Instant::now() + debounce_duration);
                     }
                 }
 

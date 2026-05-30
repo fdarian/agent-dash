@@ -22,6 +22,7 @@ use crate::tmux::TmuxClient;
 use crate::ui;
 use crate::ui::theme::Palette;
 
+#[derive(PartialEq, Clone, Copy)]
 pub enum Focus {
     Sessions,
     Preview,
@@ -85,6 +86,11 @@ pub struct AppState {
     pub pending_exit_cmd: Option<String>,
     /// When true, the resize task is paused and windows are restored.
     pub resize_paused: bool,
+    /// Pane target to switch to after the resize restore completes.
+    pub pending_switch_target: Option<String>,
+    /// When true, the next resize request bypasses the resize task's debounce.
+    /// Set on focus-toggle keypresses, cleared after the request is sent.
+    pub resize_immediate: bool,
 }
 
 pub enum Message {
@@ -184,6 +190,8 @@ pub async fn run(
         map_exit,
         pending_exit_cmd: None,
         resize_paused: false,
+        pending_switch_target: None,
+        resize_immediate: false,
     };
 
     // Load cached sessions for instant first render
@@ -313,14 +321,18 @@ pub async fn run(
         }
     });
 
+    // Couples a completed window resize to an immediate preview re-capture, so the
+    // on-screen content reflects the new width without waiting for the 2s fallback.
+    let (recapture_tx, recapture_rx) = mpsc::unbounded_channel::<()>();
+
     // Preview task — pipe-pane notification with fallback polling
     let mut pipe_watcher = crate::pipe_pane::PipePaneWatcher::new();
     let fifo_path = pipe_watcher.fifo_path().to_string();
-    crate::pipe_pane::spawn_preview_task(tx.clone(), target_rx, fifo_path);
+    crate::pipe_pane::spawn_preview_task(tx.clone(), target_rx, recapture_rx, fifo_path);
 
     let (resize_tx, resize_rx) =
         watch::channel::<resize_pane::ResizeCommand>(resize_pane::ResizeCommand::Apply(None));
-    let resize_handle = resize_pane::spawn_resize_task(resize_rx);
+    let resize_handle = resize_pane::spawn_resize_task(resize_rx, recapture_tx);
 
     let mut event_stream = EventStream::new();
 
@@ -339,7 +351,11 @@ pub async fn run(
                 match event {
                     Event::Key(key) => {
                         state.resize_paused = false;
+                        let focus_before = state.focus;
                         let action = handle_key_event(&mut state, key, &target_tx);
+                        if state.focus != focus_before {
+                            state.resize_immediate = true;
+                        }
                         if let Some(action) = action {
                             process_action(&mut state, action, &target_tx).await;
                         }
@@ -368,15 +384,34 @@ pub async fn run(
 
         if state.resize_paused {
             if !resize_restore_sent {
-                let _ = resize_tx.send(resize_pane::ResizeCommand::Restore);
+                let switch_to = state.pending_switch_target.take();
+                // When restoring for a switch, defer any mapped-exit command until after the
+                // switch completes so it still runs last (see request_exit).
+                let then_exec = if switch_to.is_some() {
+                    state.pending_exit_cmd.take()
+                } else {
+                    None
+                };
+                let _ = resize_tx.send(resize_pane::ResizeCommand::Restore {
+                    switch_to,
+                    then_exec,
+                });
                 resize_restore_sent = true;
             }
         } else {
             resize_restore_sent = false;
+            // `immediate` is best-effort: `Apply` rides a watch channel, so a following
+            // same-dims `Apply{immediate:false}` can coalesce over this one before the
+            // resize task reads it — in which case the resize just falls back to the
+            // debounce path. Never incorrect, only an occasional ~150ms delay.
             let _ = resize_tx.send(resize_pane::ResizeCommand::Apply(build_resize_request(
                 &state,
             )));
         }
+        // Clear unconditionally: a future keypress could set both `resize_immediate` and
+        // `resize_paused` in one iteration, skipping the `else` branch; the flag must not
+        // leak into the first post-restore Apply. `build_resize_request` above already read it.
+        state.resize_immediate = false;
 
         // Check toast expiry
         if let Some(deadline) = state.toast_deadline {
@@ -413,9 +448,7 @@ async fn process_action(
     match action {
         Action::SwitchToPane(target) => {
             state.resize_paused = true;
-            let config = crate::config::load_config(false);
-            let tmux = TmuxClient::new(&config);
-            let _ = tmux.switch_to_pane(&target).await;
+            state.pending_switch_target = Some(target);
         }
         Action::OpenPopup(target) => {
             let config = crate::config::load_config(false);
@@ -505,7 +538,7 @@ async fn process_action(
     }
 }
 
-fn spawn_command(command: String) {
+pub(crate) fn spawn_command(command: String) {
     tokio::spawn(async move {
         let _ = tokio::process::Command::new("sh")
             .arg("-c")
@@ -1575,5 +1608,6 @@ fn build_resize_request(state: &AppState) -> Option<resize_pane::ResizeRequest> 
         pane_target,
         cols,
         rows,
+        immediate: state.resize_immediate,
     })
 }

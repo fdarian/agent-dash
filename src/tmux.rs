@@ -273,31 +273,6 @@ impl<'a> TmuxClient<'a> {
         run_command("tmux", &["resize-pane", "-Z", "-t", pane_target]).await?;
         Ok(())
     }
-
-    pub async fn get_window_size(&self, session_window: &str) -> Result<Option<(u16, u16)>> {
-        let output = run_command(
-            "tmux",
-            &[
-                "display-message",
-                "-t",
-                session_window,
-                "-p",
-                "#{window_width}x#{window_height}",
-            ],
-        )
-        .await?;
-        let trimmed = output.trim();
-        let (w, h) = match trimmed.split_once('x') {
-            Some(pair) => pair,
-            None => return Ok(None),
-        };
-        let cols: u16 = w.parse()?;
-        let rows: u16 = h.parse()?;
-        if cols == 0 || rows == 0 {
-            return Ok(None);
-        }
-        Ok(Some((cols, rows)))
-    }
 }
 
 pub async fn capture_pane_visible(pane_target: &str) -> Result<String> {
