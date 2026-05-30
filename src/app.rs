@@ -78,6 +78,8 @@ pub struct AppState {
     pub collapsed_subgroups: HashSet<String>,
     pub collapsed_hidden_subgroups: HashSet<String>,
     pub theme: Palette,
+    /// When set, the `q` key runs this shell command instead of quitting.
+    pub map_q: Option<String>,
 }
 
 pub enum Message {
@@ -107,12 +109,14 @@ pub enum Action {
         col: u16,
         row: u16,
     },
+    RunCommand(String),
 }
 
 pub async fn run(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     exit_on_switch: bool,
     exit_immediately: bool,
+    map_q: Option<String>,
     palette: Palette,
 ) -> Result<()> {
     let config = crate::config::load_config(exit_on_switch);
@@ -170,6 +174,7 @@ pub async fn run(
         collapsed_subgroups: HashSet::new(),
         collapsed_hidden_subgroups: HashSet::new(),
         theme: palette,
+        map_q,
     };
 
     // Load cached sessions for instant first render
@@ -459,6 +464,15 @@ async fn process_action(
         Action::ForwardScrollUp { target, col, row } => {
             tokio::spawn(async move {
                 let _ = crate::tmux::send_scroll_up(&target, col, row).await;
+            });
+        }
+        Action::RunCommand(command) => {
+            tokio::spawn(async move {
+                let _ = tokio::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(&command)
+                    .status()
+                    .await;
             });
         }
     }
@@ -808,10 +822,13 @@ fn handle_key_event(
     }
 
     match key.code {
-        KeyCode::Char('q') => {
-            state.should_quit = true;
-            None
-        }
+        KeyCode::Char('q') => match state.map_q.clone() {
+            Some(command) => Some(Action::RunCommand(command)),
+            None => {
+                state.should_quit = true;
+                None
+            }
+        },
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.should_quit = true;
             None

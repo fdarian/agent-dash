@@ -45,6 +45,10 @@ struct Cli {
     exit: bool,
     #[arg(long)]
     exit_immediately: bool,
+    /// Remap the `q` key to run this shell command instead of quitting.
+    /// When set, `q` runs the command and keeps agent-dash open; use Ctrl-C to quit.
+    #[arg(long, value_name = "COMMAND")]
+    map_q: Option<String>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -97,7 +101,14 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Run app
-    let result = app::run(&mut terminal, cli.exit, cli.exit_immediately, palette).await;
+    let result = app::run(
+        &mut terminal,
+        cli.exit,
+        cli.exit_immediately,
+        cli.map_q,
+        palette,
+    )
+    .await;
 
     // Teardown
     disable_raw_mode()?;
