@@ -3,7 +3,6 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
 
 use crate::app::AppState;
 use crate::filter_query::parse_filter_query;
-use crate::notes;
 use crate::session::{Agent, PromptState, SessionStatus, VisibleItem};
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, flat_view: bool) {
@@ -171,7 +170,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     ListItem::new(Line::from(text).style(style))
                 }
                 VisibleItem::GroupHeader {
-                    tmux_session_name,
                     display_name,
                     session_count,
                     has_active,
@@ -208,23 +206,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     } else {
                         Style::default().fg(state.theme.text)
                     };
-                    let group_note_path = notes::group_note_path(tmux_session_name);
-                    if state.notes_with_content.contains(&group_note_path) {
-                        let note_style =
-                            Style::default()
-                                .fg(state.theme.text_subtle)
-                                .bg(if is_selected {
-                                    state.theme.bg_selected
-                                } else {
-                                    Color::Reset
-                                });
-                        ListItem::new(Line::from(vec![
-                            Span::styled(text, style),
-                            Span::styled(" 📝", note_style),
-                        ]))
-                    } else {
-                        ListItem::new(Line::from(text).style(style))
-                    }
+                    ListItem::new(Line::from(text).style(style))
                 }
                 VisibleItem::Session {
                     session,
@@ -277,23 +259,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     let show_group_tag =
                         !parsed.text.is_empty() && !in_hidden_section && effective_title_differs;
 
-                    let session_note_path = notes::session_note_path(session);
-                    let has_session_note = state.notes_with_content.contains(&session_note_path);
-                    let note_style =
-                        Style::default()
-                            .fg(state.theme.text_subtle)
-                            .bg(if is_selected {
-                                state.theme.bg_selected
-                            } else {
-                                Color::Reset
-                            });
-
                     if *prompt_state == PromptState::None || in_hidden_section {
                         if show_group_tag {
                             let tag = display_name.as_str();
                             let tag_width = tag.chars().count();
-                            let note_extra = if has_session_note { 3 } else { 0 }; // " 📝" = 1 space + emoji (counts as 2 cols)
-                            let left_width = inner_width.saturating_sub(tag_width + 1 + note_extra);
+                            let left_width = inner_width.saturating_sub(tag_width + 1);
                             let left_padded = truncate_or_pad(&left_text, left_width);
                             let tag_style = if is_selected {
                                 Style::default()
@@ -302,19 +272,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                             } else {
                                 Style::default().fg(state.theme.border_unfocused)
                             };
-                            let mut spans = vec![
+                            let spans = vec![
                                 Span::styled(left_padded, base_style),
                                 Span::styled(tag, tag_style),
                             ];
-                            if has_session_note {
-                                spans.push(Span::styled(" 📝", note_style));
-                            }
                             ListItem::new(Line::from(spans))
-                        } else if has_session_note {
-                            ListItem::new(Line::from(vec![
-                                Span::styled(left_text, base_style),
-                                Span::styled(" 📝", note_style),
-                            ]))
                         } else {
                             ListItem::new(Line::from(left_text).style(base_style))
                         }
@@ -324,9 +286,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                             PromptState::Ask => ("ask", state.theme.accent_warning),
                             PromptState::None => unreachable!(),
                         };
-                        let note_extra = if has_session_note { 3 } else { 0 };
                         let badge_width = badge_text.len();
-                        let left_width = inner_width.saturating_sub(badge_width + 1 + note_extra);
+                        let left_width = inner_width.saturating_sub(badge_width + 1);
                         let left_padded = truncate_or_pad(&left_text, left_width);
 
                         let mut badge_style = Style::default().fg(badge_fg);
@@ -334,13 +295,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                             badge_style = badge_style.bg(state.theme.bg_selected);
                         }
 
-                        let mut spans = vec![
+                        let spans = vec![
                             Span::styled(left_padded, base_style),
                             Span::styled(badge_text, badge_style),
                         ];
-                        if has_session_note {
-                            spans.push(Span::styled(" 📝", note_style));
-                        }
                         ListItem::new(Line::from(spans))
                     }
                 }

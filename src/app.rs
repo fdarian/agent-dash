@@ -87,8 +87,6 @@ pub struct AppState {
     pub resize_paused: bool,
     /// When set, the run loop will open this note path in $EDITOR after the current event.
     pub pending_note_edit: Option<std::path::PathBuf>,
-    /// Cached set of note paths that have non-empty content (used for glyph rendering).
-    pub notes_with_content: std::collections::HashSet<std::path::PathBuf>,
 }
 
 pub enum Message {
@@ -189,7 +187,6 @@ pub async fn run(
         pending_exit_cmd: None,
         resize_paused: false,
         pending_note_edit: None,
-        notes_with_content: crate::notes::refresh_notes_index(&crate::notes::notes_dir()),
     };
 
     // Load cached sessions for instant first render
@@ -398,8 +395,6 @@ pub async fn run(
                 state.toast_deadline =
                     Some(std::time::Instant::now() + std::time::Duration::from_secs(4));
             }
-            state.notes_with_content =
-                crate::notes::refresh_notes_index(&crate::notes::notes_dir());
         }
 
         if let Some(cmd) = state.pending_exit_cmd.take() {
