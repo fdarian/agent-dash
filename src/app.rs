@@ -22,6 +22,7 @@ use crate::tmux::TmuxClient;
 use crate::ui;
 use crate::ui::theme::Palette;
 
+#[derive(PartialEq, Clone, Copy)]
 pub enum Focus {
     Sessions,
     Preview,
@@ -87,6 +88,9 @@ pub struct AppState {
     pub resize_paused: bool,
     /// Pane target to switch to after the resize restore completes.
     pub pending_switch_target: Option<String>,
+    /// When true, the next resize request bypasses the resize task's debounce.
+    /// Set on focus-toggle keypresses, cleared after the request is sent.
+    pub resize_immediate: bool,
 }
 
 pub enum Message {
@@ -187,6 +191,7 @@ pub async fn run(
         pending_exit_cmd: None,
         resize_paused: false,
         pending_switch_target: None,
+        resize_immediate: false,
     };
 
     // Load cached sessions for instant first render
@@ -346,7 +351,11 @@ pub async fn run(
                 match event {
                     Event::Key(key) => {
                         state.resize_paused = false;
+                        let focus_before = state.focus;
                         let action = handle_key_event(&mut state, key, &target_tx);
+                        if state.focus != focus_before {
+                            state.resize_immediate = true;
+                        }
                         if let Some(action) = action {
                             process_action(&mut state, action, &target_tx).await;
                         }
@@ -394,6 +403,7 @@ pub async fn run(
             let _ = resize_tx.send(resize_pane::ResizeCommand::Apply(build_resize_request(
                 &state,
             )));
+            state.resize_immediate = false;
         }
 
         // Check toast expiry
@@ -1591,5 +1601,6 @@ fn build_resize_request(state: &AppState) -> Option<resize_pane::ResizeRequest> 
         pane_target,
         cols,
         rows,
+        immediate: state.resize_immediate,
     })
 }

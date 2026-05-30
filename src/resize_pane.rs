@@ -11,6 +11,7 @@ pub struct ResizeRequest {
     pub pane_target: String,
     pub cols: u16,
     pub rows: u16,
+    pub immediate: bool,
 }
 
 pub enum ResizeCommand {
@@ -69,7 +70,7 @@ pub fn spawn_resize_task(
                     }
 
                     enum LocalCmd {
-                        Apply(String, u16, u16),
+                        Apply(String, u16, u16, bool),
                         Idle,
                         Restore(Option<String>, Option<String>),
                     }
@@ -83,7 +84,7 @@ pub fn spawn_resize_task(
                             } => LocalCmd::Restore(switch_to.clone(), then_exec.clone()),
                             ResizeCommand::Apply(None) => LocalCmd::Idle,
                             ResizeCommand::Apply(Some(r)) => {
-                                LocalCmd::Apply(r.pane_target.clone(), r.cols, r.rows)
+                                LocalCmd::Apply(r.pane_target.clone(), r.cols, r.rows, r.immediate)
                             }
                         }
                     };
@@ -105,7 +106,7 @@ pub fn spawn_resize_task(
                             debounce = None;
                             continue;
                         }
-                        LocalCmd::Apply(pane_target, cols, rows) => {
+                        LocalCmd::Apply(pane_target, cols, rows, immediate) => {
                             if cols < MIN_COLS || rows < MIN_ROWS {
                                 debounce = None;
                                 continue;
@@ -124,25 +125,33 @@ pub fn spawn_resize_task(
                                 .as_ref()
                                 .map(|(p, _, _)| p != &pane_target)
                                 .unwrap_or(true);
-
-                            if target_changed {
-                                debounce = None;
-                                apply_resize(&tmux, &pane_target, &session_window, cols, rows, &mut state).await;
-                            } else {
-                                let same_dims = state
+                            let same_dims = !target_changed
+                                && state
                                     .last_applied
                                     .as_ref()
                                     .map(|(_, c, r)| *c == cols && *r == rows)
                                     .unwrap_or(false);
-                                if !same_dims {
-                                    debounce = Some((
-                                        tokio::time::Instant::now() + debounce_duration,
-                                        pane_target,
-                                        session_window,
-                                        cols,
-                                        rows,
-                                    ));
-                                }
+
+                            if same_dims {
+                                // No-op: window already at the requested size.
+                            } else if target_changed {
+                                // Target switch: apply immediately; preview re-captures via target_rx.
+                                debounce = None;
+                                apply_resize(&tmux, &pane_target, &session_window, cols, rows, &mut state).await;
+                            } else if immediate {
+                                // Focus-toggle resize: apply now (skip debounce) and trigger re-capture.
+                                debounce = None;
+                                apply_resize(&tmux, &pane_target, &session_window, cols, rows, &mut state).await;
+                                let _ = recapture_tx.send(());
+                            } else {
+                                // Continuous terminal resize: debounce to coalesce.
+                                debounce = Some((
+                                    tokio::time::Instant::now() + debounce_duration,
+                                    pane_target,
+                                    session_window,
+                                    cols,
+                                    rows,
+                                ));
                             }
                         }
                     }
