@@ -78,8 +78,8 @@ pub struct AppState {
     pub collapsed_subgroups: HashSet<String>,
     pub collapsed_hidden_subgroups: HashSet<String>,
     pub theme: Palette,
-    /// When set, the `q` key runs this shell command instead of quitting.
-    pub map_q: Option<String>,
+    /// When set, the exit action runs this shell command instead of quitting.
+    pub map_exit: Option<String>,
     /// When true, the resize task is paused and windows are restored.
     pub resize_paused: bool,
 }
@@ -118,7 +118,7 @@ pub async fn run(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     exit_on_switch: bool,
     exit_immediately: bool,
-    map_q: Option<String>,
+    map_exit: Option<String>,
     palette: Palette,
 ) -> Result<()> {
     let config = crate::config::load_config(exit_on_switch);
@@ -176,7 +176,7 @@ pub async fn run(
         collapsed_subgroups: HashSet::new(),
         collapsed_hidden_subgroups: HashSet::new(),
         theme: palette,
-        map_q,
+        map_exit,
         resize_paused: false,
     };
 
@@ -848,7 +848,7 @@ fn handle_key_event(
     }
 
     match key.code {
-        KeyCode::Char('q') => match state.map_q.clone() {
+        KeyCode::Char('q') => match state.map_exit.clone() {
             Some(command) => Some(Action::RunCommand(command)),
             None => {
                 state.should_quit = true;

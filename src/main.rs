@@ -45,10 +45,10 @@ struct Cli {
     exit: bool,
     #[arg(long)]
     exit_immediately: bool,
-    /// Remap the `q` key to run this shell command instead of quitting.
-    /// When set, `q` runs the command and keeps agent-dash open; use Ctrl-C to quit.
+    /// Remap the exit action to run this shell command instead of quitting.
+    /// When set, any exit path runs the command and keeps agent-dash open; use Ctrl-C to quit.
     #[arg(long, value_name = "COMMAND")]
-    map_q: Option<String>,
+    map_exit: Option<String>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -105,7 +105,7 @@ async fn main() -> Result<()> {
         &mut terminal,
         cli.exit,
         cli.exit_immediately,
-        cli.map_q,
+        cli.map_exit,
         palette,
     )
     .await;

@@ -75,7 +75,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
         .iter()
         .map(|entry| {
             let key_padded = format!("{:<8}", entry.key);
-            let description = match state.map_q {
+            let description = match state.map_exit {
                 Some(ref command) if entry.key == "q" && entry.context == "global" => {
                     format!("Run: {}", command)
                 }
