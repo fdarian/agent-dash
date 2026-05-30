@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
@@ -22,7 +22,6 @@ pub enum ResizeCommand {
 struct ResizeState {
     last_applied: Option<(String, u16, u16)>,
     configured_sessions: HashSet<String>,
-    original_window_sizes: HashMap<String, (u16, u16)>,
     zoomed: Option<ZoomState>,
 }
 
@@ -166,13 +165,6 @@ async fn apply_resize(
 
     transition_zoom(tmux, pane_target, &mut state.zoomed).await;
 
-    if !state.original_window_sizes.contains_key(session_window) {
-        if let Ok(Some(orig)) = tmux.get_window_size(session_window).await {
-            state
-                .original_window_sizes
-                .insert(session_window.to_string(), orig);
-        }
-    }
     if !state.configured_sessions.contains(session) {
         let _ = tmux.set_window_size_manual(session).await;
         state.configured_sessions.insert(session.to_string());
@@ -222,14 +214,6 @@ async fn restore_windows(tmux: &TmuxClient<'_>, state: &ResizeState) {
     if let Some(zoom) = state.zoomed.as_ref() {
         unzoom_if_owned(tmux, zoom).await;
     }
-
-    futures::future::join_all(
-        state
-            .original_window_sizes
-            .iter()
-            .map(|(window, &(w, h))| tmux.resize_window(window, w, h)),
-    )
-    .await;
 
     futures::future::join_all(
         state
