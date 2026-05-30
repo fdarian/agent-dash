@@ -80,6 +80,8 @@ pub struct AppState {
     pub theme: Palette,
     /// When set, the `q` key runs this shell command instead of quitting.
     pub map_q: Option<String>,
+    /// When true, the resize task is paused and windows are restored.
+    pub resize_paused: bool,
 }
 
 pub enum Message {
@@ -175,6 +177,7 @@ pub async fn run(
         collapsed_hidden_subgroups: HashSet::new(),
         theme: palette,
         map_q,
+        resize_paused: false,
     };
 
     // Load cached sessions for instant first render
@@ -309,7 +312,8 @@ pub async fn run(
     let fifo_path = pipe_watcher.fifo_path().to_string();
     crate::pipe_pane::spawn_preview_task(tx.clone(), target_rx, fifo_path);
 
-    let (resize_tx, resize_rx) = watch::channel::<Option<resize_pane::ResizeRequest>>(None);
+    let (resize_tx, resize_rx) =
+        watch::channel::<resize_pane::ResizeCommand>(resize_pane::ResizeCommand::Apply(None));
     let resize_handle = resize_pane::spawn_resize_task(resize_rx);
 
     let mut event_stream = EventStream::new();
@@ -321,11 +325,14 @@ pub async fn run(
         return Ok(());
     }
 
+    let mut resize_restore_sent = false;
+
     loop {
         tokio::select! {
             Some(Ok(event)) = event_stream.next() => {
                 match event {
                     Event::Key(key) => {
+                        state.resize_paused = false;
                         let action = handle_key_event(&mut state, key, &target_tx);
                         if let Some(action) = action {
                             process_action(&mut state, action, &target_tx).await;
@@ -353,7 +360,17 @@ pub async fn run(
 
         terminal.draw(|frame| ui::render(frame, &mut state))?;
 
-        let _ = resize_tx.send(build_resize_request(&state));
+        if state.resize_paused {
+            if !resize_restore_sent {
+                let _ = resize_tx.send(resize_pane::ResizeCommand::Restore);
+                resize_restore_sent = true;
+            }
+        } else {
+            resize_restore_sent = false;
+            let _ = resize_tx.send(resize_pane::ResizeCommand::Apply(build_resize_request(
+                &state,
+            )));
+        }
 
         // Check toast expiry
         if let Some(deadline) = state.toast_deadline {
@@ -384,6 +401,7 @@ async fn process_action(
 ) {
     match action {
         Action::SwitchToPane(target) => {
+            state.resize_paused = true;
             let config = crate::config::load_config(false);
             let tmux = TmuxClient::new(&config);
             let _ = tmux.switch_to_pane(&target).await;
@@ -474,6 +492,7 @@ async fn process_action(
             });
         }
         Action::RunCommand(command) => {
+            state.resize_paused = true;
             tokio::spawn(async move {
                 let _ = tokio::process::Command::new("sh")
                     .arg("-c")

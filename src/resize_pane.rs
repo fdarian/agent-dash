@@ -13,6 +13,11 @@ pub struct ResizeRequest {
     pub rows: u16,
 }
 
+pub enum ResizeCommand {
+    Apply(Option<ResizeRequest>),
+    Restore,
+}
+
 #[derive(Default)]
 struct ResizeState {
     last_applied: Option<(String, u16, u16)>,
@@ -36,7 +41,7 @@ fn parse_session_window(pane_target: &str) -> Option<(String, String)> {
     Some((session_window.to_string(), session.to_string()))
 }
 
-pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>) -> JoinHandle<()> {
+pub fn spawn_resize_task(mut request_rx: watch::Receiver<ResizeCommand>) -> JoinHandle<()> {
     tokio::spawn(async move {
         let config = crate::config::load_config(false);
         let tmux = TmuxClient::new(&config);
@@ -58,53 +63,73 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<Option<ResizeRequest>>)
                         break;
                     }
 
-                    let (pane_target, cols, rows) = {
-                        let req = request_rx.borrow_and_update();
-                        match req.as_ref() {
-                            Some(r) => (r.pane_target.clone(), r.cols, r.rows),
-                            None => {
-                                debounce = None;
-                                continue;
+                    enum LocalCmd {
+                        Apply(String, u16, u16),
+                        Idle,
+                        Restore,
+                    }
+
+                    let local_cmd = {
+                        let cmd = request_rx.borrow_and_update();
+                        match &*cmd {
+                            ResizeCommand::Restore => LocalCmd::Restore,
+                            ResizeCommand::Apply(None) => LocalCmd::Idle,
+                            ResizeCommand::Apply(Some(r)) => {
+                                LocalCmd::Apply(r.pane_target.clone(), r.cols, r.rows)
                             }
                         }
                     };
 
-                    if cols < MIN_COLS || rows < MIN_ROWS {
-                        debounce = None;
-                        continue;
-                    }
-
-                    let session_window = match parse_session_window(&pane_target) {
-                        Some((sw, _)) => sw,
-                        None => {
+                    match local_cmd {
+                        LocalCmd::Idle => {
                             debounce = None;
                             continue;
                         }
-                    };
+                        LocalCmd::Restore => {
+                            restore_windows(&tmux, &state).await;
+                            state = ResizeState::default();
+                            debounce = None;
+                            continue;
+                        }
+                        LocalCmd::Apply(pane_target, cols, rows) => {
+                            if cols < MIN_COLS || rows < MIN_ROWS {
+                                debounce = None;
+                                continue;
+                            }
 
-                    let target_changed = state
-                        .last_applied
-                        .as_ref()
-                        .map(|(p, _, _)| p != &pane_target)
-                        .unwrap_or(true);
+                            let session_window = match parse_session_window(&pane_target) {
+                                Some((sw, _)) => sw,
+                                None => {
+                                    debounce = None;
+                                    continue;
+                                }
+                            };
 
-                    if target_changed {
-                        debounce = None;
-                        apply_resize(&tmux, &pane_target, &session_window, cols, rows, &mut state).await;
-                    } else {
-                        let same_dims = state
-                            .last_applied
-                            .as_ref()
-                            .map(|(_, c, r)| *c == cols && *r == rows)
-                            .unwrap_or(false);
-                        if !same_dims {
-                            debounce = Some((
-                                tokio::time::Instant::now() + debounce_duration,
-                                pane_target,
-                                session_window,
-                                cols,
-                                rows,
-                            ));
+                            let target_changed = state
+                                .last_applied
+                                .as_ref()
+                                .map(|(p, _, _)| p != &pane_target)
+                                .unwrap_or(true);
+
+                            if target_changed {
+                                debounce = None;
+                                apply_resize(&tmux, &pane_target, &session_window, cols, rows, &mut state).await;
+                            } else {
+                                let same_dims = state
+                                    .last_applied
+                                    .as_ref()
+                                    .map(|(_, c, r)| *c == cols && *r == rows)
+                                    .unwrap_or(false);
+                                if !same_dims {
+                                    debounce = Some((
+                                        tokio::time::Instant::now() + debounce_duration,
+                                        pane_target,
+                                        session_window,
+                                        cols,
+                                        rows,
+                                    ));
+                                }
+                            }
                         }
                     }
                 }
