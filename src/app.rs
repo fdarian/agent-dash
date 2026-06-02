@@ -1163,8 +1163,14 @@ fn handle_key_event(
                     .as_ref()
                 {
                     let pane_id = session.pane_id.clone();
-                    state.unread_pane_ids.remove(&pane_id);
-                    state.unread_order.remove(&pane_id);
+                    if state.unread_pane_ids.contains(&pane_id) {
+                        state.unread_pane_ids.remove(&pane_id);
+                        state.unread_order.remove(&pane_id);
+                    } else {
+                        state.unread_pane_ids.insert(pane_id.clone());
+                        state.unread_counter += 1;
+                        state.unread_order.insert(pane_id, state.unread_counter);
+                    }
                     persist_state(state);
                     refresh_visible_items(state);
                 }
