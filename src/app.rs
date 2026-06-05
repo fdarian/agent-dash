@@ -1406,16 +1406,16 @@ fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) -> Option<Action>
             }
         }
         MouseEventKind::ScrollDown if in_preview => {
-            let col = mouse.column.saturating_sub(state.preview_pane_area.x);
-            let row = mouse.row.saturating_sub(state.preview_pane_area.y);
+            let col = state.preview_pane_area.width / 2;
+            let row = state.preview_pane_area.height / 2;
             if let Some((target, col, row)) = forward_scroll_target(state, col, row) {
                 return Some(Action::ForwardScrollDown { target, col, row });
             }
             scroll_preview_down(state);
         }
         MouseEventKind::ScrollUp if in_preview => {
-            let col = mouse.column.saturating_sub(state.preview_pane_area.x);
-            let row = mouse.row.saturating_sub(state.preview_pane_area.y);
+            let col = state.preview_pane_area.width / 2;
+            let row = state.preview_pane_area.height / 2;
             if let Some((target, col, row)) = forward_scroll_target(state, col, row) {
                 return Some(Action::ForwardScrollUp { target, col, row });
             }
