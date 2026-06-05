@@ -1299,6 +1299,8 @@ fn handle_key_event(
         KeyCode::Char('_') => {
             if matches!(state.focus, Focus::Sessions) && state.sessions_expanded {
                 state.sessions_expanded = false;
+            } else if matches!(state.focus, Focus::Preview) {
+                state.focus = Focus::Sessions;
             }
             None
         }
