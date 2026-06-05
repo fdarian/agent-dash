@@ -5,6 +5,7 @@ use crossterm::event::{
 use futures::StreamExt;
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 
@@ -336,6 +337,10 @@ pub async fn run(
 
     let mut resize_restore_sent = false;
 
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
+    let mut sighup = signal(SignalKind::hangup())?;
+
     loop {
         tokio::select! {
             Some(Ok(event)) = event_stream.next() => {
@@ -364,6 +369,15 @@ pub async fn run(
             }
             Some(msg) = rx.recv() => {
                 handle_message(&mut state, msg, &target_tx);
+            }
+            _ = sigterm.recv() => {
+                state.should_quit = true;
+            }
+            _ = sigint.recv() => {
+                state.should_quit = true;
+            }
+            _ = sighup.recv() => {
+                state.should_quit = true;
             }
         }
 
