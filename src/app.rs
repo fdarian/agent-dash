@@ -369,9 +369,17 @@ pub async fn run(
 
         terminal.draw(|frame| ui::render(frame, &mut state))?;
 
+        let exit_cmd = state.pending_exit_cmd.take();
+        if exit_cmd.is_some() {
+            state.resize_paused = true;
+            resize_restore_sent = false;
+        }
+
         if state.resize_paused {
             if !resize_restore_sent {
-                let _ = resize_tx.send(resize_pane::ResizeCommand::Restore);
+                let _ = resize_tx.send(resize_pane::ResizeCommand::Restore {
+                    then_exec: exit_cmd,
+                });
                 resize_restore_sent = true;
             }
         } else {
@@ -395,11 +403,6 @@ pub async fn run(
                 state.toast_deadline =
                     Some(std::time::Instant::now() + std::time::Duration::from_secs(4));
             }
-        }
-
-        if let Some(cmd) = state.pending_exit_cmd.take() {
-            state.resize_paused = true;
-            spawn_command(cmd);
         }
 
         if state.should_quit {
@@ -514,16 +517,6 @@ async fn process_action(
             });
         }
     }
-}
-
-fn spawn_command(command: String) {
-    tokio::spawn(async move {
-        let _ = tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(&command)
-            .status()
-            .await;
-    });
 }
 
 /// Triggers the exit action. If `map_exit` is configured, stashes the command

@@ -15,7 +15,7 @@ pub struct ResizeRequest {
 
 pub enum ResizeCommand {
     Apply(Option<ResizeRequest>),
-    Restore,
+    Restore { then_exec: Option<String> },
 }
 
 #[derive(Default)]
@@ -66,13 +66,15 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<ResizeCommand>) -> Join
                     enum LocalCmd {
                         Apply(String, u16, u16),
                         Idle,
-                        Restore,
+                        Restore(Option<String>),
                     }
 
                     let local_cmd = {
                         let cmd = request_rx.borrow_and_update();
                         match &*cmd {
-                            ResizeCommand::Restore => LocalCmd::Restore,
+                            ResizeCommand::Restore { then_exec } => {
+                                LocalCmd::Restore(then_exec.clone())
+                            }
                             ResizeCommand::Apply(None) => LocalCmd::Idle,
                             ResizeCommand::Apply(Some(r)) => {
                                 LocalCmd::Apply(r.pane_target.clone(), r.cols, r.rows)
@@ -85,10 +87,19 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<ResizeCommand>) -> Join
                             debounce = None;
                             continue;
                         }
-                        LocalCmd::Restore => {
+                        LocalCmd::Restore(then_exec) => {
                             restore_windows(&tmux, &state).await;
                             state = ResizeState::default();
                             debounce = None;
+                            if let Some(cmd) = then_exec {
+                                tokio::spawn(async move {
+                                    let _ = tokio::process::Command::new("sh")
+                                        .arg("-c")
+                                        .arg(&cmd)
+                                        .status()
+                                        .await;
+                                });
+                            }
                             continue;
                         }
                         LocalCmd::Apply(pane_target, cols, rows) => {
