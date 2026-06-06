@@ -570,15 +570,13 @@ fn session_priority_tier(
     unread_pane_ids: &HashSet<String>,
     prompt_states: &HashMap<String, PromptState>,
 ) -> u8 {
-    let is_unread = unread_pane_ids.contains(&session.pane_id);
-    if is_unread {
-        let prompt_state = prompt_states.get(&session.pane_id);
-        match prompt_state {
-            Some(PromptState::Plan) | Some(PromptState::Ask) => 1,
-            _ => 0,
+    if session.status == SessionStatus::Active {
+        0
+    } else if unread_pane_ids.contains(&session.pane_id) {
+        match prompt_states.get(&session.pane_id) {
+            Some(PromptState::Plan) | Some(PromptState::Ask) => 2,
+            _ => 1,
         }
-    } else if session.status == SessionStatus::Active {
-        2
     } else {
         match prompt_states.get(&session.pane_id) {
             Some(PromptState::Plan) | Some(PromptState::Ask) => 3,
@@ -646,7 +644,7 @@ pub fn build_flat_visible_items(
             return tier_a.cmp(&tier_b);
         }
 
-        // Within tiers 0 and 1, sort by unread_order descending (higher counter = more recent = first)
+        // Within tier 0 (active) and tier 1 (unread, no prompt), sort by unread_order descending
         if tier_a <= 1 {
             let order_a = unread_order.get(&session_a.pane_id).copied().unwrap_or(0);
             let order_b = unread_order.get(&session_b.pane_id).copied().unwrap_or(0);
