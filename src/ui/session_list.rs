@@ -4,6 +4,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
 use crate::app::AppState;
 use crate::filter_query::parse_filter_query;
 use crate::session::{Agent, PromptState, SessionStatus, VisibleItem};
+use crate::time_fmt::format_relative_time;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, flat_view: bool) {
     let border_color = if focused {
@@ -15,6 +16,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
     let flag_color = state.theme.accent_flag;
 
     let parsed = parse_filter_query(&state.session_filter_query);
+    let now_epoch = chrono::Local::now().timestamp();
 
     let mut block = Block::default()
         .borders(Borders::ALL)
@@ -259,48 +261,58 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     let show_group_tag =
                         !parsed.text.is_empty() && !in_hidden_section && effective_title_differs;
 
-                    if *prompt_state == PromptState::None || in_hidden_section {
-                        if show_group_tag {
-                            let tag = display_name.as_str();
-                            let tag_width = tag.chars().count();
-                            let left_width = inner_width.saturating_sub(tag_width + 1);
-                            let left_padded = truncate_or_pad(&left_text, left_width);
-                            let tag_style = if is_selected {
-                                Style::default()
-                                    .fg(state.theme.selected_dim_fg)
-                                    .bg(state.theme.bg_selected)
-                            } else {
-                                Style::default().fg(state.theme.border_unfocused)
-                            };
-                            let spans = vec![
-                                Span::styled(left_padded, base_style),
-                                Span::styled(tag, tag_style),
-                            ];
-                            ListItem::new(Line::from(spans))
-                        } else {
-                            ListItem::new(Line::from(left_text).style(base_style))
-                        }
+                    let time_label = session.last_activity.map(|la| {
+                        format_relative_time(now_epoch, la as i64)
+                    });
+                    let time_style = if is_selected {
+                        Style::default()
+                            .fg(state.theme.selected_dim_fg)
+                            .bg(state.theme.bg_selected)
                     } else {
-                        let (badge_text, badge_fg) = match prompt_state {
-                            PromptState::Plan => ("plan", state.theme.accent_info),
-                            PromptState::Ask => ("ask", state.theme.accent_warning),
-                            PromptState::None => unreachable!(),
-                        };
-                        let badge_width = badge_text.len();
-                        let left_width = inner_width.saturating_sub(badge_width + 1);
-                        let left_padded = truncate_or_pad(&left_text, left_width);
+                        Style::default().fg(state.theme.text_muted)
+                    };
 
+                    let show_badge =
+                        *prompt_state != PromptState::None && !in_hidden_section;
+                    let (badge_text, badge_fg) = match prompt_state {
+                        PromptState::Plan => ("plan", state.theme.accent_info),
+                        PromptState::Ask => ("ask", state.theme.accent_warning),
+                        PromptState::None => ("", state.theme.text_muted),
+                    };
+                    let badge_width = if show_badge { badge_text.len() } else { 0 };
+                    let tag = display_name.as_str();
+                    let tag_width = if show_group_tag { tag.chars().count() } else { 0 };
+                    let time_width = time_label
+                        .as_ref()
+                        .map(|label| label.chars().count())
+                        .unwrap_or(0);
+                    let right_width = badge_width + tag_width + time_width;
+
+                    let left_width = inner_width.saturating_sub(right_width);
+                    let left_padded = truncate_or_pad(&left_text, left_width);
+
+                    let mut spans = vec![Span::styled(left_padded, base_style)];
+                    if show_badge {
                         let mut badge_style = Style::default().fg(badge_fg);
                         if is_selected {
                             badge_style = badge_style.bg(state.theme.bg_selected);
                         }
-
-                        let spans = vec![
-                            Span::styled(left_padded, base_style),
-                            Span::styled(badge_text, badge_style),
-                        ];
-                        ListItem::new(Line::from(spans))
+                        spans.push(Span::styled(badge_text, badge_style));
                     }
+                    if show_group_tag {
+                        let tag_style = if is_selected {
+                            Style::default()
+                                .fg(state.theme.selected_dim_fg)
+                                .bg(state.theme.bg_selected)
+                        } else {
+                            Style::default().fg(state.theme.border_unfocused)
+                        };
+                        spans.push(Span::styled(tag, tag_style));
+                    }
+                    if let Some(label) = time_label {
+                        spans.push(Span::styled(label, time_style));
+                    }
+                    ListItem::new(Line::from(spans))
                 }
             }
         })
