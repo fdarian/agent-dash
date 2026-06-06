@@ -18,6 +18,7 @@ mod hook_write;
 mod selection;
 mod session;
 mod state;
+mod time_fmt;
 mod ui;
 
 mod notes;
