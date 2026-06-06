@@ -15,8 +15,9 @@ use crate::copy_mode;
 use crate::resize_pane;
 use crate::selection::{self, ContentPosition, PreviewSelection};
 use crate::session::{
-    auto_select_index, build_flat_visible_items, build_visible_items, group_sessions_by_name,
-    resolve_selected_index, Agent, AgentSession, PromptState, SessionStatus, VisibleItem,
+    auto_select_index, build_flat_visible_items, build_visible_items, clamp_to_selectable_index,
+    group_sessions_by_name, next_selectable_index, resolve_selected_index, Agent, AgentSession,
+    PromptState, SessionStatus, VisibleItem,
 };
 use crate::state;
 use crate::tmux::TmuxClient;
@@ -819,9 +820,12 @@ fn handle_key_event(
                 state.session_filter_query.clear();
                 state.session_filter_cursor = 0;
                 refresh_visible_items(state);
-                state.selected_index = state
-                    .selected_index
-                    .min(state.visible_items.len().saturating_sub(1));
+                state.selected_index = clamp_to_selectable_index(
+                    &state.visible_items,
+                    state
+                        .selected_index
+                        .min(state.visible_items.len().saturating_sub(1)),
+                );
                 update_selected_target(state, selected_pane_target);
                 return None;
             }
@@ -841,7 +845,8 @@ fn handle_key_event(
                         } => Some(tmux_session_name.clone()),
                         VisibleItem::SubgroupHeader { .. }
                         | VisibleItem::HiddenHeader { .. }
-                        | VisibleItem::GroupHiddenHeader { .. } => None,
+                        | VisibleItem::GroupHiddenHeader { .. }
+                        | VisibleItem::TimeBucketHeader { .. } => None,
                     };
                     if let Some(target) = target {
                         if state.config.exit_on_switch {
@@ -908,8 +913,13 @@ fn handle_key_event(
         KeyCode::Char('j') | KeyCode::Down => {
             match state.focus {
                 Focus::Sessions => {
-                    if state.selected_index < state.visible_items.len().saturating_sub(1) {
-                        state.selected_index += 1;
+                    let next = next_selectable_index(
+                        &state.visible_items,
+                        state.selected_index,
+                        true,
+                    );
+                    if next != state.selected_index {
+                        state.selected_index = next;
                         state.preview_content.clear();
                         state.preview_selection = None;
                         update_selected_target(state, selected_pane_target);
@@ -929,8 +939,13 @@ fn handle_key_event(
         KeyCode::Char('k') | KeyCode::Up => {
             match state.focus {
                 Focus::Sessions => {
-                    if state.selected_index > 0 {
-                        state.selected_index -= 1;
+                    let next = next_selectable_index(
+                        &state.visible_items,
+                        state.selected_index,
+                        false,
+                    );
+                    if next != state.selected_index {
+                        state.selected_index = next;
                         state.preview_content.clear();
                         state.preview_selection = None;
                         update_selected_target(state, selected_pane_target);
@@ -1151,7 +1166,8 @@ fn handle_key_event(
                     } => Some(tmux_session_name.clone()),
                     VisibleItem::SubgroupHeader { .. }
                     | VisibleItem::HiddenHeader { .. }
-                    | VisibleItem::GroupHiddenHeader { .. } => None,
+                    | VisibleItem::GroupHiddenHeader { .. }
+                    | VisibleItem::TimeBucketHeader { .. } => None,
                 };
                 if let Some(target) = target {
                     if state.config.exit_on_switch {
@@ -1198,7 +1214,8 @@ fn handle_key_event(
                         } => (tmux_session_name.clone(), tmux_session_name.clone()),
                         VisibleItem::SubgroupHeader { .. }
                         | VisibleItem::HiddenHeader { .. }
-                        | VisibleItem::GroupHiddenHeader { .. } => return None,
+                        | VisibleItem::GroupHiddenHeader { .. }
+                        | VisibleItem::TimeBucketHeader { .. } => return None,
                     };
                     return Some(Action::CreateSession {
                         tmux_session_name,
@@ -1244,9 +1261,12 @@ fn handle_key_event(
                 state.session_filter_query.clear();
                 state.session_filter_cursor = 0;
                 refresh_visible_items(state);
-                state.selected_index = state
-                    .selected_index
-                    .min(state.visible_items.len().saturating_sub(1));
+                state.selected_index = clamp_to_selectable_index(
+                    &state.visible_items,
+                    state
+                        .selected_index
+                        .min(state.visible_items.len().saturating_sub(1)),
+                );
                 update_selected_target(state, selected_pane_target);
             }
             None
@@ -1326,7 +1346,8 @@ fn handle_key_event(
                         } => Some(crate::notes::group_note_path(tmux_session_name)),
                         VisibleItem::SubgroupHeader { .. }
                         | VisibleItem::HiddenHeader { .. }
-                        | VisibleItem::GroupHiddenHeader { .. } => None,
+                        | VisibleItem::GroupHiddenHeader { .. }
+                        | VisibleItem::TimeBucketHeader { .. } => None,
                     };
                     if let Some(path) = note_path {
                         state.pending_note_edit = Some(path);
@@ -1451,6 +1472,7 @@ fn refresh_visible_items(state: &mut AppState) {
             &state.hidden_groups,
             state.hidden_section_collapsed,
             include_hidden,
+            chrono::Local::now().timestamp(),
         );
     } else {
         let groups = group_sessions_by_name(&state.sessions);

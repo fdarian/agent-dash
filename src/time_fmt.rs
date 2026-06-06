@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use chrono::{Local, TimeZone};
 
 pub fn format_relative_time(now_epoch: i64, then_epoch: i64) -> String {
@@ -17,6 +15,7 @@ pub fn format_relative_time(now_epoch: i64, then_epoch: i64) -> String {
     }
 }
 
+#[derive(PartialEq, Eq)]
 pub enum ActivityBucket {
     Now,
     LastHour,

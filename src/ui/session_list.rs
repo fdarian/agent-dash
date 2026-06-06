@@ -156,6 +156,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, focused: bool, fl
                     };
                     ListItem::new(Line::from(text).style(style))
                 }
+                VisibleItem::TimeBucketHeader { label } => {
+                    let text = format!("──── {label} ────");
+                    let style = Style::default().fg(state.theme.border_unfocused);
+                    ListItem::new(Line::from(text).style(style))
+                }
                 VisibleItem::HiddenHeader {
                     count,
                     is_collapsed,
