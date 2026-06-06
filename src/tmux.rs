@@ -13,8 +13,7 @@ impl<'a> TmuxClient<'a> {
     }
 
     pub async fn discover_sessions(&self) -> Result<Vec<AgentSession>> {
-        let format =
-            "#{pane_id}\t#{pane_pid}\t#{pane_title}\t#{session_name}:#{window_index}.#{pane_index}";
+        let format = "#{pane_id}\t#{pane_pid}\t#{pane_title}\t#{session_name}:#{window_index}.#{pane_index}\t#{window_activity}";
         let output = run_command("tmux", &["list-panes", "-a", "-F", format]).await;
 
         let output = match output {
@@ -28,6 +27,7 @@ impl<'a> TmuxClient<'a> {
             pane_title: String,
             pane_target: String,
             tmux_session_name: String,
+            window_activity: Option<u64>,
         }
 
         let mut parsed = Vec::new();
@@ -41,12 +41,14 @@ impl<'a> TmuxClient<'a> {
                 Some(s) if !s.is_empty() => s,
                 _ => continue,
             };
+            let window_activity = parts.get(4).and_then(|s| s.parse::<u64>().ok());
             parsed.push(ParsedPane {
                 pane_id: parts[0].to_string(),
                 pane_pid: parts[1].to_string(),
                 pane_title: parts[2].to_string(),
                 pane_target: pane_target.to_string(),
                 tmux_session_name: tmux_session_name.to_string(),
+                window_activity,
             });
         }
 
@@ -88,6 +90,7 @@ impl<'a> TmuxClient<'a> {
                     cwd: None,
                     model: None,
                     agent_role: None,
+                    last_activity: p.window_activity,
                 });
             }
         }

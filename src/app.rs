@@ -484,6 +484,7 @@ async fn process_action(
                             cwd: None,
                             model: None,
                             agent_role: None,
+                            last_activity: None,
                         };
                         state
                             .prev_status_map
