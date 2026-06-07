@@ -40,6 +40,8 @@ pub struct AgentSession {
     pub model: Option<String>,
     #[serde(default)]
     pub agent_role: Option<String>,
+    #[serde(default)]
+    pub last_activity: Option<u64>,
 }
 
 const BRAILLE_START: u32 = 0x2800;
@@ -137,6 +139,60 @@ pub enum VisibleItem {
         count: usize,
         is_collapsed: bool,
     },
+    TimeBucketHeader {
+        label: String,
+    },
+}
+
+impl VisibleItem {
+    pub fn is_selectable(&self) -> bool {
+        !matches!(self, VisibleItem::TimeBucketHeader { .. })
+    }
+}
+
+pub fn next_selectable_index(items: &[VisibleItem], current: usize, down: bool) -> usize {
+    if items.is_empty() {
+        return 0;
+    }
+    let mut idx = current;
+    loop {
+        if down {
+            if idx >= items.len() - 1 {
+                return idx;
+            }
+            idx += 1;
+        } else if idx == 0 {
+            return 0;
+        } else {
+            idx -= 1;
+        }
+        if items[idx].is_selectable() {
+            return idx;
+        }
+        if down && idx == items.len() - 1 {
+            return idx;
+        }
+        if !down && idx == 0 {
+            return 0;
+        }
+    }
+}
+
+pub fn clamp_to_selectable_index(items: &[VisibleItem], index: usize) -> usize {
+    if items.is_empty() {
+        return 0;
+    }
+    let idx = index.min(items.len() - 1);
+    if items[idx].is_selectable() {
+        return idx;
+    }
+    if let Some(found) = (idx..items.len()).find(|&i| items[i].is_selectable()) {
+        return found;
+    }
+    if let Some(found) = (0..idx).rev().find(|&i| items[i].is_selectable()) {
+        return found;
+    }
+    idx
 }
 
 use std::cmp::Ordering;
@@ -538,12 +594,13 @@ pub fn resolve_selected_index(
                     return found;
                 }
             }
+            VisibleItem::TimeBucketHeader { .. } => {}
         }
     }
     if new_items.is_empty() {
         0
     } else {
-        old_index.min(new_items.len() - 1)
+        clamp_to_selectable_index(new_items, old_index.min(new_items.len() - 1))
     }
 }
 
@@ -555,14 +612,14 @@ pub fn auto_select_index(
     if let Some(idx) = visible_items.iter().position(|item| {
         matches!(item, VisibleItem::Session { session, .. } if session.pane_id == focused_pane_id)
     }) {
-        return idx;
+        return clamp_to_selectable_index(visible_items, idx);
     }
     if let Some(idx) = visible_items.iter().position(|item| {
         matches!(item, VisibleItem::Session { session, .. } if session.tmux_session_name == focused_tmux_session_name)
     }) {
-        return idx;
+        return clamp_to_selectable_index(visible_items, idx);
     }
-    0
+    clamp_to_selectable_index(visible_items, 0)
 }
 
 fn session_priority_tier(
@@ -589,14 +646,16 @@ fn session_priority_tier(
 pub fn build_flat_visible_items(
     sessions: &[AgentSession],
     unread_pane_ids: &HashSet<String>,
-    unread_order: &HashMap<String, u64>,
-    prompt_states: &HashMap<String, PromptState>,
+    _unread_order: &HashMap<String, u64>,
+    _prompt_states: &HashMap<String, PromptState>,
     display_name_map: &HashMap<String, String>,
     hidden_pane_ids: &HashSet<String>,
     hidden_groups: &HashSet<String>,
     hidden_section_collapsed: bool,
     include_hidden: bool,
+    now_epoch: i64,
 ) -> Vec<VisibleItem> {
+    use crate::time_fmt::{activity_bucket, ActivityBucket};
     let (hidden_sessions, visible_sessions): (Vec<&AgentSession>, Vec<&AgentSession>) =
         sessions.iter().partition(|s| {
             !include_hidden
@@ -627,32 +686,44 @@ pub fn build_flat_visible_items(
             VisibleItem::SubgroupHeader { .. }
             | VisibleItem::GroupHeader { .. }
             | VisibleItem::GroupHiddenHeader { .. }
-            | VisibleItem::HiddenHeader { .. } => return Ordering::Equal,
+            | VisibleItem::HiddenHeader { .. }
+            | VisibleItem::TimeBucketHeader { .. } => return Ordering::Equal,
         };
         let session_b = match b {
             VisibleItem::Session { session, .. } => session,
             VisibleItem::SubgroupHeader { .. }
             | VisibleItem::GroupHeader { .. }
             | VisibleItem::GroupHiddenHeader { .. }
-            | VisibleItem::HiddenHeader { .. } => return Ordering::Equal,
+            | VisibleItem::HiddenHeader { .. }
+            | VisibleItem::TimeBucketHeader { .. } => return Ordering::Equal,
         };
 
-        let tier_a = session_priority_tier(session_a, unread_pane_ids, prompt_states);
-        let tier_b = session_priority_tier(session_b, unread_pane_ids, prompt_states);
-
-        if tier_a != tier_b {
-            return tier_a.cmp(&tier_b);
+        match (session_a.last_activity, session_b.last_activity) {
+            (Some(a), Some(b)) => b.cmp(&a),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
         }
-
-        // Within tier 0 (active) and tier 1 (unread, no prompt), sort by unread_order descending
-        if tier_a <= 1 {
-            let order_a = unread_order.get(&session_a.pane_id).copied().unwrap_or(0);
-            let order_b = unread_order.get(&session_b.pane_id).copied().unwrap_or(0);
-            return order_b.cmp(&order_a);
-        }
-
-        Ordering::Equal
     });
+
+    let mut bucketed_items: Vec<VisibleItem> = Vec::new();
+    let mut last_bucket: Option<ActivityBucket> = None;
+    for item in items {
+        if let VisibleItem::Session { session, .. } = &item {
+            let bucket = match session.last_activity {
+                Some(la) => activity_bucket(now_epoch, la as i64),
+                None => ActivityBucket::Older,
+            };
+            if last_bucket.as_ref() != Some(&bucket) {
+                bucketed_items.push(VisibleItem::TimeBucketHeader {
+                    label: bucket.label().to_string(),
+                });
+                last_bucket = Some(bucket);
+            }
+        }
+        bucketed_items.push(item);
+    }
+    items = bucketed_items;
 
     if !hidden_sessions.is_empty() {
         items.push(VisibleItem::HiddenHeader {
