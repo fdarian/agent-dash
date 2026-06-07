@@ -354,6 +354,7 @@ pub async fn run(
                         }
                     }
                     Event::Mouse(mouse) => {
+                        state.resize_paused = false;
                         if let Some(action) = handle_mouse_event(&mut state, mouse) {
                             process_action(&mut state, action, &target_tx).await;
                         }
