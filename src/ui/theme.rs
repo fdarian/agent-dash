@@ -86,3 +86,20 @@ impl Palette {
         }
     }
 }
+
+pub fn resolve_palette(config_theme: ThemeMode) -> Palette {
+    if let Ok(value) = std::env::var("AGENT_DASH_THEME") {
+        let mode = if value.eq_ignore_ascii_case("light") {
+            ThemeMode::Light
+        } else {
+            ThemeMode::Dark
+        };
+        return Palette::for_mode(mode);
+    }
+
+    if config_theme != ThemeMode::Dark {
+        return Palette::for_mode(config_theme);
+    }
+
+    Palette::dark()
+}
