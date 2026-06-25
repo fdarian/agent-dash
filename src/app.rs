@@ -22,7 +22,7 @@ use crate::session::{
 use crate::state;
 use crate::tmux::TmuxClient;
 use crate::ui;
-use crate::ui::theme::Palette;
+use crate::ui::theme::{resolve_palette, Palette};
 
 pub enum Focus {
     Sessions,
@@ -98,6 +98,7 @@ pub enum Message {
         HashMap<String, PromptState>,
     ),
     PreviewUpdated(String),
+    ConfigChanged,
 }
 
 pub enum Action {
@@ -202,6 +203,17 @@ pub async fn run(
     }
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+    let _config_watcher = match crate::config_watch::spawn(tx.clone()) {
+        Ok(watcher) => Some(watcher),
+        Err(err) => {
+            eprintln!(
+                "agent-dash: failed to watch config file {}: {}",
+                crate::config::config_path().display(),
+                err
+            );
+            None
+        }
+    };
 
     let (target_tx, target_rx) = watch::channel(Option::<PreviewTarget>::None);
 
@@ -618,6 +630,20 @@ fn handle_message(
             }
             state.preview_content = content;
         }
+        Message::ConfigChanged => match crate::config::try_load_config(state.config.exit_on_switch) {
+            Ok(Some(config)) => {
+                state.theme = resolve_palette(config.theme);
+                state.config = config;
+            }
+            Ok(None) => {}
+            Err(err) => {
+                eprintln!(
+                    "agent-dash: failed to reload config from {}: {}",
+                    crate::config::config_path().display(),
+                    err
+                );
+            }
+        },
     }
 }
 

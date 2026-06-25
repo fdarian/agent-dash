@@ -19,3 +19,4 @@ arboard = "3"
 libc = "0.2"
 nucleo-matcher = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
+notify = "7"
