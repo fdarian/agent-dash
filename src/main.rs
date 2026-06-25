@@ -11,6 +11,7 @@ use std::io;
 mod app;
 mod cache;
 mod config;
+mod config_watch;
 mod copy_mode;
 mod enrichment;
 mod filter_query;
@@ -26,7 +27,7 @@ mod pipe_pane;
 mod resize_pane;
 mod tmux;
 
-use ui::theme::{Palette, ThemeMode};
+use ui::theme::resolve_palette;
 
 #[derive(clap::Subcommand)]
 enum Command {
@@ -57,25 +58,6 @@ struct Cli {
     command: Option<Command>,
 }
 
-fn resolve_palette(config: &config::AppConfig) -> Palette {
-    // 1. Env override
-    if let Ok(val) = std::env::var("AGENT_DASH_THEME") {
-        let mode = match val.to_lowercase().as_str() {
-            "light" => ThemeMode::Light,
-            _ => ThemeMode::Dark,
-        };
-        return Palette::for_mode(mode);
-    }
-
-    // 2. Config file preference
-    if config.theme != ThemeMode::Dark {
-        return Palette::for_mode(config.theme);
-    }
-
-    // 3. Default
-    Palette::dark()
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -95,7 +77,7 @@ async fn main() -> Result<()> {
     }
 
     let config = config::load_config(cli.exit);
-    let palette = resolve_palette(&config);
+    let palette = resolve_palette(config.theme);
 
     // Terminal setup
     enable_raw_mode()?;

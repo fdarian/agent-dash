@@ -1,6 +1,8 @@
+use anyhow::Context;
 use crate::session::Agent;
 use crate::ui::theme::ThemeMode;
 use serde::Deserialize;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -89,72 +91,107 @@ impl AppConfig {
             Agent::Claude => self.claude_code_preview_scroll_mode,
         }
     }
+
+    fn defaults(exit_on_switch: bool) -> Self {
+        Self {
+            command: "claude".to_string(),
+            exit_on_switch,
+            session_name_formatter: None,
+            default_flat_view: false,
+            layout: LayoutDirection::default(),
+            shared_state: false,
+            group_name_separator: None,
+            theme: ThemeMode::Dark,
+            claude_code_preview_scroll_mode: PreviewScrollMode::default(),
+        }
+    }
 }
 
-fn config_path() -> PathBuf {
+pub fn config_path() -> PathBuf {
     dirs::home_dir()
         .expect("home directory not found")
         .join(".config/agent-dash/config.json")
 }
 
 pub fn load_config(exit_on_switch: bool) -> AppConfig {
-    let config_file = load_config_file();
-    let command = config_file
-        .as_ref()
-        .and_then(|c| c.command.clone())
-        .unwrap_or_else(|| "claude".to_string());
-    let session_name_formatter = config_file
-        .as_ref()
-        .and_then(|c| c.session_name_formatter.as_ref())
-        .map(|s| parse_formatter_command(s));
-
-    let default_flat_view = config_file
-        .as_ref()
-        .and_then(|c| c.default_view.as_deref())
-        .is_some_and(|v| v == "flat");
-
-    let layout = config_file
-        .as_ref()
-        .and_then(|c| c.layout)
-        .unwrap_or_default();
-
-    let shared_state = config_file
-        .as_ref()
-        .and_then(|c| c.shared_state)
-        .unwrap_or(false);
-
-    let group_name_separator = config_file
-        .as_ref()
-        .and_then(|c| c.group_name_separator.clone());
-
-    let theme = config_file
-        .as_ref()
-        .and_then(|c| c.theme)
-        .unwrap_or(ThemeMode::Dark);
-
-    let claude_code_preview_scroll_mode = config_file
-        .as_ref()
-        .and_then(|c| c.claude_code.as_ref())
-        .and_then(|cc| cc.preview_scroll_mode)
-        .unwrap_or_default();
-
-    AppConfig {
-        command,
-        exit_on_switch,
-        session_name_formatter,
-        default_flat_view,
-        layout,
-        shared_state,
-        group_name_separator,
-        theme,
-        claude_code_preview_scroll_mode,
+    let path = config_path();
+    match try_load_config(exit_on_switch) {
+        Ok(Some(config)) => config,
+        Ok(None) => AppConfig::defaults(exit_on_switch),
+        Err(err) => {
+            eprintln!(
+                "agent-dash: failed to load config from {}: {}",
+                path.display(),
+                err
+            );
+            AppConfig::defaults(exit_on_switch)
+        }
     }
 }
 
-fn load_config_file() -> Option<ConfigFile> {
+pub fn try_load_config(exit_on_switch: bool) -> anyhow::Result<Option<AppConfig>> {
+    let config_file = load_config_file()?;
+    Ok(config_file
+        .as_ref()
+        .map(|config_file| build_config(config_file, exit_on_switch)))
+}
+
+fn build_config(config_file: &ConfigFile, exit_on_switch: bool) -> AppConfig {
+    let mut config = AppConfig::defaults(exit_on_switch);
+
+    if let Some(command) = config_file.command.as_ref() {
+        config.command = command.clone();
+    }
+
+    config.session_name_formatter = config_file
+        .session_name_formatter
+        .as_ref()
+        .map(|formatter| parse_formatter_command(formatter));
+
+    config.default_flat_view = config_file
+        .default_view
+        .as_deref()
+        .is_some_and(|view| view == "flat");
+
+    if let Some(layout) = config_file.layout {
+        config.layout = layout;
+    }
+
+    if let Some(shared_state) = config_file.shared_state {
+        config.shared_state = shared_state;
+    }
+
+    config.group_name_separator = config_file.group_name_separator.clone();
+
+    if let Some(theme) = config_file.theme {
+        config.theme = theme;
+    }
+
+    if let Some(preview_scroll_mode) = config_file
+        .claude_code
+        .as_ref()
+        .and_then(|claude_code| claude_code.preview_scroll_mode)
+    {
+        config.claude_code_preview_scroll_mode = preview_scroll_mode;
+    }
+
+    config
+}
+
+fn load_config_file() -> anyhow::Result<Option<ConfigFile>> {
     let path = config_path();
-    let content = std::fs::read_to_string(&path).ok()?;
-    serde_json::from_str(&content).ok()
+    let content = match std::fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(err) => {
+            return Err(err)
+                .with_context(|| format!("failed to read {}", path.display()))
+        }
+    };
+
+    let config_file = serde_json::from_str(&content)
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+    Ok(Some(config_file))
 }
 
 fn parse_formatter_command(s: &str) -> Vec<String> {
