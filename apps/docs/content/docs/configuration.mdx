@@ -3,16 +3,33 @@ title: Configuration
 description: Configure Agent Dash behavior
 ---
 
-Agent Dash stores its configuration at `~/.config/agent-dash/config.json`.
+Agent Dash reads its configuration from `~/.config/agent-dash/config.toml` or `~/.config/agent-dash/config.json`. Both formats use the same keys.
+
+If both files exist, `config.toml` is used and `config.json` is ignored. If neither exists, defaults apply. Changes are picked up live, including creating or removing either file.
 
 ## Options
+
+```toml title="~/.config/agent-dash/config.toml"
+command = "claude"
+layout = "vertical"
+defaultView = "flat"
+sessionNameFormatter = "~/bin/format-session-name"
+
+[claudeCode]
+previewScrollMode = "scrollback"
+```
+
+The same configuration as JSON:
 
 ```json title="~/.config/agent-dash/config.json"
 {
   "command": "claude",
   "layout": "vertical",
   "defaultView": "flat",
-  "sessionNameFormatter": "~/bin/format-session-name"
+  "sessionNameFormatter": "~/bin/format-session-name",
+  "claudeCode": {
+    "previewScrollMode": "scrollback"
+  }
 }
 ```
 
@@ -39,7 +56,7 @@ Path to an executable that formats session display names. Supports `~/` expansio
 
 ### previewScrollMode
 
-Controls how scrolling works in the preview pane.
+Controls how scrolling works in the Claude Code preview pane. Set it as `previewScrollMode` under the `claudeCode` table (TOML) or object (JSON).
 
 | Value | Description |
 |-------|-------------|
@@ -50,7 +67,8 @@ Controls how scrolling works in the preview pane.
 
 | Path | Purpose |
 |------|---------|
-| `~/.config/agent-dash/config.json` | Configuration |
+| `~/.config/agent-dash/config.toml` | Configuration (takes precedence over `config.json`) |
+| `~/.config/agent-dash/config.json` | Configuration (used when no `config.toml` exists) |
 | `~/.config/agent-dash/state.json` | Persistent state (visibility, read markers, collapse state) |
 | `~/.config/agent-dash/cache/` | Session cache |
 | `/tmp/agent-dash-{pid}-preview.fifo` | Temporary FIFO pipes for preview |

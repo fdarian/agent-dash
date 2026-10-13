@@ -82,7 +82,8 @@ Agent Dash persists everything you'd expect: read markers, collapsed groups, hid
 
 | Path | Purpose |
 |------|---------|
-| `~/.config/agent-dash/config.json` | Configuration |
+| `~/.config/agent-dash/config.toml` | Configuration (takes precedence over `config.json`) |
+| `~/.config/agent-dash/config.json` | Configuration (used when no `config.toml` exists) |
 | `~/.config/agent-dash/state.json` | Read markers, visibility, collapse state |
 | `~/.config/agent-dash/cache/` | Preview + session cache |
 | `/tmp/agent-dash-{pid}-preview.fifo` | Live preview FIFO |
@@ -97,6 +98,6 @@ You've got the loop. From here, a few common places to go:
 
 <ul className="prompt">
   <li>Press <span className="ad-kb-inline"><kbd>?</kbd></span> inside Agent Dash for the full, searchable keybind overlay.</li>
-  <li>Read the [configuration reference](/docs/configuration) to remap layout, rename formatter, or change the default view.</li>
+  <li>Read the [configuration reference](/docs/configuration) (TOML or JSON) to remap layout, rename formatter, or change the default view.</li>
   <li>Learn how the [preview pipeline](/docs/configuration#previewscrollmode) works if you want to contribute to the Rust internals.</li>
 </ul>
