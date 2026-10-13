@@ -29,11 +29,11 @@ Agent Dash is a Rust TUI application for managing and monitoring agent sessions 
 ## Internal docs
 
 - `docs/agent-detection.md` — how agents are detected and how busy/idle status is determined per agent
-- `docs/enrichment.md` — the plugin tier: enrichment file schema, Claude hooks plugin, opencode plugin
+- `docs/enrichment.md` — the plugin tier: enrichment file schema, opencode plugin, Claude session file
 
 ## Non-obvious details
 
-- Session "active" status is detected via braille Unicode range (0x2800-0x28FF) in pane title — Claude CLI sets these
+- Claude status/session ID/cwd come from `~/.claude/sessions/<claude_pid>.json` (`claude_sessions.rs`), joined by the PID `detect_agent` returns. The braille Unicode range (0x2800-0x28FF) in the pane title is the fallback when that file is absent
 - Prompt state (Plan/Ask) is parsed from the last non-empty line of pane content
 - Claude process detection uses recursive pgrep on tmux pane child processes
 - FIFO monitoring creates temp files at `/tmp/agent-dash-{pid}-preview.fifo` with O_NONBLOCK

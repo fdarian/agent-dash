@@ -253,6 +253,25 @@ pub async fn run(
                     }
                 }
 
+                // Applied after enrichment so it wins over stale pane files left by
+                // the old Claude hooks plugin. A missing file (older Claude) keeps
+                // the braille-title status.
+                for session in sessions.iter_mut() {
+                    if session.agent != Agent::Claude {
+                        continue;
+                    }
+                    let Some(pid) = session.agent_pid else {
+                        continue;
+                    };
+                    if let Some(claude) = crate::claude_sessions::read(pid) {
+                        if let Some(status) = claude.status.as_session_status() {
+                            session.status = status;
+                        }
+                        session.session_id = Some(claude.session_id);
+                        session.cwd = Some(claude.cwd);
+                    }
+                }
+
                 // TODO: opportunistic cleanup of orphaned enrichment files (pane no longer
                 // exists) — plugins are expected to delete on exit, so this is best-effort.
                 // See plan Phase B step 3.
@@ -494,6 +513,7 @@ async fn process_action(
                                 None,
                             ),
                             agent: inferred_agent,
+                            agent_pid: None,
                             session_id: None,
                             cwd: None,
                             model: None,

@@ -57,27 +57,28 @@ impl<'a> TmuxClient<'a> {
             let pid = p.pane_pid.clone();
             let pane_target = p.pane_target.clone();
             set.spawn(async move {
-                let agent = detect_agent(&pid).await;
-                let content = if agent == Some(Agent::Opencode) {
+                let detected = detect_agent(&pid).await;
+                let content = if detected.as_ref().map(|d| d.agent) == Some(Agent::Opencode) {
                     capture_pane_visible(&pane_target).await.ok()
                 } else {
                     None
                 };
-                (i, agent, content)
+                (i, detected, content)
             });
         }
 
-        let mut agent_map: std::collections::HashMap<usize, (Agent, Option<String>)> =
+        let mut agent_map: std::collections::HashMap<usize, (DetectedAgent, Option<String>)> =
             std::collections::HashMap::new();
         while let Some(result) = set.join_next().await {
-            if let Ok((i, Some(agent), content)) = result {
-                agent_map.insert(i, (agent, content));
+            if let Ok((i, Some(detected), content)) = result {
+                agent_map.insert(i, (detected, content));
             }
         }
 
         let mut sessions = Vec::new();
         for (i, p) in parsed.into_iter().enumerate() {
-            if let Some((agent, content)) = agent_map.remove(&i) {
+            if let Some((detected, content)) = agent_map.remove(&i) {
+                let agent = detected.agent;
                 let status = parse_session_status(agent, &p.pane_title, content.as_deref());
                 sessions.push(AgentSession {
                     pane_id: p.pane_id,
@@ -86,6 +87,7 @@ impl<'a> TmuxClient<'a> {
                     tmux_session_name: p.tmux_session_name,
                     status,
                     agent,
+                    agent_pid: Some(detected.pid),
                     session_id: None,
                     cwd: None,
                     model: None,
@@ -341,11 +343,24 @@ async fn run_command(cmd: &str, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-async fn detect_agent(parent_pid: &str) -> Option<Agent> {
-    if let Ok(output) = run_command("ps", &["-o", "comm=,args=", "-p", parent_pid]).await {
-        if let Some(agent) = parse_process_agent(&output) {
-            return Some(agent);
-        }
+#[derive(Debug, Clone, Copy)]
+struct DetectedAgent {
+    agent: Agent,
+    pid: u32,
+}
+
+async fn detect_agent_in_process(pid: &str) -> Option<DetectedAgent> {
+    let output = run_command("ps", &["-o", "comm=,args=", "-p", pid])
+        .await
+        .ok()?;
+    let agent = parse_process_agent(&output)?;
+    let pid = pid.parse::<u32>().ok()?;
+    Some(DetectedAgent { agent, pid })
+}
+
+async fn detect_agent(parent_pid: &str) -> Option<DetectedAgent> {
+    if let Some(detected) = detect_agent_in_process(parent_pid).await {
+        return Some(detected);
     }
 
     let children = match run_command("pgrep", &["-P", parent_pid]).await {
@@ -354,14 +369,12 @@ async fn detect_agent(parent_pid: &str) -> Option<Agent> {
     };
 
     for child_pid in children.lines().filter(|l| !l.is_empty()) {
-        if let Ok(output) = run_command("ps", &["-o", "comm=,args=", "-p", child_pid]).await {
-            if let Some(agent) = parse_process_agent(&output) {
-                return Some(agent);
-            }
+        if let Some(detected) = detect_agent_in_process(child_pid).await {
+            return Some(detected);
         }
         // Recursive check via Box::pin for async recursion
-        if let Some(agent) = Box::pin(detect_agent(child_pid)).await {
-            return Some(agent);
+        if let Some(detected) = Box::pin(detect_agent(child_pid)).await {
+            return Some(detected);
         }
     }
 

@@ -2,7 +2,7 @@
 
 ## Concept
 
-Base detection (`docs/agent-detection.md`) only knows whether a pane is busy and which agent is running. Plugins can promote a pane to a richer tier by writing a JSON file per pane. agent-dash reads these files during the same 200 ms poll and merges the fields into `AgentSession`.
+Base detection (`docs/agent-detection.md`) only knows whether a pane is busy and which agent is running. The opencode plugin promotes a pane to a richer tier by writing a JSON file per pane. agent-dash reads these files during the same 2 s poll and merges the fields into `AgentSession`.
 
 - **Tier 0**: base detection only — agent type, busy/idle from process tree + pane signal.
 - **Tier 1**: enrichment file present — overrides scraped status/title and adds `session_id`, `cwd`, `model`, `agent_role`.
@@ -11,7 +11,7 @@ Base detection (`docs/agent-detection.md`) only knows whether a pane is busy and
 
 Path: `~/.config/agent-dash/panes/{TMUX_PANE}.json`
 
-See `src/enrichment.rs:13` for the `Enrichment` struct. Fields:
+See `src/enrichment.rs` for the `Enrichment` struct. Fields:
 
 | Field | Type | Notes |
 |---|---|---|
@@ -26,27 +26,16 @@ See `src/enrichment.rs:13` for the `Enrichment` struct. Fields:
 
 Plugins write atomically (write to a tempfile, then `rename` into place). On session end / process exit the plugin deletes the file. Because disk is the source of truth, missed events and process restarts are non-issues.
 
-Merge logic: `src/app.rs:179-205`. The agent field is validated first; mismatches are silently skipped.
+Merge logic: the poll loop in `src/app.rs`. The agent field is validated first; mismatches are silently skipped.
 
-## Claude plugin
+## Claude
 
-Location: `plugins/claude/`
-
-**How it works**: Claude Code hooks invoke `agent-dash hook-write <event>` with the hook payload on stdin. See `plugins/claude/hooks/hooks.json` for the four events wired up: `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd`.
-
-The `hook-write` subcommand (`src/hook_write.rs`) handles each event:
-
-- `SessionStart` — writes a new enrichment file with `status: idle`, `session_id`, `model`, `cwd`.
-- `UserPromptSubmit` — sets `status: busy`; reads the existing file first to preserve `model` and other fields that only arrive at `SessionStart`.
-- `Stop` — sets `status: idle`; same read-merge pattern to preserve prior fields.
-- `SessionEnd` — deletes the enrichment file.
-
-See `src/hook_write.rs:40` for the `run` function that implements this logic.
+Claude needs no plugin. Claude Code writes its own per-process file, `~/.claude/sessions/<claude_pid>.json`, which `src/claude_sessions.rs` reads (status, `sessionId`, `cwd`). It is applied in `src/app.rs` right after the enrichment merge, so it also wins over any stale `panes/*.json` file for the same pane. See `docs/agent-detection.md` for how the PID is obtained.
 
 ## opencode plugin
 
 Location: `plugins/opencode/plugin.ts`
 
-**How it works**: The plugin reads `$TMUX_PANE` once at module load. If the variable is unset it registers empty hooks and becomes inert (`plugins/opencode/plugin.ts:6-9`).
+**How it works**: The plugin reads `$TMUX_PANE` once at module load. If the variable is unset it registers empty hooks and becomes inert (`plugins/opencode/plugin.ts`).
 
-Subscribes to opencode events: `session.created`, `session.updated`, `session.status`, `session.deleted`, and `message.updated` (for model). Maps opencode's `"retry"` status to `"busy"` because the Rust enum only has `busy`/`idle` and a retrying agent is still working (`plugins/opencode/plugin.ts:30-32`).
+Subscribes to opencode events: `session.created`, `session.updated`, `session.status`, `session.deleted`, and `message.updated` (for model). Maps opencode's `"retry"` status to `"busy"` because the Rust enum only has `busy`/`idle` and a retrying agent is still working (`plugins/opencode/plugin.ts`).

@@ -10,12 +10,12 @@ use std::io;
 
 mod app;
 mod cache;
+mod claude_sessions;
 mod config;
 mod config_watch;
 mod copy_mode;
 mod enrichment;
 mod filter_query;
-mod hook_write;
 mod selection;
 mod session;
 mod state;
@@ -28,18 +28,6 @@ mod resize_pane;
 mod tmux;
 
 use ui::theme::resolve_palette;
-
-#[derive(clap::Subcommand)]
-enum Command {
-    /// Write a per-pane enrichment file from a Claude Code hook event.
-    ///
-    /// Reads JSON from stdin and $TMUX_PANE from env. When $TMUX_PANE is unset
-    /// (Claude launched outside tmux) this is a silent no-op.
-    HookWrite {
-        /// Hook event name: session-start, prompt-submit, stop, session-end
-        event: String,
-    },
-}
 
 #[derive(Parser)]
 #[command(name = "agent-dash", version)]
@@ -54,27 +42,11 @@ struct Cli {
     map_exit: Option<String>,
     #[arg(long)]
     no_auto_focus: bool,
-    #[command(subcommand)]
-    command: Option<Command>,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-
-    if let Some(Command::HookWrite { event }) = cli.command {
-        match hook_write::EventKind::from_str(&event) {
-            Some(kind) => hook_write::execute(kind),
-            None => {
-                eprintln!(
-                    "agent-dash hook-write: unknown event '{}'. \
-                     Expected: session-start, prompt-submit, stop, session-end",
-                    event
-                );
-            }
-        }
-        return Ok(());
-    }
 
     let config = config::load_config(cli.exit);
     let palette = resolve_palette(config.theme);

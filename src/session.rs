@@ -33,6 +33,9 @@ pub struct AgentSession {
     pub status: SessionStatus,
     #[serde(default)]
     pub agent: Agent,
+    /// PID of the detected agent process; meaningless across restarts, so never persisted.
+    #[serde(skip)]
+    pub agent_pid: Option<u32>,
     pub session_id: Option<String>,
     #[serde(default)]
     pub cwd: Option<String>,

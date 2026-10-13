@@ -1,81 +1,38 @@
 ---
 title: Supported agents
-description: Claude Code and opencode are both supported. Detection is automatic — no config required. Optional plugins unlock richer session metadata.
+description: Claude Code and opencode are both supported. Detection is automatic — no config required. Claude needs no plugin; opencode has an optional plugin for richer session metadata.
 ---
 
 Agent Dash automatically detects any tmux pane whose process tree contains a `claude` or `opencode` binary. No configuration is required to get started.
 
 ## Detection tiers
 
-There are two tiers of support for each agent:
+- **Claude Code** — No plugin needed. Claude Code writes `~/.claude/sessions/<pid>.json` for each running session, and Agent Dash reads it for status, session ID, and working directory. Older Claude Code versions that don't write this file fall back to process detection and content heuristics.
+- **opencode, Tier 0 (automatic)** — Works out of the box through process detection and content heuristics.
+- **opencode, Tier 1 (plugin)** — An optional plugin writes structured metadata to a small JSON file per pane, giving Agent Dash a stable session ID, accurate status, cwd, and model name.
 
-- **Tier 0 (automatic)** — Works out of the box with zero setup. Agent Dash finds your sessions through process detection and content heuristics.
-- **Tier 1 (plugin)** — An optional plugin writes structured metadata to a small JSON file per pane, giving agent-dash a stable session ID, accurate status, cwd, and model name.
-
-Installing only one plugin is fine. The other agent continues working at Tier 0.
+<Callout kind="note" title="Upgrading from the Claude hooks plugin">
+  If you installed the old Claude hooks, remove them from `~/.claude/settings.json` or delete `~/.claude/plugins/agent-dash`. The `agent-dash hook-write` command no longer exists.
+</Callout>
 
 ## Feature comparison
 
-| Field | Claude Tier 0 | Claude + plugin | opencode Tier 0 | opencode + plugin |
+| Field | Claude | Claude (older versions) | opencode Tier 0 | opencode + plugin |
 |---|---|---|---|---|
 | Pane discovery | yes | yes | yes | yes |
 | Busy / idle status | yes | yes | yes | yes |
-| Stable session ID | — | yes | — | yes |
-| Current working directory | — | yes | — | yes |
-| Model name | — | yes | — | yes |
-| Session title | partial | yes | falls back to tmux session name | yes |
+| Stable session ID | yes | — | — | yes |
+| Current working directory | yes | — | — | yes |
+| Model name | — | — | — | yes |
+| Session title | partial | partial | falls back to tmux session name | yes |
 | Plan / Ask state | yes | yes | — | — |
-| Agent role (Build / Plan / etc.) | — | yes | — | — |
+| Agent role (Build / Plan / etc.) | — | — | — | — |
 
-**How Tier 0 status works:**
-- Claude Code — detects the braille Unicode spinner (U+2800–U+28FF) in the pane title.
+**How fallback status works:**
+- Claude Code (older versions) — detects the braille Unicode spinner (U+2800–U+28FF) in the pane title.
 - opencode — scans pane content for the `"esc interrupt"` substring that opencode displays while busy.
 
 Plan / Ask state is not available for opencode because opencode has no equivalent concept.
-
-## Claude Code plugin
-
-The Claude Code plugin hooks into Claude Code's lifecycle events (`SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd`) via the `agent-dash hook-write` subcommand, which is built into the `agent-dash` binary — no extra install needed.
-
-### Install (option A — plugin directory)
-
-Symlink the plugin folder into `~/.claude/plugins/`:
-
-```sh
-mkdir -p ~/.claude/plugins
-ln -sf /path/to/agent-dash/plugins/claude ~/.claude/plugins/agent-dash
-```
-
-Claude Code picks up plugins from `~/.claude/plugins/*/hooks/hooks.json` automatically. Restart Claude Code (or open a new session) after linking.
-
-### Install (option B — settings.json)
-
-Merge the hook entries directly into `~/.claude/settings.json` under the `"hooks"` key:
-
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "agent-dash hook-write session-start" }] }
-    ],
-    "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "agent-dash hook-write prompt-submit" }] }
-    ],
-    "Stop": [
-      { "hooks": [{ "type": "command", "command": "agent-dash hook-write stop" }] }
-    ],
-    "SessionEnd": [
-      { "hooks": [{ "type": "command", "command": "agent-dash hook-write session-end" }] }
-    ]
-  }
-}
-```
-
-<Callout kind="note" title="Prerequisite">
-  `agent-dash` must be on your `PATH`. Verify with `which agent-dash`.
-</Callout>
-
-If `$TMUX_PANE` is not set (i.e., Claude Code launched outside tmux), `hook-write` exits silently without writing anything.
 
 ## opencode plugin
 
@@ -98,7 +55,7 @@ If `$TMUX_PANE` is not set (opencode running outside tmux), the plugin is a no-o
 
 ## Enrichment file
 
-Both plugins write to the same path:
+The opencode plugin writes to:
 
 ```
 ~/.config/agent-dash/panes/{pane_id}.json

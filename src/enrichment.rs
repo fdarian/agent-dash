@@ -44,22 +44,6 @@ pub fn read(pane_id: &str) -> Option<Enrichment> {
     serde_json::from_str::<Enrichment>(&content).ok()
 }
 
-#[allow(dead_code)]
-pub fn list_pane_ids() -> Vec<String> {
-    let dir = enrichment_dir();
-    let entries = match std::fs::read_dir(&dir) {
-        Ok(e) => e,
-        Err(_) => return Vec::new(),
-    };
-    entries
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let name = entry.file_name().into_string().ok()?;
-            name.strip_suffix(".json").map(str::to_string)
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
