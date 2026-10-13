@@ -2,8 +2,7 @@ use anyhow::Context;
 use crate::session::Agent;
 use crate::ui::theme::ThemeMode;
 use serde::Deserialize;
-use std::io::ErrorKind;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LayoutDirection {
@@ -107,14 +106,31 @@ impl AppConfig {
     }
 }
 
-pub fn config_path() -> PathBuf {
+pub const TOML_CONFIG_FILE_NAME: &str = "config.toml";
+pub const JSON_CONFIG_FILE_NAME: &str = "config.json";
+
+pub fn config_dir() -> PathBuf {
     dirs::home_dir()
         .expect("home directory not found")
-        .join(".config/agent-dash/config.json")
+        .join(".config/agent-dash")
+}
+
+/// `config.toml` wins over `config.json` when both exist.
+pub fn existing_config_file() -> Option<PathBuf> {
+    let dir = config_dir();
+    [TOML_CONFIG_FILE_NAME, JSON_CONFIG_FILE_NAME]
+        .into_iter()
+        .map(|name| dir.join(name))
+        .find(|path| path.is_file())
+}
+
+/// The config file in use, or the config directory when there is none.
+pub fn config_location() -> PathBuf {
+    existing_config_file().unwrap_or_else(config_dir)
 }
 
 pub fn load_config(exit_on_switch: bool) -> AppConfig {
-    let path = config_path();
+    let path = config_location();
     match try_load_config(exit_on_switch) {
         Ok(Some(config)) => config,
         Ok(None) => AppConfig::defaults(exit_on_switch),
@@ -179,19 +195,22 @@ fn build_config(config_file: &ConfigFile, exit_on_switch: bool) -> AppConfig {
 }
 
 fn load_config_file() -> anyhow::Result<Option<ConfigFile>> {
-    let path = config_path();
-    let content = match std::fs::read_to_string(&path) {
-        Ok(content) => content,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(err) => {
-            return Err(err)
-                .with_context(|| format!("failed to read {}", path.display()))
-        }
+    let Some(path) = existing_config_file() else {
+        return Ok(None);
     };
-
-    let config_file = serde_json::from_str(&content)
+    let content = std::fs::read_to_string(&path)
+        .with_context(|| format!("failed to read {}", path.display()))?;
+    let config_file = parse_config_file(&path, &content)
         .with_context(|| format!("failed to parse {}", path.display()))?;
     Ok(Some(config_file))
+}
+
+fn parse_config_file(path: &Path, content: &str) -> anyhow::Result<ConfigFile> {
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some("toml") => Ok(toml::from_str(content)?),
+        Some("json") => Ok(serde_json::from_str(content)?),
+        _ => anyhow::bail!("unsupported config file extension"),
+    }
 }
 
 fn parse_formatter_command(s: &str) -> Vec<String> {
@@ -212,5 +231,104 @@ fn expand_tilde(path: &str) -> PathBuf {
             .join(rest)
     } else {
         PathBuf::from(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_toml(content: &str) -> anyhow::Result<ConfigFile> {
+        parse_config_file(Path::new("config.toml"), content)
+    }
+
+    fn parse_json(content: &str) -> anyhow::Result<ConfigFile> {
+        parse_config_file(Path::new("config.json"), content)
+    }
+
+    #[test]
+    fn parses_toml_top_level_keys() {
+        let config_file = parse_toml(
+            r#"
+command = "claude --verbose"
+layout = "horizontal"
+defaultView = "flat"
+sharedState = true
+groupNameSeparator = "/"
+theme = "light"
+sessionNameFormatter = "~/bin/format"
+"#,
+        )
+        .unwrap();
+        let config = build_config(&config_file, false);
+
+        assert_eq!(config.command, "claude --verbose");
+        assert_eq!(config.layout, LayoutDirection::Horizontal);
+        assert!(config.default_flat_view);
+        assert!(config.shared_state);
+        assert_eq!(config.group_name_separator.as_deref(), Some("/"));
+        assert_eq!(config.theme, ThemeMode::Light);
+        assert!(config.session_name_formatter.is_some());
+    }
+
+    #[test]
+    fn parses_toml_claude_code_table() {
+        let config_file = parse_toml(
+            r#"
+[claudeCode]
+previewScrollMode = "virtualized"
+"#,
+        )
+        .unwrap();
+        let config = build_config(&config_file, false);
+
+        assert_eq!(
+            config.claude_code_preview_scroll_mode,
+            PreviewScrollMode::Virtualized
+        );
+    }
+
+    #[test]
+    fn toml_and_json_produce_the_same_config() {
+        let from_toml = parse_toml(
+            "layout = \"horizontal\"\n[claudeCode]\npreviewScrollMode = \"virtualized\"\n",
+        )
+        .unwrap();
+        let from_json = parse_json(
+            r#"{"layout": "horizontal", "claudeCode": {"previewScrollMode": "virtualized"}}"#,
+        )
+        .unwrap();
+        let toml_config = build_config(&from_toml, false);
+        let json_config = build_config(&from_json, false);
+
+        assert_eq!(toml_config.layout, json_config.layout);
+        assert_eq!(
+            toml_config.claude_code_preview_scroll_mode,
+            json_config.claude_code_preview_scroll_mode
+        );
+    }
+
+    #[test]
+    fn empty_toml_yields_defaults() {
+        let config_file = parse_toml("").unwrap();
+        let config = build_config(&config_file, false);
+
+        assert_eq!(config.command, "claude");
+        assert_eq!(config.layout, LayoutDirection::Vertical);
+    }
+
+    #[test]
+    fn rejects_invalid_toml_enum_value() {
+        assert!(parse_toml("layout = \"diagonal\"").is_err());
+    }
+
+    #[test]
+    fn rejects_malformed_toml() {
+        assert!(parse_toml("layout = ").is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_extension() {
+        assert!(parse_config_file(Path::new("config.yaml"), "").is_err());
     }
 }

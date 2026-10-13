@@ -208,7 +208,7 @@ pub async fn run(
         Err(err) => {
             eprintln!(
                 "agent-dash: failed to watch config file {}: {}",
-                crate::config::config_path().display(),
+                crate::config::config_location().display(),
                 err
             );
             None
@@ -674,7 +674,7 @@ fn handle_message(
             Err(err) => {
                 eprintln!(
                     "agent-dash: failed to reload config from {}: {}",
-                    crate::config::config_path().display(),
+                    crate::config::config_location().display(),
                     err
                 );
             }
