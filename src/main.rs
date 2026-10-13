@@ -11,6 +11,7 @@ use std::io;
 mod app;
 mod cache;
 mod claude_sessions;
+mod claude_transcript;
 mod config;
 mod config_watch;
 mod copy_mode;

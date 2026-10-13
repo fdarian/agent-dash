@@ -32,6 +32,8 @@ Merge logic: the poll loop in `src/app.rs`. The agent field is validated first; 
 
 Claude needs no plugin. Claude Code writes its own per-process file, `~/.claude/sessions/<claude_pid>.json`, which `src/claude_sessions.rs` reads (status, `sessionId`, `cwd`). It is applied in `src/app.rs` right after the enrichment merge, so it also wins over any stale `panes/*.json` file for the same pane. See `docs/agent-detection.md` for how the PID is obtained.
 
+Claude's `last_activity` (the time shown in the list and used for flat-view buckets) comes from the session transcript, not tmux `window_activity`, which moves on any window output. `src/claude_transcript.rs` finds `~/.claude/projects/<cwd with non-alphanumerics replaced by "-">/<session_id>.jsonl` (falling back to scanning all project dirs), reads backwards from the end for the last `user`/`assistant` line, and uses its `timestamp`. Results are cached per session id and re-parsed only when the file's length or mtime changes. If no transcript is readable, the tmux value is kept.
+
 ## opencode plugin
 
 Location: `plugins/opencode/plugin.ts`

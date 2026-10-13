@@ -223,6 +223,7 @@ pub async fn run(
         let config = crate::config::load_config(false);
         let tmux = TmuxClient::new(&config);
         let mut formatter_cache: HashMap<String, String> = HashMap::new();
+        let mut transcript_cache = crate::claude_transcript::TranscriptCache::default();
         loop {
             if let Ok(mut sessions) = tmux.discover_sessions().await {
                 // Merge per-pane enrichment files written by agent plugins.
@@ -270,7 +271,21 @@ pub async fn run(
                         session.session_id = Some(claude.session_id);
                         session.cwd = Some(claude.cwd);
                     }
+                    // tmux window_activity moves on any window output, so prefer the
+                    // transcript's last message time when one is readable.
+                    if let (Some(session_id), Some(cwd)) = (&session.session_id, &session.cwd) {
+                        if let Some(last_activity) = transcript_cache.last_activity(session_id, cwd)
+                        {
+                            session.last_activity = Some(last_activity);
+                        }
+                    }
                 }
+                let live_session_ids: HashSet<&str> = sessions
+                    .iter()
+                    .filter(|s| s.agent == Agent::Claude)
+                    .filter_map(|s| s.session_id.as_deref())
+                    .collect();
+                transcript_cache.retain_sessions(&live_session_ids);
 
                 // TODO: opportunistic cleanup of orphaned enrichment files (pane no longer
                 // exists) — plugins are expected to delete on exit, so this is best-effort.
