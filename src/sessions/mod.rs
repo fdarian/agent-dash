@@ -2,6 +2,7 @@ pub mod discover;
 pub mod import;
 pub mod live;
 pub mod record;
+pub mod repo;
 pub mod view;
 
 use crate::multiplexer::PaneRef;

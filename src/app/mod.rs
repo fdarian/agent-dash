@@ -16,6 +16,7 @@ use crate::resize_pane;
 use crate::selection::PreviewSelection;
 use crate::sessions::live::{LiveSet, Mutation};
 use crate::sessions::record::{default_store_path, Store};
+use crate::sessions::repo::RepoRoots;
 use crate::sessions::view::{self, VisibleItem};
 use crate::sessions::{Session, SessionBook};
 use crate::state::{self, UiState};
@@ -52,6 +53,7 @@ pub struct AppState {
     /// What `visible_items` was last built from, so typing in the filter doesn't clone every
     /// record again. Only `refresh_visible_items` replaces it.
     sessions_snapshot: Vec<Session>,
+    repo_roots: RepoRoots,
     pub selected_index: usize,
     pub focus: Focus,
     pub preview_content: String,
@@ -160,6 +162,7 @@ pub async fn run(
         ui: ui_state,
         visible_items: Vec::new(),
         sessions_snapshot: Vec::new(),
+        repo_roots: RepoRoots::default(),
         selected_index: 0,
         focus: Focus::Sessions,
         preview_content: String::new(),
@@ -422,10 +425,17 @@ fn refilter_visible_items(state: &mut AppState) {
     let now = now_secs();
     let query = state.session_filter_query.trim();
     state.visible_items = if query.is_empty() {
+        state.repo_roots.resolve_all(
+            state
+                .sessions_snapshot
+                .iter()
+                .map(|session| session.record.cwd.as_str()),
+        );
         view::build_items(
             &state.sessions_snapshot,
             &state.ui.view,
             &state.ui.collapsed_groups,
+            &state.repo_roots,
             now,
         )
     } else {
