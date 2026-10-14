@@ -74,6 +74,14 @@ impl StatusFilter {
             StatusFilter::Archived => "Archived",
         }
     }
+
+    /// Flips between Active and Archived; All has no counterpart, so it lands on Active.
+    pub fn toggled(self) -> StatusFilter {
+        match self {
+            StatusFilter::Active => StatusFilter::Archived,
+            StatusFilter::All | StatusFilter::Archived => StatusFilter::Active,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -93,14 +101,6 @@ impl Grouping {
             Grouping::State => "State",
             Grouping::Folder => "Folder",
             Grouping::Date => "Date",
-        }
-    }
-
-    pub fn next(self) -> Grouping {
-        match self {
-            Grouping::State => Grouping::Folder,
-            Grouping::Folder => Grouping::Date,
-            Grouping::Date => Grouping::State,
         }
     }
 }
@@ -530,10 +530,10 @@ mod tests {
     }
 
     #[test]
-    fn grouping_cycles_state_folder_date() {
-        assert_eq!(Grouping::State.next(), Grouping::Folder);
-        assert_eq!(Grouping::Folder.next(), Grouping::Date);
-        assert_eq!(Grouping::Date.next(), Grouping::State);
+    fn status_filter_toggles_between_active_and_archived() {
+        assert_eq!(StatusFilter::Active.toggled(), StatusFilter::Archived);
+        assert_eq!(StatusFilter::Archived.toggled(), StatusFilter::Active);
+        assert_eq!(StatusFilter::All.toggled(), StatusFilter::Active);
     }
 
     // -- filters --

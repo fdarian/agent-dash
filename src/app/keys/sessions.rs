@@ -224,7 +224,7 @@ pub(super) fn handle(
         }
         KeyCode::Char('`') => {
             let prior = state.ui.view;
-            state.ui.view.grouping = state.ui.view.grouping.next();
+            state.ui.view.status = state.ui.view.status.toggled();
             state.undo.push_view_change(prior, state.ui.view);
             save_ui_state(state);
             refresh_keeping_selection(state);

@@ -10,7 +10,7 @@ Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crosste
 ## Features
 
 - **Persistent sessions** — every session Agent Dash has seen is remembered by its Claude session ID, including closed ones. Press `o` on a closed session to resume it in a new tmux session.
-- **Three ways to group** — by state (in progress, completed, need action, idle), by folder, or by date. Backtick cycles them; `S` opens the view settings.
+- **Three ways to group** — by state (in progress, completed, need action, idle), by folder, or by date. `S` opens the view settings, and backtick toggles between active and archived sessions.
 - **Archive** — `a` hides a session from the default view. Sessions you close on purpose are archived for you.
 - **Import** — `agent-dash import` pulls in existing sessions from the Claude CLI and Claude Desktop.
 - **Live preview** — real-time pane output with ANSI rendering, in a dual-pane layout with configurable orientation

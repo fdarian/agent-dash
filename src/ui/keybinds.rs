@@ -92,7 +92,7 @@ pub const KEYBINDS: &[KeybindEntry] = &[
     },
     KeybindEntry {
         key: "`",
-        description: "Cycle grouping: state / folder / date",
+        description: "Toggle active / archived sessions",
         context: "sessions",
     },
     KeybindEntry {
