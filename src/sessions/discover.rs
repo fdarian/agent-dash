@@ -38,13 +38,15 @@ fn live_session(pane: Pane, claude_pid: u32) -> Option<LiveSession> {
     let claude_sessions::PidFile::Session(claude) = claude_sessions::read(claude_pid) else {
         return None;
     };
+    let derived = claude.name_source == claude_sessions::NameSource::Derived;
     Some(LiveSession {
         session_id: claude.session_id,
         pid: claude_pid,
         pane: pane.pane_ref,
         status: claude.status.as_live_status(),
         prompt_state: PromptState::None,
-        name: claude.name,
+        name: claude.name.clone().filter(|_| !derived),
+        derived_name: claude.name.filter(|_| derived),
         cwd: claude.cwd,
         started_at: claude.started_at,
         last_activity: None,

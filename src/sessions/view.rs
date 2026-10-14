@@ -436,6 +436,7 @@ mod tests {
                 status,
                 prompt_state: prompt,
                 name: None,
+                derived_name: None,
                 cwd: cwd.to_string(),
                 started_at: None,
                 last_activity: None,

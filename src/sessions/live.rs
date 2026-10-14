@@ -34,7 +34,11 @@ pub struct LiveSession {
     pub pane: PaneRef,
     pub status: LiveStatus,
     pub prompt_state: PromptState,
+    /// The title to show: the user's name, else the transcript's title, else `derived_name`.
+    /// Discovery only knows the user's name; polling fills in the rest.
     pub name: Option<String>,
+    /// The name Claude generated, the last resort once the transcript has no title.
+    pub derived_name: Option<String>,
     pub cwd: String,
     /// Epoch milliseconds, as in the pid file.
     pub started_at: Option<u64>,
@@ -447,6 +451,7 @@ mod tests {
             status,
             prompt_state: PromptState::None,
             name: Some(format!("name {id}")),
+            derived_name: None,
             cwd: "/work/app".to_string(),
             started_at: Some(500_000),
             last_activity: Some(900),
@@ -1272,6 +1277,25 @@ mod tests {
                 session_id: "s".to_string(),
                 title: None,
                 cwd: Some("/work/app".to_string()),
+                last_activity: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn refresh_replaces_a_stored_derived_name_with_the_live_title() {
+        let mut stored = record("s", 1);
+        stored.title = "stellar-ptarmigan-03".to_string();
+        stored.cwd = "/work/app".to_string();
+        stored.last_activity = 900;
+        let mut session = live("s", 1, LiveStatus::Idle);
+        session.name = Some("Fix the parser".to_string());
+        assert_eq!(
+            refresh_metadata(&set(vec![session]), &store_with(vec![stored])),
+            vec![Mutation::Refresh {
+                session_id: "s".to_string(),
+                title: Some("Fix the parser".to_string()),
+                cwd: None,
                 last_activity: None,
             }]
         );

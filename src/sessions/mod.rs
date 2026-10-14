@@ -340,6 +340,7 @@ mod tests {
             status,
             prompt_state: PromptState::None,
             name: Some("my session".to_string()),
+            derived_name: None,
             cwd: "/work/app".to_string(),
             started_at: Some(started_at),
             last_activity: Some(last_activity),

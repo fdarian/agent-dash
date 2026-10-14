@@ -45,9 +45,11 @@ async fn enrich(live: &mut LiveSet, transcript_cache: &mut TranscriptCache) {
         // tmux window_activity moves on any window output, so the transcript's last message
         // time is the only activity signal worth using.
         session.last_activity = transcript_cache.last_activity(&session.session_id, &session.cwd);
-        // Claude only writes a name to the pid file for named sessions.
+        // A name the user chose beats the transcript's title, which beats the name Claude made up.
         if session.name.is_none() {
-            session.name = transcript_cache.title(&session.session_id, &session.cwd);
+            session.name = transcript_cache
+                .title(&session.session_id, &session.cwd)
+                .or_else(|| session.derived_name.clone());
         }
     }
     let live_session_ids: HashSet<&str> = live.values().map(|s| s.session_id.as_str()).collect();
