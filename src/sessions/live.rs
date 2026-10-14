@@ -129,6 +129,10 @@ pub enum Mutation {
     Delete {
         session_id: String,
     },
+    SetRepoRoot {
+        session_id: String,
+        repo_root: String,
+    },
     /// Fields are `Some` only when they differ from the stored record.
     Refresh {
         session_id: String,
@@ -372,6 +376,10 @@ pub fn apply(store: &mut Store, mutations: Vec<Mutation>, now_ms: u64) -> bool {
                 snapshot,
             } => store.restore_archive(&session_id, snapshot, now_ms),
             Mutation::Delete { session_id } => store.remove(&session_id, now_ms),
+            Mutation::SetRepoRoot {
+                session_id,
+                repo_root,
+            } => store.set_repo_root(&session_id, repo_root),
             Mutation::Refresh {
                 session_id,
                 title,

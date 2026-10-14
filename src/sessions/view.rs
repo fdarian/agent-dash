@@ -1,4 +1,3 @@
-use super::repo::RepoRoots;
 use super::{basename, Session};
 use crate::fuzzy::fuzzy_rank;
 use crate::time_fmt::{activity_bucket, ActivityBucket};
@@ -168,13 +167,12 @@ pub fn build_items(
     sessions: &[Session],
     config: &ViewConfig,
     collapsed_groups: &HashSet<String>,
-    repo_roots: &RepoRoots,
     now: u64,
 ) -> Vec<VisibleItem> {
     let visible = filter_sessions(sessions, config, now);
     let groups = match config.grouping {
         Grouping::State => group_by_state(visible),
-        Grouping::Folder => group_by_folder(visible, repo_roots),
+        Grouping::Folder => group_by_folder(visible),
         Grouping::Date => group_by_date(visible, now),
     };
 
@@ -276,11 +274,17 @@ fn group_by_state(sessions: Vec<&Session>) -> Vec<Group<'_>> {
     groups
 }
 
-fn group_by_folder<'a>(sessions: Vec<&'a Session>, repo_roots: &'a RepoRoots) -> Vec<Group<'a>> {
+fn group_by_folder(sessions: Vec<&Session>) -> Vec<Group<'_>> {
     let mut by_path: BTreeMap<&str, Vec<&Session>> = BTreeMap::new();
     for session in sessions {
         by_path
-            .entry(repo_roots.group_path(session.record.cwd.as_str()))
+            .entry(
+                session
+                    .record
+                    .repo_root
+                    .as_deref()
+                    .unwrap_or(session.record.cwd.as_str()),
+            )
             .or_default()
             .push(session);
     }
@@ -389,7 +393,6 @@ mod tests {
     use crate::multiplexer::PaneRef;
     use crate::sessions::live::{LiveSession, LiveStatus, PromptState};
     use crate::sessions::record::{Origin, SessionRecord};
-    use crate::sessions::repo::RepoRoots;
 
     const NOW: u64 = 10_000_000;
     const DAY: u64 = 86_400;
@@ -398,6 +401,7 @@ mod tests {
         SessionRecord {
             session_id: id.to_string(),
             cwd: cwd.to_string(),
+            repo_root: None,
             title: format!("title {id}"),
             created_at: 0,
             last_activity,
@@ -496,13 +500,7 @@ mod tests {
     }
 
     fn build(sessions: &[Session], config: ViewConfig) -> Vec<(String, Vec<String>)> {
-        outline(&build_items(
-            sessions,
-            &config,
-            &HashSet::new(),
-            &RepoRoots::default(),
-            NOW,
-        ))
+        outline(&build_items(sessions, &config, &HashSet::new(), NOW))
     }
 
     // -- defaults / serde --
@@ -758,13 +756,7 @@ mod tests {
             closed("b", "/home/me/play/app", NOW - 2),
             closed("c", "/home/me/other", NOW - 3),
         ];
-        let items = build_items(
-            &sessions,
-            &config(Grouping::Folder),
-            &HashSet::new(),
-            &RepoRoots::default(),
-            NOW,
-        );
+        let items = build_items(&sessions, &config(Grouping::Folder), &HashSet::new(), NOW);
         let labels: Vec<String> = items
             .iter()
             .filter_map(|item| match item {
@@ -781,7 +773,6 @@ mod tests {
             &[closed("a", "/home/me/app", NOW)],
             &config(Grouping::Folder),
             &HashSet::new(),
-            &RepoRoots::default(),
             NOW,
         );
         let VisibleItem::Group(group) = &items[0] else {
@@ -792,22 +783,15 @@ mod tests {
 
     #[test]
     fn folder_grouping_merges_worktrees_of_one_repo_and_keeps_non_git_cwds_apart() {
-        let sessions = vec![
+        let mut sessions = vec![
             closed("a", "/home/me/app", NOW - 1),
             closed("b", "/home/me/.worktrees/app/feature", NOW - 2),
             closed("c", "/home/me/scratch", NOW - 3),
         ];
-        let mut repo_roots = RepoRoots::default();
-        repo_roots.insert("/home/me/app", "/home/me/app");
-        repo_roots.insert("/home/me/.worktrees/app/feature", "/home/me/app");
+        sessions[0].record.repo_root = Some("/home/me/app".to_string());
+        sessions[1].record.repo_root = Some("/home/me/app".to_string());
 
-        let items = build_items(
-            &sessions,
-            &config(Grouping::Folder),
-            &HashSet::new(),
-            &repo_roots,
-            NOW,
-        );
+        let items = build_items(&sessions, &config(Grouping::Folder), &HashSet::new(), NOW);
         let outline: Vec<(String, usize)> = items
             .iter()
             .filter_map(|item| match item {
@@ -857,13 +841,7 @@ mod tests {
     fn collapsed_group_keeps_its_header_and_count_but_hides_sessions() {
         let sessions = vec![idle("a", NOW), idle("b", NOW - 1)];
         let collapsed = HashSet::from(["idle".to_string()]);
-        let items = build_items(
-            &sessions,
-            &config(Grouping::State),
-            &collapsed,
-            &RepoRoots::default(),
-            NOW,
-        );
+        let items = build_items(&sessions, &config(Grouping::State), &collapsed, NOW);
         assert_eq!(items.len(), 1);
         let VisibleItem::Group(group) = &items[0] else {
             panic!("expected a header");
@@ -876,21 +854,9 @@ mod tests {
     fn collapse_keys_are_per_grouping() {
         let sessions = vec![closed("a", "/w/app", NOW)];
         let collapsed = HashSet::from(["/w/app".to_string()]);
-        let by_folder = build_items(
-            &sessions,
-            &config(Grouping::Folder),
-            &collapsed,
-            &RepoRoots::default(),
-            NOW,
-        );
+        let by_folder = build_items(&sessions, &config(Grouping::Folder), &collapsed, NOW);
         assert_eq!(by_folder.len(), 1);
-        let by_state = build_items(
-            &sessions,
-            &config(Grouping::State),
-            &collapsed,
-            &RepoRoots::default(),
-            NOW,
-        );
+        let by_state = build_items(&sessions, &config(Grouping::State), &collapsed, NOW);
         assert_eq!(by_state.len(), 2);
     }
 
@@ -900,13 +866,7 @@ mod tests {
             live_session("a", "/w/app", NOW, LiveStatus::Busy, PromptState::None),
             unread(closed("b", "/w/app", NOW - 1)),
         ];
-        let items = build_items(
-            &sessions,
-            &config(Grouping::Folder),
-            &HashSet::new(),
-            &RepoRoots::default(),
-            NOW,
-        );
+        let items = build_items(&sessions, &config(Grouping::Folder), &HashSet::new(), NOW);
         let VisibleItem::Group(group) = &items[0] else {
             panic!("expected a header");
         };
@@ -957,14 +917,12 @@ mod tests {
             &[idle("a", NOW), idle("b", NOW - 1)],
             &config(Grouping::State),
             &HashSet::new(),
-            &RepoRoots::default(),
             NOW,
         );
         let after = build_items(
             &[idle("b", NOW), idle("a", NOW - 1)],
             &config(Grouping::State),
             &HashSet::new(),
-            &RepoRoots::default(),
             NOW,
         );
         assert_eq!(resolve_selected_index(&after, &before, 1), 2);
@@ -976,7 +934,6 @@ mod tests {
             &[idle("a", NOW)],
             &config(Grouping::State),
             &HashSet::new(),
-            &RepoRoots::default(),
             NOW,
         );
         let after = build_items(
@@ -986,7 +943,6 @@ mod tests {
             ],
             &config(Grouping::State),
             &HashSet::new(),
-            &RepoRoots::default(),
             NOW,
         );
         assert_eq!(resolve_selected_index(&after, &before, 0), 2);
@@ -998,14 +954,12 @@ mod tests {
             &[idle("a", NOW), idle("b", NOW - 1)],
             &config(Grouping::State),
             &HashSet::new(),
-            &RepoRoots::default(),
             NOW,
         );
         let after = build_items(
             &[idle("a", NOW)],
             &config(Grouping::State),
             &HashSet::new(),
-            &RepoRoots::default(),
             NOW,
         );
         assert_eq!(resolve_selected_index(&after, &before, 2), 1);
@@ -1018,7 +972,6 @@ mod tests {
             &[idle("a", NOW), idle("b", NOW - 1)],
             &config(Grouping::State),
             &HashSet::new(),
-            &RepoRoots::default(),
             NOW,
         );
         assert_eq!(auto_select_index(&items, "%b", "elsewhere"), 2);

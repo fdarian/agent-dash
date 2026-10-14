@@ -38,12 +38,16 @@ const TOMBSTONE_TTL_MS: u64 = 30 * 24 * 60 * 60 * 1000;
 /// Timestamps ending in `_changed_at` are epoch milliseconds; the other timestamps are seconds.
 /// Three groups of fields merge independently when several instances save the same session:
 /// archive state (`archived_at`, `archive_reason`, `archive_changed_at`), unread state
-/// (`unread`, `unread_changed_at`), and metadata (`title`, `cwd`, `last_activity`).
+/// (`unread`, `unread_changed_at`), and metadata (`title`, `cwd`, `repo_root`, `last_activity`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", from = "RawRecord")]
 pub struct SessionRecord {
     pub session_id: String,
     pub cwd: String,
+    /// The git repo root of `cwd`, resolved while that directory still existed, so a deleted
+    /// worktree keeps grouping with its repo. `None` until resolved, and for non-git cwds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo_root: Option<String>,
     /// Empty when the session has no name yet.
     pub title: String,
     pub created_at: u64,
@@ -72,6 +76,7 @@ impl SessionRecord {
         SessionRecord {
             session_id,
             cwd,
+            repo_root: None,
             title,
             created_at,
             last_activity,
@@ -103,6 +108,8 @@ impl SessionRecord {
 struct RawRecord {
     session_id: String,
     cwd: String,
+    #[serde(default)]
+    repo_root: Option<String>,
     title: String,
     created_at: u64,
     last_activity: u64,
@@ -132,6 +139,7 @@ impl From<RawRecord> for SessionRecord {
             unread_changed_at: raw.unread_changed_at.unwrap_or(inserted_ms),
             session_id: raw.session_id,
             cwd: raw.cwd,
+            repo_root: raw.repo_root,
             title: raw.title,
             created_at: raw.created_at,
             last_activity: raw.last_activity,
@@ -168,7 +176,7 @@ struct FileStamp {
 struct Unsaved {
     /// Archive, unread, insert or delete: must reach disk right away.
     intent: bool,
-    /// Title, cwd or last activity: can wait.
+    /// Title, cwd, repo root or last activity: can wait.
     metadata: bool,
 }
 
@@ -322,6 +330,8 @@ impl Store {
         }
         if let Some(cwd) = cwd.filter(|cwd| *cwd != record.cwd) {
             record.cwd = cwd;
+            // The old root belongs to the old cwd; it gets resolved again.
+            record.repo_root = None;
             changed = true;
         }
         if let Some(last_activity) = last_activity.filter(|at| *at != record.last_activity) {
@@ -330,6 +340,19 @@ impl Store {
         }
         self.unsaved.metadata |= changed;
         changed
+    }
+
+    /// Returns whether anything changed.
+    pub fn set_repo_root(&mut self, session_id: &str, repo_root: String) -> bool {
+        let Some(record) = self.data.records.get_mut(session_id) else {
+            return false;
+        };
+        if record.repo_root.as_deref() == Some(repo_root.as_str()) {
+            return false;
+        }
+        record.repo_root = Some(repo_root);
+        self.unsaved.metadata = true;
+        true
     }
 
     pub fn remove(&mut self, session_id: &str, now_ms: u64) -> bool {
@@ -401,13 +424,24 @@ fn merge(on_disk: StoreData, mine: &StoreData) -> StoreData {
 }
 
 /// Newer `*_changed_at` wins per intent group, the larger `last_activity` wins metadata.
-/// Ties go to `mine`.
+/// Ties go to `mine`. A repo root is only ever resolved while the cwd exists, so the metadata
+/// winner's missing one is filled from the loser when both are for the same cwd.
 fn merge_record(disk: SessionRecord, mine: &SessionRecord) -> SessionRecord {
     let mut merged = if disk.last_activity > mine.last_activity {
         disk.clone()
     } else {
         mine.clone()
     };
+    if merged.repo_root.is_none() {
+        let loser = if disk.last_activity > mine.last_activity {
+            mine
+        } else {
+            &disk
+        };
+        if loser.cwd == merged.cwd {
+            merged.repo_root = loser.repo_root.clone();
+        }
+    }
     let archive = if disk.archive_changed_at > mine.archive_changed_at {
         &disk
     } else {
@@ -482,6 +516,7 @@ pub(crate) mod tests {
         SessionRecord {
             session_id: id.to_string(),
             cwd: "/work/app".to_string(),
+            repo_root: None,
             title: format!("title {id}"),
             created_at: 1,
             last_activity: 1,
@@ -615,6 +650,40 @@ pub(crate) mod tests {
         // Intent still comes from the side with the newer timestamp, not the metadata winner.
         assert!(merged.records["a"].unread);
         assert_eq!(merged.records["a"].unread_changed_at, 99);
+    }
+
+    #[test]
+    fn merge_keeps_a_repo_root_the_metadata_winner_lacks_for_the_same_cwd() {
+        let mut disk = record("a", 10);
+        disk.repo_root = Some("/work".to_string());
+        disk.last_activity = 20;
+        let mut mine = record("a", 10);
+        mine.last_activity = 30;
+
+        let merged = merge(
+            data(vec![disk.clone()], &[]),
+            &data(vec![mine.clone()], &[]),
+        );
+        assert_eq!(merged.records["a"].last_activity, 30);
+        assert_eq!(merged.records["a"].repo_root.as_deref(), Some("/work"));
+
+        // And the other way round: disk wins on activity but mine knows the root.
+        let merged = merge(data(vec![mine], &[]), &data(vec![disk], &[]));
+        assert_eq!(merged.records["a"].repo_root.as_deref(), Some("/work"));
+    }
+
+    #[test]
+    fn merge_drops_a_repo_root_that_belongs_to_another_cwd() {
+        let mut disk = record("a", 10);
+        disk.cwd = "/old".to_string();
+        disk.repo_root = Some("/old".to_string());
+        disk.last_activity = 20;
+        let mut mine = record("a", 10);
+        mine.last_activity = 30;
+
+        let merged = merge(data(vec![disk], &[]), &data(vec![mine], &[]));
+        assert_eq!(merged.records["a"].cwd, "/work/app");
+        assert_eq!(merged.records["a"].repo_root, None);
     }
 
     #[test]
@@ -849,6 +918,40 @@ pub(crate) mod tests {
 
         assert!(store.set_unread("a", true, 5));
         assert!(store.has_unsaved_intent());
+    }
+
+    #[test]
+    fn set_repo_root_marks_metadata_and_ignores_an_unchanged_root() {
+        let mut store = Store::empty(PathBuf::from("/nonexistent/sessions.json"));
+        store.insert(record("a", 1));
+        store.unsaved = Unsaved::default();
+
+        assert!(store.set_repo_root("a", "/work".to_string()));
+        assert_eq!(store.get("a").unwrap().repo_root.as_deref(), Some("/work"));
+        assert!(store.has_unsaved_metadata());
+        assert!(!store.has_unsaved_intent());
+
+        store.unsaved = Unsaved::default();
+        assert!(!store.set_repo_root("a", "/work".to_string()));
+        assert!(!store.has_unsaved_metadata());
+        assert!(!store.set_repo_root("zzz", "/work".to_string()));
+    }
+
+    #[test]
+    fn changing_the_cwd_forgets_the_repo_root() {
+        let mut store = Store::empty(PathBuf::from("/nonexistent/sessions.json"));
+        store.insert(record("a", 1));
+        store.set_repo_root("a", "/work".to_string());
+
+        assert!(store.refresh("a", None, Some("/elsewhere".to_string()), None));
+        assert_eq!(store.get("a").unwrap().repo_root, None);
+
+        store.set_repo_root("a", "/elsewhere".to_string());
+        assert!(!store.refresh("a", None, Some("/elsewhere".to_string()), None));
+        assert_eq!(
+            store.get("a").unwrap().repo_root.as_deref(),
+            Some("/elsewhere")
+        );
     }
 
     #[test]

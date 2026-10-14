@@ -59,17 +59,9 @@ impl RepoRoots {
         }
     }
 
-    /// The repo root of `cwd` when it is inside one, else `cwd` itself.
-    pub fn group_path<'a>(&'a self, cwd: &'a str) -> &'a str {
-        match self.roots.get(cwd) {
-            Some(Some(root)) => root,
-            _ => cwd,
-        }
-    }
-
-    #[cfg(test)]
-    pub fn insert(&mut self, cwd: &str, root: &str) {
-        self.roots.insert(cwd.to_string(), Some(root.to_string()));
+    /// The root found by `resolve_all`; `None` when `cwd` isn't in a repo or wasn't resolved.
+    pub fn get(&self, cwd: &str) -> Option<&str> {
+        self.roots.get(cwd)?.as_deref()
     }
 }
 
@@ -176,17 +168,17 @@ mod tests {
     }
 
     #[test]
-    fn group_path_falls_back_to_the_cwd_without_a_root() {
-        let dir = TempDir::new("group-path");
+    fn get_has_a_root_only_for_resolved_cwds_inside_a_repo() {
+        let dir = TempDir::new("get");
         let repo = dir.0.join("app");
         fs::create_dir_all(repo.join(".git")).unwrap();
         let inside = repo.to_str().unwrap().to_string();
         let outside = dir.0.to_str().unwrap().to_string();
 
         let mut roots = RepoRoots::default();
-        assert_eq!(roots.group_path(&inside), inside);
+        assert_eq!(roots.get(&inside), None);
         roots.resolve_all([inside.as_str(), outside.as_str()]);
-        assert_eq!(roots.group_path(&inside), inside);
-        assert_eq!(roots.group_path(&outside), outside);
+        assert_eq!(roots.get(&inside), Some(inside.as_str()));
+        assert_eq!(roots.get(&outside), None);
     }
 }

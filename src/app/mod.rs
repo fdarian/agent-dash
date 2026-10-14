@@ -417,7 +417,40 @@ fn show_toast(state: &mut AppState, message: impl Into<String>, seconds: u64) {
 /// Re-reads the sessions from the book. Call it after anything that changed the book.
 fn refresh_visible_items(state: &mut AppState) {
     state.sessions_snapshot = state.book.sessions();
+    if store_missing_repo_roots(state) {
+        state.sessions_snapshot = state.book.sessions();
+    }
     refilter_visible_items(state);
+}
+
+/// Records the repo root of every session that lacks one while its cwd still exists; Folder
+/// grouping reads it from the record, so it has to be saved before a worktree is deleted.
+/// Returns whether any record changed.
+fn store_missing_repo_roots(state: &mut AppState) -> bool {
+    state.repo_roots.resolve_all(
+        state
+            .sessions_snapshot
+            .iter()
+            .filter(|session| session.record.repo_root.is_none())
+            .map(|session| session.record.cwd.as_str()),
+    );
+    let mutations: Vec<Mutation> = state
+        .sessions_snapshot
+        .iter()
+        .filter(|session| session.record.repo_root.is_none())
+        .filter_map(|session| {
+            let repo_root = state.repo_roots.get(&session.record.cwd)?;
+            Some(Mutation::SetRepoRoot {
+                session_id: session.record.session_id.clone(),
+                repo_root: repo_root.to_string(),
+            })
+        })
+        .collect();
+    if mutations.is_empty() {
+        return false;
+    }
+    mutate_store(state, mutations);
+    true
 }
 
 /// Rebuilds the list from the last snapshot; for changes that don't touch the book.
@@ -425,17 +458,10 @@ fn refilter_visible_items(state: &mut AppState) {
     let now = now_secs();
     let query = state.session_filter_query.trim();
     state.visible_items = if query.is_empty() {
-        state.repo_roots.resolve_all(
-            state
-                .sessions_snapshot
-                .iter()
-                .map(|session| session.record.cwd.as_str()),
-        );
         view::build_items(
             &state.sessions_snapshot,
             &state.ui.view,
             &state.ui.collapsed_groups,
-            &state.repo_roots,
             now,
         )
     } else {
