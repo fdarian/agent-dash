@@ -6,10 +6,10 @@ description: How to install Agent Dash
 ## Prerequisites
 
 - [Rust](https://www.rust-lang.org/tools/install) toolchain (1.70+)
-- [tmux](https://github.com/tmux/tmux) installed and running
-- At least one supported agent ([Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [opencode](https://opencode.ai)) running in a tmux pane
+- [tmux](https://github.com/tmux/tmux), installed. Agent Dash also uses it to resume and create sessions.
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code), version 2.1.119 or later, which writes `~/.claude/sessions/<pid>.json` with a `status` for each running session. Without that file, a session is not listed.
 
-## From Source
+## From source
 
 Clone the repository and build:
 
@@ -23,15 +23,21 @@ The binary will be at `target/release/agent-dash`.
 
 ## Running
 
-Make sure you have tmux sessions with Claude CLI running, then:
-
 ```bash
 ./target/release/agent-dash
 ```
 
-### CLI Options
+Run `agent-dash import` once to [bring in existing Claude sessions](/docs/getting-started#import-what-you-already-have).
+
+### CLI options
 
 | Flag | Description |
 |------|-------------|
 | `--exit` | Enable exit-on-switch mode — exits Agent Dash when switching to a tmux pane |
 | `--exit-immediately` | Exit immediately after initial render (used for testing) |
+
+### Subcommands
+
+| Command | Description |
+|---------|-------------|
+| `agent-dash import` | Bring in existing Claude CLI and Desktop sessions. `--all` imports every untracked session, `--since <1d\|3d\|7d\|30d>` those active in that window; either skips the picker. `--source <cli\|desktop>` narrows either to one source |

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-use crate::tmux::TmuxClient;
+use crate::multiplexer::tmux::{session_name, TmuxClient};
 
 const MIN_COLS: u16 = 40;
 const MIN_ROWS: u16 = 10;
@@ -34,7 +34,7 @@ struct ZoomState {
 fn parse_session_window(pane_target: &str) -> Option<(String, String)> {
     let dot_pos = pane_target.rfind('.')?;
     let session_window = &pane_target[..dot_pos];
-    let session = session_window.split(':').next()?;
+    let session = session_name(session_window);
     if session.is_empty() || session_window.is_empty() {
         return None;
     }
@@ -43,8 +43,7 @@ fn parse_session_window(pane_target: &str) -> Option<(String, String)> {
 
 pub fn spawn_resize_task(mut request_rx: watch::Receiver<ResizeCommand>) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let config = crate::config::load_config(false);
-        let tmux = TmuxClient::new(&config);
+        let tmux = TmuxClient;
 
         let mut state = ResizeState::default();
 
@@ -158,17 +157,17 @@ pub fn spawn_resize_task(mut request_rx: watch::Receiver<ResizeCommand>) -> Join
 }
 
 async fn apply_resize(
-    tmux: &TmuxClient<'_>,
+    tmux: &TmuxClient,
     pane_target: &str,
     session_window: &str,
     cols: u16,
     rows: u16,
     state: &mut ResizeState,
 ) {
-    let session = match session_window.split(':').next() {
-        Some(s) if !s.is_empty() => s,
-        _ => return,
-    };
+    let session = session_name(session_window);
+    if session.is_empty() {
+        return;
+    }
 
     transition_zoom(tmux, pane_target, &mut state.zoomed).await;
 
@@ -187,7 +186,7 @@ async fn apply_resize(
     state.last_applied = Some((pane_target.to_string(), cols, rows));
 }
 
-async fn transition_zoom(tmux: &TmuxClient<'_>, target_pane: &str, zoomed: &mut Option<ZoomState>) {
+async fn transition_zoom(tmux: &TmuxClient, target_pane: &str, zoomed: &mut Option<ZoomState>) {
     if let Some(current) = zoomed.as_ref() {
         if current.pane_target == target_pane {
             return;
@@ -215,7 +214,7 @@ async fn transition_zoom(tmux: &TmuxClient<'_>, target_pane: &str, zoomed: &mut 
     }
 }
 
-async fn unzoom_if_owned(tmux: &TmuxClient<'_>, zoom: &ZoomState) {
+async fn unzoom_if_owned(tmux: &TmuxClient, zoom: &ZoomState) {
     if !zoom.we_zoomed_it {
         return;
     }
@@ -224,7 +223,7 @@ async fn unzoom_if_owned(tmux: &TmuxClient<'_>, zoom: &ZoomState) {
     }
 }
 
-async fn restore_windows(tmux: &TmuxClient<'_>, state: &ResizeState) {
+async fn restore_windows(tmux: &TmuxClient, state: &ResizeState) {
     if let Some(zoom) = state.zoomed.as_ref() {
         unzoom_if_owned(tmux, zoom).await;
     }

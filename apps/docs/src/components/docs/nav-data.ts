@@ -26,7 +26,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         id: 'agents',
-        title: 'Supported agents',
+        title: 'Claude Code',
         href: '/docs/agents',
         tick: '○',
       },
@@ -45,8 +45,20 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         id: 'groups',
-        title: 'Session groups',
-        href: '/docs/getting-started#session-groups',
+        title: 'Grouping & filters',
+        href: '/docs/getting-started#grouping-and-filters',
+        tick: '○',
+      },
+      {
+        id: 'archive',
+        title: 'Archive',
+        href: '/docs/getting-started#archive',
+        tick: '○',
+      },
+      {
+        id: 'import',
+        title: 'Import',
+        href: '/docs/getting-started#import-what-you-already-have',
         tick: '○',
       },
       {
@@ -69,9 +81,9 @@ export const NAV_GROUPS: NavGroup[] = [
         tick: '○',
       },
       {
-        id: 'formatter',
-        title: 'Name formatter',
-        href: '/docs/configuration#sessionnameformatter',
+        id: 'theme',
+        title: 'Theme',
+        href: '/docs/configuration#theme',
         tick: '○',
       },
     ],
@@ -88,11 +100,16 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         id: 'state',
-        title: 'State & cache',
+        title: 'State & storage',
         href: '/docs/configuration#data-storage',
         tick: '○',
       },
-      { id: 'detect', title: 'Process detect', href: '/docs#how-it-works', tick: '○' },
+      {
+        id: 'detect',
+        title: 'Session detection',
+        href: '/docs/agents#how-sessions-are-found',
+        tick: '○',
+      },
     ],
   },
 ];

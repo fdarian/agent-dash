@@ -41,7 +41,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
                 Span::styled("/", Style::default().fg(state.theme.text_subtle)),
                 Span::styled(
                     "Type to filter...",
-                    Style::default().fg(state.theme.border_unfocused),
+                    Style::default().fg(state.theme.text_muted),
                 ),
             ];
             frame.render_widget(Line::from(spans), filter_area);
@@ -66,7 +66,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     let entries = filter_keybinds(filter_query);
 
     if entries.is_empty() {
-        let text = Line::from("No matching keybinds").fg(state.theme.border_unfocused);
+        let text = Line::from("No matching keybinds").fg(state.theme.text_subtle);
         frame.render_widget(text, list_area);
         return;
     }

@@ -1,66 +1,50 @@
 ---
-title: Supported agents
-description: Claude Code and opencode are both supported. Detection is automatic — no config required. Claude needs no plugin; opencode has an optional plugin for richer session metadata.
+title: Claude Code
+description: What Agent Dash needs from Claude Code, how it finds sessions, and how it decides a session has been closed.
 ---
 
-Agent Dash automatically detects any tmux pane whose process tree contains a `claude` or `opencode` binary. No configuration is required to get started.
+Claude Code is the only supported agent. There is nothing to install on the Claude side.
 
-## Detection tiers
+## Requirements
 
-- **Claude Code** — No plugin needed. Claude Code writes `~/.claude/sessions/<pid>.json` for each running session, and Agent Dash reads it for status, session ID, and working directory. Older Claude Code versions that don't write this file fall back to process detection and content heuristics.
-- **opencode, Tier 0 (automatic)** — Works out of the box through process detection and content heuristics.
-- **opencode, Tier 1 (plugin)** — An optional plugin writes structured metadata to a small JSON file per pane, giving Agent Dash a stable session ID, accurate status, cwd, and model name.
+Agent Dash needs Claude Code 2.1.119 or later, the first release whose `~/.claude/sessions/<pid>.json` includes `status`. A `claude` pane whose process has no such file is skipped and never listed; there is no fallback for older versions.
 
-<Callout kind="note" title="Upgrading from the Claude hooks plugin">
-  If you installed the old Claude hooks, remove them from `~/.claude/settings.json` or delete `~/.claude/plugins/agent-dash`. The `agent-dash hook-write` command no longer exists.
+## How sessions are found
+
+Every two seconds Agent Dash lists your tmux panes, looks through each pane's process tree for a `claude` executable, and reads that process's `sessions/<pid>.json`. A process counts only when `claude` has no subcommand: `claude` and `claude --model opus` match, `claude mcp serve` and `claude doctor` do not.
+
+| Field | Source |
+|---|---|
+| Session identity | `sessionId` in the pid file |
+| Title | `name` in the pid file, which Claude only writes for named sessions. Without it, the transcript's custom title, then its generated title |
+| Folder | `cwd` in the pid file |
+| Busy / waiting / idle | `status` in the pid file: `busy`, `waiting` (a permission prompt or a question), anything else is idle |
+| Last activity | Last message time in the session transcript |
+| Plan / Ask badge | Last non-empty line of the pane, checked while the session is not busy |
+
+When two panes run the same session (resumed twice), they are shown as one entry and the busy pane wins.
+
+## Sessions outlive their panes
+
+Agent Dash keeps a record of every session it sees in `~/.config/agent-dash/sessions.json`, keyed by session ID. When the pane goes away the record stays and the session shows as closed. What happens next depends on how it closed, which Agent Dash works out from the pid file:
+
+| What you did | Result |
+|---|---|
+| `/exit`, Ctrl+C, closed the pane or window, pressed `x` | Archived |
+| `/clear`, or `/resume` of another session in the same pane | The old session is archived |
+| Claude crashed or was killed with `kill -9` | Left as closed, not archived |
+| Closed a session that never received a prompt | Removed (there is nothing to resume) |
+
+An archived session comes back on its own when it is resumed, whether from Agent Dash or from a shell. Pressing `a` on a live session archives it without stopping it, and it stays archived until you unarchive it or it is restarted.
+
+<Callout kind="note" title="Nothing is archived on launch or while tmux is down">
+  Agent Dash never classifies a close on its first scan or while it cannot reach tmux. Sessions that closed while it wasn't running stay as they were.
 </Callout>
 
-## Feature comparison
+## Upgrading from the Claude hooks plugin
 
-| Field | Claude | Claude (older versions) | opencode Tier 0 | opencode + plugin |
-|---|---|---|---|---|
-| Pane discovery | yes | yes | yes | yes |
-| Busy / idle status | yes | yes | yes | yes |
-| Stable session ID | yes | — | — | yes |
-| Current working directory | yes | — | — | yes |
-| Model name | — | — | — | yes |
-| Session title | partial | partial | falls back to tmux session name | yes |
-| Plan / Ask state | yes | yes | — | — |
-| Agent role (Build / Plan / etc.) | — | — | — | — |
+If you installed the old Claude hooks, remove them from `~/.claude/settings.json` or delete `~/.claude/plugins/agent-dash`. The `agent-dash hook-write` command no longer exists.
 
-**How fallback status works:**
-- Claude Code (older versions) — detects the braille Unicode spinner (U+2800–U+28FF) in the pane title.
-- opencode — scans pane content for the `"esc interrupt"` substring that opencode displays while busy.
+## opencode and the enrichment plugin
 
-Plan / Ask state is not available for opencode because opencode has no equivalent concept.
-
-## opencode plugin
-
-The opencode plugin is a TypeScript plugin that subscribes to opencode session lifecycle events and writes enrichment data per pane.
-
-### Install
-
-Symlink the plugin into the opencode global plugin directory:
-
-```sh
-mkdir -p ~/.config/opencode/plugins
-ln -sf /path/to/agent-dash/plugins/opencode/plugin.ts ~/.config/opencode/plugins/agent-dash.ts
-```
-
-Then restart opencode — plugins are loaded at startup.
-
-For project-level installation instead of global, symlink to `.opencode/plugins/agent-dash.ts` inside your project directory.
-
-If `$TMUX_PANE` is not set (opencode running outside tmux), the plugin is a no-op.
-
-## Enrichment file
-
-The opencode plugin writes to:
-
-```
-~/.config/agent-dash/panes/{pane_id}.json
-```
-
-For example, pane `%86` → `~/.config/agent-dash/panes/%86.json`. Each write is atomic (tempfile + rename). The file is deleted automatically when the session ends.
-
-Agent Dash always falls back to Tier 0 detection if the file is missing or malformed — no errors are surfaced to the UI.
+opencode, and the per-pane enrichment files under `~/.config/agent-dash/panes/`, are no longer supported. Remove the symlink from `~/.config/opencode/plugins/agent-dash.ts` if you installed the plugin.

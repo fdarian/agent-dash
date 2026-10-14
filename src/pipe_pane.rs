@@ -5,7 +5,7 @@ use tokio::time::Duration;
 
 use crate::app::{Message, PreviewTarget};
 use crate::config::PreviewScrollMode;
-use crate::tmux::TmuxClient;
+use crate::multiplexer::tmux::TmuxClient;
 
 pub struct PipePaneWatcher {
     fifo_path: String,
@@ -49,7 +49,7 @@ pub fn spawn_preview_task(
 ) {
     tokio::spawn(async move {
         let config = crate::config::load_config(false);
-        let tmux = TmuxClient::new(&config);
+        let tmux = TmuxClient;
         let mut previous_content = String::new();
         let mut current_target: Option<PreviewTarget> = None;
 
@@ -105,7 +105,7 @@ pub fn spawn_preview_task(
                     previous_content.clear();
 
                     if let Some(ref pt) = current_target {
-                        current_scroll_mode = config.effective_scroll_mode(pt.agent);
+                        current_scroll_mode = config.claude_code_preview_scroll_mode;
                         debounce_duration = match current_scroll_mode {
                             PreviewScrollMode::Virtualized => Duration::from_millis(16),
                             PreviewScrollMode::Scrollback => Duration::from_millis(50),

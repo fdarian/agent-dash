@@ -1,23 +1,25 @@
-use crate::session::SessionStatus;
+use crate::sessions::live::{LiveStatus, PidFileState, Probe};
 use serde::Deserialize;
 use std::path::PathBuf;
+use tokio::process::Command;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ClaudeStatus {
     Busy,
-    Idle,
-    /// A status Claude added after this was written. Must not override the scraped status.
+    /// Waiting on the user: a permission prompt or a question.
+    Waiting,
+    /// `idle`, `shell` and any status Claude adds later.
     #[serde(other)]
-    Unknown,
+    Other,
 }
 
 impl ClaudeStatus {
-    pub fn as_session_status(&self) -> Option<SessionStatus> {
+    pub fn as_live_status(&self) -> LiveStatus {
         match self {
-            ClaudeStatus::Busy => Some(SessionStatus::Active),
-            ClaudeStatus::Idle => Some(SessionStatus::Idle),
-            ClaudeStatus::Unknown => None,
+            ClaudeStatus::Busy => LiveStatus::Busy,
+            ClaudeStatus::Waiting => LiveStatus::Waiting,
+            ClaudeStatus::Other => LiveStatus::Idle,
         }
     }
 }
@@ -29,6 +31,11 @@ pub struct ClaudeSession {
     pub session_id: String,
     pub cwd: String,
     pub status: ClaudeStatus,
+    /// Only written for named sessions.
+    pub name: Option<String>,
+    /// Epoch milliseconds.
+    #[serde(default)]
+    pub started_at: Option<u64>,
 }
 
 fn sessions_dir() -> PathBuf {
@@ -41,11 +48,124 @@ fn parse(json: &str) -> Option<ClaudeSession> {
     serde_json::from_str::<ClaudeSession>(json).ok()
 }
 
-/// Missing files are normal (older Claude versions); malformed ones are ignored the same way
-/// so the caller falls back to scraped values.
-pub fn read(pid: u32) -> Option<ClaudeSession> {
-    let content = std::fs::read_to_string(sessions_dir().join(format!("{}.json", pid))).ok()?;
-    parse(&content)
+/// The outcome of reading `~/.claude/sessions/<pid>.json`.
+#[derive(Debug)]
+pub enum PidFile {
+    /// Normal for older Claude versions and for processes that exited.
+    Missing,
+    /// There but unreadable or malformed, e.g. caught mid-write. Not the same as missing: the
+    /// process may well be running.
+    Unreadable,
+    Session(ClaudeSession),
+}
+
+pub fn read(pid: u32) -> PidFile {
+    read_path(&sessions_dir().join(format!("{}.json", pid)))
+}
+
+fn read_path(path: &std::path::Path) -> PidFile {
+    match std::fs::read_to_string(path) {
+        Ok(content) => match parse(&content) {
+            Some(session) => PidFile::Session(session),
+            None => PidFile::Unreadable,
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => PidFile::Missing,
+        Err(_) => PidFile::Unreadable,
+    }
+}
+
+/// The pid of the Claude session process running in `pid` or one of its descendants.
+pub async fn find_claude_pid(pid: u32) -> Option<u32> {
+    if is_claude_process(&process_description(pid).await?) {
+        return Some(pid);
+    }
+    for child in child_pids(pid).await {
+        if let Some(found) = Box::pin(find_claude_pid(child)).await {
+            return Some(found);
+        }
+    }
+    None
+}
+
+async fn process_description(pid: u32) -> Option<String> {
+    command_stdout("ps", &["-o", "comm=,args=", "-p", &pid.to_string()]).await
+}
+
+async fn child_pids(pid: u32) -> Vec<u32> {
+    command_stdout("pgrep", &["-P", &pid.to_string()])
+        .await
+        .map(|stdout| {
+            stdout
+                .lines()
+                .filter_map(|l| l.trim().parse().ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// `None` when the command can't run or exits non-zero, which includes the normal
+/// "no match" exit of `pgrep` and the "no such process" exit of `ps` for a pid that just died.
+async fn command_stdout(program: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(program).args(args).output().await.ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn is_claude_process(ps_output: &str) -> bool {
+    let trimmed = ps_output.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    // Split into comm and args. ps -o comm=,args= outputs: "<comm> <args>"
+    // where <args> includes the executable name as the first token.
+    let (comm, args) = match trimmed.split_once(char::is_whitespace) {
+        Some((c, a)) => (c, a.trim_start()),
+        None => (trimmed, ""),
+    };
+
+    // Strip leading '-' (login shell indicator) from comm
+    let comm = comm.strip_prefix('-').unwrap_or(comm);
+    if comm != "claude" {
+        return false;
+    }
+
+    // A valid session command has only flags after the executable, e.g.
+    // "claude --model opus". A positional subcommand like "claude mcp serve"
+    // indicates a non-interactive tool invocation, not a session.
+    let mut tokens = args.split_whitespace();
+    tokens.next(); // skip executable name (first token of args)
+    !matches!(tokens.next(), Some(token) if !token.starts_with('-'))
+}
+
+/// Reads the real `~/.claude` state for `track`.
+pub struct FsProbe;
+
+impl Probe for FsProbe {
+    fn pid_file(&self, pid: u32) -> PidFileState {
+        match read(pid) {
+            PidFile::Missing => PidFileState::Missing,
+            PidFile::Unreadable => PidFileState::Unreadable,
+            PidFile::Session(session) => PidFileState::Session(session.session_id),
+        }
+    }
+
+    fn pid_alive(&self, pid: u32) -> bool {
+        // 0 and negative values address process groups, not a process.
+        if pid == 0 || pid > i32::MAX as u32 {
+            return false;
+        }
+        // SAFETY: signal 0 only checks that the process exists; nothing is delivered.
+        let result = unsafe { libc::kill(pid as libc::pid_t, 0) };
+        // EPERM means it exists but belongs to someone else.
+        result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
+
+    fn has_transcript(&self, session_id: &str) -> bool {
+        crate::claude_transcript::transcript_exists(session_id)
+    }
 }
 
 #[cfg(test)]
@@ -60,27 +180,34 @@ mod tests {
         assert_eq!(session.session_id, "aa4e035a-0273-4e80-8b10-6b39172ebc2e");
         assert_eq!(session.cwd, "/Users/farreldarian/code/fdarian/agent-dash");
         assert_eq!(session.status, ClaudeStatus::Busy);
-        assert!(matches!(
-            session.status.as_session_status(),
-            Some(SessionStatus::Active)
-        ));
+        assert_eq!(session.status.as_live_status(), LiveStatus::Busy);
+        assert_eq!(session.name.as_deref(), Some("agent-dash-72"));
+        assert_eq!(session.started_at, Some(1791823919880));
     }
 
     #[test]
     fn test_parse_idle() {
         let session = parse(r#"{"sessionId":"s1","cwd":"/tmp","status":"idle"}"#).unwrap();
-        assert_eq!(session.status, ClaudeStatus::Idle);
-        assert!(matches!(
-            session.status.as_session_status(),
-            Some(SessionStatus::Idle)
-        ));
+        assert_eq!(session.status.as_live_status(), LiveStatus::Idle);
+        assert_eq!(session.name, None);
+        assert_eq!(session.started_at, None);
     }
 
     #[test]
-    fn test_unknown_status_does_not_override() {
+    fn test_waiting_is_its_own_status() {
         let session = parse(r#"{"sessionId":"s1","cwd":"/tmp","status":"waiting"}"#).unwrap();
-        assert_eq!(session.status, ClaudeStatus::Unknown);
-        assert!(session.status.as_session_status().is_none());
+        assert_eq!(session.status, ClaudeStatus::Waiting);
+        assert_eq!(session.status.as_live_status(), LiveStatus::Waiting);
+    }
+
+    #[test]
+    fn test_other_statuses_map_to_idle() {
+        for status in ["shell", "something-new"] {
+            let json = format!(r#"{{"sessionId":"s1","cwd":"/tmp","status":"{status}"}}"#);
+            let session = parse(&json).unwrap();
+            assert_eq!(session.status, ClaudeStatus::Other);
+            assert_eq!(session.status.as_live_status(), LiveStatus::Idle);
+        }
     }
 
     #[test]
@@ -97,7 +224,72 @@ mod tests {
     }
 
     #[test]
-    fn test_missing_file_returns_none() {
-        assert!(read(u32::MAX).is_none());
+    fn test_missing_file_is_missing() {
+        assert!(matches!(read(u32::MAX), PidFile::Missing));
+    }
+
+    #[test]
+    fn test_present_but_malformed_file_is_unreadable_not_missing() {
+        let dir = std::env::temp_dir().join(format!("agent-dash-pidfile-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("1.json");
+
+        std::fs::write(&path, "{\"sessionId\":").unwrap();
+        assert!(matches!(read_path(&path), PidFile::Unreadable));
+        std::fs::write(&path, "").unwrap();
+        assert!(matches!(read_path(&path), PidFile::Unreadable));
+        std::fs::write(&path, r#"{"sessionId":"s","cwd":"/","status":"idle"}"#).unwrap();
+        assert!(matches!(read_path(&path), PidFile::Session(_)));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_fs_probe_reports_the_pid_file_state() {
+        assert_eq!(FsProbe.pid_file(u32::MAX), PidFileState::Missing);
+    }
+
+    #[test]
+    fn test_is_claude_process_exact_match() {
+        assert!(is_claude_process("claude claude"));
+    }
+
+    #[test]
+    fn test_is_claude_process_with_flags() {
+        assert!(is_claude_process(
+            "claude claude --model opus --agent guide"
+        ));
+    }
+
+    #[test]
+    fn test_is_claude_process_with_subcommand() {
+        assert!(!is_claude_process("claude claude mcp serve"));
+        assert!(!is_claude_process("claude claude doctor"));
+    }
+
+    #[test]
+    fn test_is_claude_process_login_shell_prefix() {
+        assert!(is_claude_process("-claude -claude"));
+    }
+
+    #[test]
+    fn test_is_claude_process_other_process() {
+        assert!(!is_claude_process("opencode opencode"));
+        assert!(!is_claude_process("oagent oagent serve"));
+        assert!(!is_claude_process("node node script.js"));
+        assert!(!is_claude_process("zsh zsh"));
+        assert!(!is_claude_process("/bin/zsh /bin/zsh"));
+    }
+
+    #[test]
+    fn test_is_claude_process_empty() {
+        assert!(!is_claude_process(""));
+        assert!(!is_claude_process("   "));
+    }
+
+    #[test]
+    fn test_fs_probe_pid_alive() {
+        assert!(FsProbe.pid_alive(std::process::id()));
+        assert!(!FsProbe.pid_alive(0));
+        assert!(!FsProbe.pid_alive(u32::MAX));
     }
 }

@@ -4,7 +4,10 @@ use ratatui::widgets::{
 };
 
 use crate::app::AppState;
-use crate::session::VisibleItem;
+use crate::sessions::Session;
+use crate::time_fmt::format_relative_time;
+
+const MAX_PROMPT_CHARS: usize = 600;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool) {
     state.preview_area_height = area.height;
@@ -18,13 +21,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool
     let session_id_suffix = state
         .visible_items
         .get(state.selected_index)
-        .and_then(|item| match item {
-            VisibleItem::Session { session, .. } => session.session_id.as_deref(),
-            _ => None,
-        })
-        .map(|id| {
-            let prefix = id.strip_prefix("ses_").unwrap_or(id);
-            format!(" · {} ", &prefix[..prefix.len().min(8)])
+        .and_then(|item| item.session())
+        .map(|session| {
+            let short_id: String = session.record.session_id.chars().take(8).collect();
+            format!(" · {} ", short_id)
         })
         .unwrap_or_default();
 
@@ -50,6 +50,16 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool
         .border_style(Style::default().fg(border_color));
 
     let inner_area = block.inner(area);
+
+    if let Some(session) = state
+        .visible_items
+        .get(state.selected_index)
+        .and_then(|item| item.session())
+        .filter(|session| !session.is_live())
+    {
+        render_closed_placeholder(frame, area, block, state, session);
+        return;
+    }
 
     if state.preview_content.is_empty() {
         frame.render_widget(block, area);
@@ -145,4 +155,83 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, focused: bool
             frame.set_cursor_position((cursor_x, search_area.y));
         }
     }
+}
+
+fn render_closed_placeholder(
+    frame: &mut Frame,
+    area: Rect,
+    block: Block,
+    state: &AppState,
+    session: &Session,
+) {
+    let theme = state.theme;
+    let label = Style::default().fg(theme.text_subtle);
+    let value = Style::default().fg(theme.text);
+
+    let last_activity = session.record.last_activity as i64;
+    let absolute = chrono::DateTime::from_timestamp(last_activity, 0).map(|utc| {
+        utc.with_timezone(&chrono::Local)
+            .format("%Y-%m-%d %H:%M")
+            .to_string()
+    });
+    let ago = format_relative_time(chrono::Local::now().timestamp(), last_activity);
+    let last_activity_text = match absolute {
+        Some(absolute) => format!("{ago} ago ({absolute})"),
+        None => format!("{ago} ago"),
+    };
+
+    let mut lines = vec![
+        Line::styled(
+            session.display_title(),
+            Style::default()
+                .fg(theme.primary)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::from(vec![
+            Span::styled("cwd            ", label),
+            Span::styled(session.record.cwd.clone(), value),
+        ]),
+        Line::from(vec![
+            Span::styled("last activity  ", label),
+            Span::styled(last_activity_text, value),
+        ]),
+        Line::default(),
+    ];
+    match state.closed_session_prompt.as_deref() {
+        Some(prompt) => {
+            lines.push(Line::styled("last prompt", label));
+            lines.extend(
+                truncate_chars(prompt, MAX_PROMPT_CHARS)
+                    .lines()
+                    .map(|line| Line::styled(line.to_string(), value)),
+            );
+        }
+        None => lines.push(Line::styled("no prompt recorded", label)),
+    }
+    lines.push(Line::default());
+    lines.push(Line::from(vec![
+        Span::styled("press ", label),
+        Span::styled(
+            "o",
+            Style::default()
+                .fg(theme.primary)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" to resume", label),
+    ]));
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(ratatui::widgets::Wrap { trim: false }),
+        area,
+    );
+}
+
+fn truncate_chars(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let kept: String = text.chars().take(max).collect();
+    format!("{kept}…")
 }

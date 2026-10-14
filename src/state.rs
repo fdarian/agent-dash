@@ -1,39 +1,36 @@
-use crate::session::SessionStatus;
+use crate::sessions::view::ViewConfig;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 struct InstanceState {
     collapsed_groups: Vec<String>,
-    collapsed_hidden_groups: Vec<String>,
-    hidden_section_collapsed: Option<bool>,
-    group_hidden_collapsed: Vec<String>,
+    /// Keys this version doesn't know, kept so that other versions sharing the file don't strip
+    /// each other's fields.
+    #[serde(flatten)]
+    unknown: Map<String, Value>,
 }
 
+/// Every struct here carries its unknown keys through a load and save, including the old
+/// unread/hidden/subgroup state that earlier versions wrote.
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 struct PersistedState {
-    unread_pane_ids: Vec<String>,
-    prev_status_map: HashMap<String, SessionStatus>,
-    unread_order: HashMap<String, u64>,
-    unread_counter: u64,
-    hidden_pane_ids: Vec<String>,
-    hidden_groups: Vec<String>,
+    /// Kept raw so that unknown keys inside it survive; `ViewConfig` is overlaid on save.
+    view: Map<String, Value>,
     per_instance: HashMap<String, InstanceState>,
-}
-
-fn state_dir() -> PathBuf {
-    dirs::home_dir()
-        .expect("home directory not found")
-        .join(".config/agent-dash")
+    #[serde(flatten)]
+    unknown: Map<String, Value>,
 }
 
 fn state_path() -> PathBuf {
-    state_dir().join("state.json")
+    crate::config::config_dir().join("state.json")
 }
 
 fn resolve_instance_id(shared_state: bool) -> String {
@@ -46,118 +43,185 @@ fn resolve_instance_id(shared_state: bool) -> String {
     }
 }
 
-pub struct LoadedState {
-    pub unread_pane_ids: HashSet<String>,
-    pub prev_status_map: HashMap<String, SessionStatus>,
-    pub unread_order: HashMap<String, u64>,
-    pub unread_counter: u64,
-    pub hidden_pane_ids: HashSet<String>,
-    pub hidden_groups: HashSet<String>,
+/// UI-only state that outlives a run.
+pub struct UiState {
+    /// Global: shared by every agent-dash instance.
+    pub view: ViewConfig,
+    /// Per tmux client unless `sharedState` is set.
     pub collapsed_groups: HashSet<String>,
-    pub collapsed_hidden_groups: HashSet<String>,
-    pub hidden_section_collapsed: bool,
-    pub group_hidden_collapsed: HashSet<String>,
 }
 
-pub fn load_state(shared_state: bool) -> LoadedState {
-    let path = state_path();
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => {
-            return empty_loaded_state();
-        }
+fn read_persisted(path: &Path) -> Result<Option<PersistedState>> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(err).with_context(|| format!("failed to read {}", path.display())),
     };
-    match serde_json::from_str::<PersistedState>(&content) {
-        Ok(parsed) => {
-            let instance_id = resolve_instance_id(shared_state);
-            let instance = parsed.per_instance.get(&instance_id);
-            LoadedState {
-                unread_pane_ids: parsed.unread_pane_ids.into_iter().collect(),
-                prev_status_map: parsed.prev_status_map,
-                unread_order: parsed.unread_order,
-                unread_counter: parsed.unread_counter,
-                hidden_pane_ids: parsed.hidden_pane_ids.into_iter().collect(),
-                hidden_groups: parsed.hidden_groups.into_iter().collect(),
-                collapsed_groups: instance
-                    .map(|i| i.collapsed_groups.iter().cloned().collect())
-                    .unwrap_or_default(),
-                collapsed_hidden_groups: instance
-                    .map(|i| i.collapsed_hidden_groups.iter().cloned().collect())
-                    .unwrap_or_default(),
-                hidden_section_collapsed: instance
-                    .and_then(|i| i.hidden_section_collapsed)
-                    .unwrap_or(true),
-                group_hidden_collapsed: instance
-                    .map(|i| i.group_hidden_collapsed.iter().cloned().collect())
-                    .unwrap_or_default(),
-            }
-        }
-        Err(_) => empty_loaded_state(),
-    }
+    let parsed = serde_json::from_str(&content)
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+    Ok(Some(parsed))
 }
 
-fn empty_loaded_state() -> LoadedState {
-    LoadedState {
-        unread_pane_ids: HashSet::new(),
-        prev_status_map: HashMap::new(),
-        unread_order: HashMap::new(),
-        unread_counter: 0,
-        hidden_pane_ids: HashSet::new(),
-        hidden_groups: HashSet::new(),
-        collapsed_groups: HashSet::new(),
-        collapsed_hidden_groups: HashSet::new(),
-        hidden_section_collapsed: true,
-        group_hidden_collapsed: HashSet::new(),
-    }
+pub fn load_state(shared_state: bool) -> Result<UiState> {
+    load_from(&state_path(), &resolve_instance_id(shared_state))
 }
 
-pub struct SaveArgs<'a> {
-    pub unread_pane_ids: &'a HashSet<String>,
-    pub prev_status_map: &'a HashMap<String, SessionStatus>,
-    pub unread_order: &'a HashMap<String, u64>,
-    pub unread_counter: u64,
-    pub hidden_pane_ids: &'a HashSet<String>,
-    pub hidden_groups: &'a HashSet<String>,
-    pub instance: Option<InstanceSaveArgs<'a>>,
-    pub shared_state: bool,
+pub fn save_state(ui: &UiState, shared_state: bool) -> Result<()> {
+    save_to(&state_path(), &resolve_instance_id(shared_state), ui)
 }
 
-pub struct InstanceSaveArgs<'a> {
-    pub collapsed_groups: &'a HashSet<String>,
-    pub collapsed_hidden_groups: &'a HashSet<String>,
-    pub hidden_section_collapsed: bool,
-    pub group_hidden_collapsed: &'a HashSet<String>,
-}
-
-pub fn save_state(args: SaveArgs) {
-    let path = state_path();
-    let mut persisted: PersistedState = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|c| serde_json::from_str(&c).ok())
+fn load_from(path: &Path, instance_id: &str) -> Result<UiState> {
+    let Some(persisted) = read_persisted(path)? else {
+        return Ok(UiState {
+            view: ViewConfig::default(),
+            collapsed_groups: HashSet::new(),
+        });
+    };
+    let collapsed_groups = persisted
+        .per_instance
+        .get(instance_id)
+        .map(|instance| instance.collapsed_groups.iter().cloned().collect())
         .unwrap_or_default();
+    let view = serde_json::from_value(Value::Object(persisted.view))
+        .with_context(|| format!("failed to parse the view config in {}", path.display()))?;
+    Ok(UiState {
+        view,
+        collapsed_groups,
+    })
+}
 
-    persisted.unread_pane_ids = args.unread_pane_ids.iter().cloned().collect();
-    persisted.prev_status_map = args.prev_status_map.clone();
-    persisted.unread_order = args.unread_order.clone();
-    persisted.unread_counter = args.unread_counter;
-    persisted.hidden_pane_ids = args.hidden_pane_ids.iter().cloned().collect();
-    persisted.hidden_groups = args.hidden_groups.iter().cloned().collect();
+fn save_to(path: &Path, instance_id: &str, ui: &UiState) -> Result<()> {
+    let mut persisted = read_persisted(path)?.unwrap_or_default();
+    let Value::Object(view) = serde_json::to_value(ui.view)? else {
+        unreachable!("ViewConfig serializes to an object");
+    };
+    persisted.view.extend(view);
+    let instance = persisted
+        .per_instance
+        .entry(instance_id.to_string())
+        .or_default();
+    let mut collapsed: Vec<String> = ui.collapsed_groups.iter().cloned().collect();
+    collapsed.sort();
+    instance.collapsed_groups = collapsed;
 
-    if let Some(inst_args) = args.instance {
-        let instance_id = resolve_instance_id(args.shared_state);
-        let instance = persisted.per_instance.entry(instance_id).or_default();
-        instance.collapsed_groups = inst_args.collapsed_groups.iter().cloned().collect();
-        instance.collapsed_hidden_groups =
-            inst_args.collapsed_hidden_groups.iter().cloned().collect();
-        instance.hidden_section_collapsed = Some(inst_args.hidden_section_collapsed);
-        instance.group_hidden_collapsed =
-            inst_args.group_hidden_collapsed.iter().cloned().collect();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .with_context(|| format!("failed to create {}", dir.display()))?;
+    }
+    std::fs::write(path, serde_json::to_string(&persisted)?)
+        .with_context(|| format!("failed to write {}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sessions::record::tests::TempDir;
+    use crate::sessions::view::{ActivityWindow, Grouping, StatusFilter};
+
+    fn ui(collapsed: &[&str]) -> UiState {
+        UiState {
+            view: ViewConfig {
+                status: StatusFilter::All,
+                grouping: Grouping::Folder,
+                activity: ActivityWindow::Month,
+            },
+            collapsed_groups: collapsed.iter().map(|g| g.to_string()).collect(),
+        }
     }
 
-    let dir = state_dir();
-    let _ = std::fs::create_dir_all(&dir);
-    let _ = std::fs::write(
-        state_path(),
-        serde_json::to_string(&persisted).unwrap_or_default(),
-    );
+    fn read_json(path: &Path) -> Value {
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn view_config_and_collapsed_groups_round_trip() {
+        let dir = TempDir::new("state-round-trip");
+        let path = dir.0.join("state.json");
+        save_to(&path, "inst-a", &ui(&["folder:api", "folder:web"])).unwrap();
+
+        let loaded = load_from(&path, "inst-a").unwrap();
+        assert_eq!(loaded.view, ui(&[]).view);
+        assert_eq!(
+            loaded.collapsed_groups,
+            HashSet::from(["folder:api".to_string(), "folder:web".to_string()])
+        );
+    }
+
+    #[test]
+    fn collapsed_groups_are_per_instance_and_view_is_shared() {
+        let dir = TempDir::new("state-instances");
+        let path = dir.0.join("state.json");
+        save_to(&path, "inst-a", &ui(&["a"])).unwrap();
+        save_to(&path, "inst-b", &ui(&["b"])).unwrap();
+
+        let a = load_from(&path, "inst-a").unwrap();
+        assert_eq!(a.collapsed_groups, HashSet::from(["a".to_string()]));
+        assert_eq!(a.view, ui(&[]).view);
+        let b = load_from(&path, "inst-b").unwrap();
+        assert_eq!(b.collapsed_groups, HashSet::from(["b".to_string()]));
+        assert!(load_from(&path, "inst-c")
+            .unwrap()
+            .collapsed_groups
+            .is_empty());
+    }
+
+    #[test]
+    fn missing_file_loads_defaults() {
+        let dir = TempDir::new("state-missing");
+        let loaded = load_from(&dir.0.join("state.json"), "inst-a").unwrap();
+        assert_eq!(loaded.view, ViewConfig::default());
+        assert!(loaded.collapsed_groups.is_empty());
+    }
+
+    #[test]
+    fn save_keeps_keys_this_version_does_not_know() {
+        let dir = TempDir::new("state-unknown-keys");
+        let path = dir.0.join("state.json");
+        std::fs::write(
+            &path,
+            r#"{"unreadPaneIds":["%1"],"futureTopLevel":{"x":1},
+                "view":{"status":"archived","futureViewKey":true},
+                "perInstance":{
+                    "inst-a":{"collapsedGroups":["old"],"hiddenSectionCollapsed":true},
+                    "inst-other":{"collapsedGroups":["keep"]}}}"#,
+        )
+        .unwrap();
+
+        save_to(&path, "inst-a", &ui(&["new"])).unwrap();
+
+        let saved = read_json(&path);
+        assert_eq!(saved["unreadPaneIds"], serde_json::json!(["%1"]));
+        assert_eq!(saved["futureTopLevel"], serde_json::json!({"x": 1}));
+        assert_eq!(saved["view"]["futureViewKey"], serde_json::json!(true));
+        assert_eq!(saved["view"]["status"], "all");
+        assert_eq!(saved["view"]["grouping"], "folder");
+        assert_eq!(
+            saved["perInstance"]["inst-a"]["hiddenSectionCollapsed"],
+            serde_json::json!(true)
+        );
+        assert_eq!(
+            saved["perInstance"]["inst-a"]["collapsedGroups"],
+            serde_json::json!(["new"])
+        );
+        assert_eq!(
+            saved["perInstance"]["inst-other"]["collapsedGroups"],
+            serde_json::json!(["keep"])
+        );
+    }
+
+    #[test]
+    fn old_state_files_load_with_unknown_fields_ignored() {
+        let dir = TempDir::new("state-old");
+        let path = dir.0.join("state.json");
+        std::fs::write(
+            &path,
+            r#"{"unreadPaneIds":["%1"],"prevStatusMap":{"%1":"active"},"unreadOrder":{},
+                "unreadCounter":3,"hiddenPaneIds":[],"hiddenGroups":["x"],
+                "perInstance":{"__default__":{"collapsedGroups":["a"],"hiddenSectionCollapsed":true}}}"#,
+        )
+        .unwrap();
+        let loaded = load_from(&path, "__default__").unwrap();
+        assert_eq!(loaded.view, ViewConfig::default());
+        assert_eq!(loaded.collapsed_groups, HashSet::from(["a".to_string()]));
+    }
 }

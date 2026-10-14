@@ -4,7 +4,7 @@ description: You already have tmux. You already have Claude. Agent Dash finds th
 ---
 
 <div className="ad-meta-bar">
-  <span><b>PREREQ</b> tmux ≥ 3.2 · claude or opencode</span>
+  <span><b>PREREQ</b> tmux ≥ 3.2 · claude</span>
   <span><b>TIME</b> ~90s</span>
   <span><b>OS</b> macOS · Linux</span>
   <span><b>SHELL</b> any</span>
@@ -12,7 +12,7 @@ description: You already have tmux. You already have Claude. Agent Dash finds th
 
 ## Launch
 
-Start Agent Dash from any terminal. It connects to your running `tmux` server and discovers agent sessions automatically — no config, no registration.
+Start Agent Dash from any terminal. It connects to your running `tmux` server and finds Claude Code sessions automatically — no config, no registration.
 
 ```bash
 $ agent-dash
@@ -20,50 +20,98 @@ $ agent-dash
 $ agent-dash --exit
 ```
 
-If nothing shows up, Agent Dash isn't finding any agent processes. Start a Claude Code or opencode session in any tmux pane and it will appear on the next scan tick.
+Anything you start in a tmux pane appears on the next scan tick, within about two seconds. To bring in sessions you already have, [import them](#import-what-you-already-have) once.
+
+If a running Claude session doesn't show up, your Claude Code is probably older than 2.1.119 and doesn't write `~/.claude/sessions/<pid>.json`. See [Claude Code](/docs/agents#requirements).
 
 ## The interface, in two panes
 
-Agent Dash is a dual-pane TUI. On the left: every session it's found, grouped by tmux session name. On the right: a live preview of the one you've selected, rendered with full ANSI fidelity.
+Agent Dash is a dual-pane TUI. On the left: your sessions, live and closed. On the right: a live preview of the one you've selected, rendered with full ANSI fidelity. A closed session has no pane to show, so the preview shows its title, folder, last activity, and last prompt instead.
 
 <ul className="prompt">
-  <li><b>Session list</b> — left pane. One row per Claude process. Groups collapse with <span className="ad-kb-inline"><kbd>l</kbd></span>.</li>
+  <li><b>Session list</b> — left pane. One row per session: status icon, title, folder, and time since last activity. Closed sessions are dimmed.</li>
   <li><b>Preview pane</b> — right pane. Low-latency FIFO stream with a `capture-pane` fallback.</li>
-  <li><b>Status bar</b> — bottom strip. Active/unread counts on the left, pinned keybinds on the right.</li>
+  <li><b>Status bar</b> — bottom strip. The keys that apply right now.</li>
 </ul>
 
 ### Navigating sessions
 
-Movement is vim-shaped. <span className="ad-kb-inline"><kbd>j</kbd></span> and <span className="ad-kb-inline"><kbd>k</kbd></span> step through sessions, arrow keys work if you prefer. <span className="ad-kb-inline"><kbd>0</kbd></span> focuses the preview pane; <span className="ad-kb-inline"><kbd>1</kbd></span> focuses the list.
+<span className="ad-kb-inline"><kbd>j</kbd></span> and <span className="ad-kb-inline"><kbd>k</kbd></span> step through the list; arrow keys and <span className="ad-kb-inline"><kbd>Ctrl+n</kbd></span> / <span className="ad-kb-inline"><kbd>Ctrl+p</kbd></span> work too, in every list and picker. <span className="ad-kb-inline"><kbd>0</kbd></span> focuses the preview pane; <span className="ad-kb-inline"><kbd>1</kbd></span> focuses the list. <span className="ad-kb-inline"><kbd>/</kbd></span> filters the list with fuzzy matching.
 
-### Switching panes
+### Switching and resuming
 
-When you want to actually type into a session, press <span className="ad-kb-inline"><kbd>o</kbd></span>. Agent Dash will attach your terminal to that tmux pane directly. <span className="ad-kb-inline"><kbd>O</kbd></span> opens it in a popup instead, leaving Agent Dash in place.
+When you want to type into a session, press <span className="ad-kb-inline"><kbd>o</kbd></span> (or <span className="ad-kb-inline"><kbd>Enter</kbd></span>). On a live session, Agent Dash attaches your terminal to that tmux pane. On a closed session, it starts a new tmux session named `agent-dash-<title>` (slugified) in the session's folder, runs `claude --resume <id>` in it, and switches there. If the folder no longer exists, you get an error and nothing is started.
+
+<span className="ad-kb-inline"><kbd>O</kbd></span> opens a live session in a popup instead, leaving Agent Dash in place.
 
 | Key | Action |
 |-----|--------|
-| `j` / `↓` | Next session |
-| `k` / `↑` | Previous session |
-| `o` | Switch to the tmux pane |
+| `j` / `↓` / `Ctrl+n` | Next session |
+| `k` / `↑` / `Ctrl+p` | Previous session |
+| `o` / `Enter` | Switch to the pane, or resume a closed session |
 | `O` | Open the pane in a popup |
-| `r` | Mark session as read |
+| `c` | New session in the selected session's folder |
+| `r` | Toggle read / unread |
 | `?` | Toggle the help overlay |
 
-## Session groups
+## Grouping and filters
 
-Sessions sharing a tmux session name are grouped together. Use <span className="ad-kb-inline"><kbd>l</kbd></span> to expand a group and <span className="ad-kb-inline"><kbd>h</kbd></span> to collapse it. Press <span className="ad-kb-inline"><kbd>H</kbd></span> to hide/unhide a session or group. If you'd rather see a flat list, the backtick toggles it:
+By default the list groups sessions by what needs you:
 
-```text
-# toggle between grouped and flat view
-` — toggle flat view
-h — collapse a group
-H — hide/unhide a session or group
-l — expand a group or the hidden section
+| Group | Sessions in it |
+|-------|----------------|
+| In progress | Live and busy |
+| Completed | Unread: finished working, or marked with `r` |
+| Need action | Live and waiting on you: a permission prompt, a question, or a Plan or Ask prompt |
+| Idle | Everything else, including closed sessions |
+
+A session lands in the first group it matches. Press <span className="ad-kb-inline"><kbd>{'`'}</kbd></span> to cycle the grouping: state, then folder (grouped by working directory), then date. <span className="ad-kb-inline"><kbd>h</kbd></span> collapses the group under the cursor and <span className="ad-kb-inline"><kbd>l</kbd></span> expands it.
+
+<span className="ad-kb-inline"><kbd>S</kbd></span> opens the view settings, which are saved across restarts:
+
+| Setting | Options | Default |
+|---------|---------|---------|
+| Status | All, Active, Archived | Active |
+| Grouping | State, Folder, Date | State |
+| Last activity | 1d, 3d, 7d, 30d, All | 7d |
+
+Press `1`, `2`, or `3` to jump to a setting, or move with `j` / `k` and press `Enter`. Live sessions are never hidden by the Last activity window.
+
+## Archive
+
+<span className="ad-kb-inline"><kbd>a</kbd></span> archives the selected session, or unarchives it if it already is. Archiving never stops a running Claude; it only takes the session out of the default view. A session you close on purpose is archived automatically, and one that was archived comes back when you resume it. To see archived sessions, set Status to All or Archived in `S`. [Claude Code](/docs/agents#sessions-outlive-their-panes) has the exact rules.
+
+<span className="ad-kb-inline"><kbd>x</kbd></span> closes the selected live session's pane after you confirm, and the session is then archived like any other explicit close.
+
+## Import what you already have
+
+Importing is a one-time action, so it is a command rather than a key:
+
+```bash
+$ agent-dash import
 ```
 
-<Callout kind="note" title="Note · hidden sessions aren't gone">
-  Hidden sessions live in a collapsed "`─── Hidden (n) ───`" row at the bottom of the list. Expand it with <span className="ad-kb-inline"><kbd>l</kbd></span> to see or un-hide them.
-</Callout>
+It opens a picker listing Claude sessions Agent Dash doesn't know about yet, read from the Claude CLI's transcripts and from Claude Desktop. If a session is in both, it is listed as Desktop. Sessions archived in Desktop are not listed. Nothing is selected to start with. Enter imports the selection, prints `Imported N sessions` and exits; `Esc` or `q` exits without importing. While the session list is empty, Agent Dash shows a hint to run this command.
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `Shift+Tab` | Cycle the source filter: All, CLI, Desktop |
+| `Space` | Toggle a session |
+| `a` | Select every visible session (honoring the source and text filters) |
+| `n` | Deselect all |
+| `/` | Fuzzy filter (`Enter` keeps it, `Esc` clears it) |
+| `Enter` | Import the selected sessions |
+| `Esc` / `q` | Quit without importing |
+
+The source filter combines with `/`. Your selection stays when either filter changes, and Enter imports every selected session, including ones currently filtered out.
+
+To skip the picker, pass a flag. Both print the count and exit.
+
+| Flag | Imports |
+|------|---------|
+| `--all` | Every session not tracked yet |
+| `--since <1d\|3d\|7d\|30d>` | Untracked sessions active within that window |
+| `--source <cli\|desktop>` | Only sessions from that source; combine with `--all` or `--since` |
 
 ## Copy mode
 
@@ -78,14 +126,14 @@ Press <span className="ad-kb-inline"><kbd>v</kbd></span> in the preview pane to 
 
 ## Where state lives
 
-Agent Dash persists everything you'd expect: read markers, collapsed groups, hidden sessions, and cached previews. You can inspect or clear any of it by hand.
+Agent Dash keeps its own files next to your config. You can inspect or delete any of them by hand.
 
 | Path | Purpose |
 |------|---------|
 | `~/.config/agent-dash/config.toml` | Configuration (takes precedence over `config.json`) |
 | `~/.config/agent-dash/config.json` | Configuration (used when no `config.toml` exists) |
-| `~/.config/agent-dash/state.json` | Read markers, visibility, collapse state |
-| `~/.config/agent-dash/cache/` | Preview + session cache |
+| `~/.config/agent-dash/sessions.json` | Every session Agent Dash knows: title, folder, last activity, archived, unread |
+| `~/.config/agent-dash/state.json` | View settings and collapsed groups |
 | `/tmp/agent-dash-{pid}-preview.fifo` | Live preview FIFO |
 
 <Callout kind="warn" title="Warning · FIFO cleanup">
@@ -98,6 +146,6 @@ You've got the loop. From here, a few common places to go:
 
 <ul className="prompt">
   <li>Press <span className="ad-kb-inline"><kbd>?</kbd></span> inside Agent Dash for the full, searchable keybind overlay.</li>
-  <li>Read the [configuration reference](/docs/configuration) (TOML or JSON) to remap layout, rename formatter, or change the default view.</li>
-  <li>Learn how the [preview pipeline](/docs/configuration#previewscrollmode) works if you want to contribute to the Rust internals.</li>
+  <li>Read the [configuration reference](/docs/configuration) (TOML or JSON) to change the layout, theme, or launch command.</li>
+  <li>See [Claude Code](/docs/agents) for how sessions are found and when they are archived.</li>
 </ul>

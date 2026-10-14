@@ -132,10 +132,7 @@ mod tests {
             .with_ymd_and_hms(2026, 6, 6, 8, 0, 0)
             .unwrap()
             .timestamp();
-        assert!(matches!(
-            activity_bucket(now, then),
-            ActivityBucket::Today
-        ));
+        assert!(matches!(activity_bucket(now, then), ActivityBucket::Today));
     }
 
     #[test]

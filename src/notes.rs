@@ -8,7 +8,7 @@ use ratatui::prelude::*;
 use std::io::Stdout;
 use std::path::{Path, PathBuf};
 
-use crate::session::AgentSession;
+use crate::sessions::Session;
 
 fn config_dir() -> PathBuf {
     dirs::home_dir()
@@ -32,17 +32,9 @@ fn sanitize_key(raw: &str) -> String {
         .collect()
 }
 
-pub fn session_note_path(session: &AgentSession) -> PathBuf {
-    let key = match session.session_id.as_deref() {
-        Some(id) if !id.is_empty() => sanitize_key(id),
-        _ => sanitize_key(&session.pane_id),
-    };
+pub fn session_note_path(session: &Session) -> PathBuf {
+    let key = sanitize_key(&session.record.session_id);
     notes_dir().join("sessions").join(format!("{}.md", key))
-}
-
-pub fn group_note_path(tmux_session_name: &str) -> PathBuf {
-    let key = sanitize_key(tmux_session_name);
-    notes_dir().join("groups").join(format!("{}.md", key))
 }
 
 /// Read a note's content, returning `None` when the file is missing or has no

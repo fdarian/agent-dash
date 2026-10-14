@@ -12,8 +12,9 @@ If both files exist, `config.toml` is used and `config.json` is ignored. If neit
 ```toml title="~/.config/agent-dash/config.toml"
 command = "claude"
 layout = "vertical"
-defaultView = "flat"
-sessionNameFormatter = "~/bin/format-session-name"
+theme = "dark"
+sharedState = false
+autoTrackSessions = true
 
 [claudeCode]
 previewScrollMode = "scrollback"
@@ -25,8 +26,9 @@ The same configuration as JSON:
 {
   "command": "claude",
   "layout": "vertical",
-  "defaultView": "flat",
-  "sessionNameFormatter": "~/bin/format-session-name",
+  "theme": "dark",
+  "sharedState": false,
+  "autoTrackSessions": true,
   "claudeCode": {
     "previewScrollMode": "scrollback"
   }
@@ -35,7 +37,7 @@ The same configuration as JSON:
 
 ### command
 
-The CLI command used to launch new sessions. Defaults to `"claude"`.
+The command used to start a new session (`c`). Resuming a closed session runs it with `--resume <session id>` appended. Defaults to `"claude"`.
 
 ### layout
 
@@ -46,13 +48,17 @@ Controls the pane layout direction.
 | `"vertical"` | Session list on the left, preview on the right (default) |
 | `"horizontal"` | Session list on top, preview on the bottom |
 
-### defaultView
+### theme
 
-Set to `"flat"` to disable session grouping by default. When unset, sessions are grouped by tmux session name.
+`"dark"` (default) or `"light"`. The `AGENT_DASH_THEME` environment variable (`light`, anything else means dark) overrides it.
 
-### sessionNameFormatter
+### sharedState
 
-Path to an executable that formats session display names. Supports `~/` expansion for home directory paths. The formatter receives the raw session name and should output the formatted name.
+When `true`, which groups are collapsed is shared by every Agent Dash instance. By default it is kept per tmux client. View settings (`S`) and the session list itself are always shared.
+
+### autoTrackSessions
+
+When `true` (default), every Claude session found running in a tmux pane is added to the session list. When `false`, only sessions you start with `c` are added automatically; other running Claude panes stay out of the list. Sessions already in the list keep updating either way: they still resume, archive when closed, and get the unread mark. Use [`agent-dash import`](/docs/getting-started#import-what-you-already-have) to add existing sessions by hand.
 
 ### previewScrollMode
 
@@ -63,12 +69,16 @@ Controls how scrolling works in the Claude Code preview pane. Set it as `preview
 | `"scrollback"` | Captures the full tmux scrollback history so you can scroll through past output (default) |
 | `"virtualized"` | Forwards scroll events to the running app (e.g. Claude Code) so it handles its own viewport |
 
+<Callout kind="note" title="Removed options">
+  `defaultView`, `groupNameSeparator`, and `sessionNameFormatter` no longer exist. Sessions are no longer grouped by tmux session name, so there is nothing to format. Leftover keys in your config file are ignored. Choose a grouping with `` ` `` or `S` instead.
+</Callout>
+
 ## Data Storage
 
 | Path | Purpose |
 |------|---------|
 | `~/.config/agent-dash/config.toml` | Configuration (takes precedence over `config.json`) |
 | `~/.config/agent-dash/config.json` | Configuration (used when no `config.toml` exists) |
-| `~/.config/agent-dash/state.json` | Persistent state (visibility, read markers, collapse state) |
-| `~/.config/agent-dash/cache/` | Session cache |
+| `~/.config/agent-dash/sessions.json` | Every known session: title, folder, last activity, archived, unread |
+| `~/.config/agent-dash/state.json` | View settings (status, grouping, last activity) and collapsed groups |
 | `/tmp/agent-dash-{pid}-preview.fifo` | Temporary FIFO pipes for preview |

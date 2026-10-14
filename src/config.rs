@@ -1,6 +1,5 @@
-use anyhow::Context;
-use crate::session::Agent;
 use crate::ui::theme::ThemeMode;
+use anyhow::Context;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -61,46 +60,33 @@ struct ClaudeCodeConfigFile {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ConfigFile {
-    session_name_formatter: Option<String>,
     command: Option<String>,
-    default_view: Option<String>,
     layout: Option<LayoutDirection>,
     shared_state: Option<bool>,
-    group_name_separator: Option<String>,
     theme: Option<ThemeMode>,
+    auto_track_sessions: Option<bool>,
     claude_code: Option<ClaudeCodeConfigFile>,
 }
 
 pub struct AppConfig {
     pub command: String,
     pub exit_on_switch: bool,
-    pub session_name_formatter: Option<Vec<String>>,
-    pub default_flat_view: bool,
     pub layout: LayoutDirection,
     pub shared_state: bool,
-    pub group_name_separator: Option<String>,
     pub theme: ThemeMode,
+    pub auto_track_sessions: bool,
     pub claude_code_preview_scroll_mode: PreviewScrollMode,
 }
 
 impl AppConfig {
-    pub fn effective_scroll_mode(&self, agent: Agent) -> PreviewScrollMode {
-        match agent {
-            Agent::Opencode => PreviewScrollMode::Virtualized,
-            Agent::Claude => self.claude_code_preview_scroll_mode,
-        }
-    }
-
     fn defaults(exit_on_switch: bool) -> Self {
         Self {
             command: "claude".to_string(),
             exit_on_switch,
-            session_name_formatter: None,
-            default_flat_view: false,
             layout: LayoutDirection::default(),
             shared_state: false,
-            group_name_separator: None,
             theme: ThemeMode::Dark,
+            auto_track_sessions: true,
             claude_code_preview_scroll_mode: PreviewScrollMode::default(),
         }
     }
@@ -159,16 +145,6 @@ fn build_config(config_file: &ConfigFile, exit_on_switch: bool) -> AppConfig {
         config.command = command.clone();
     }
 
-    config.session_name_formatter = config_file
-        .session_name_formatter
-        .as_ref()
-        .map(|formatter| parse_formatter_command(formatter));
-
-    config.default_flat_view = config_file
-        .default_view
-        .as_deref()
-        .is_some_and(|view| view == "flat");
-
     if let Some(layout) = config_file.layout {
         config.layout = layout;
     }
@@ -177,10 +153,12 @@ fn build_config(config_file: &ConfigFile, exit_on_switch: bool) -> AppConfig {
         config.shared_state = shared_state;
     }
 
-    config.group_name_separator = config_file.group_name_separator.clone();
-
     if let Some(theme) = config_file.theme {
         config.theme = theme;
+    }
+
+    if let Some(auto_track_sessions) = config_file.auto_track_sessions {
+        config.auto_track_sessions = auto_track_sessions;
     }
 
     if let Some(preview_scroll_mode) = config_file
@@ -213,27 +191,6 @@ fn parse_config_file(path: &Path, content: &str) -> anyhow::Result<ConfigFile> {
     }
 }
 
-fn parse_formatter_command(s: &str) -> Vec<String> {
-    let mut parts = s.split_whitespace();
-    let Some(cmd) = parts.next() else {
-        return Vec::new();
-    };
-    let exe = expand_tilde(cmd).to_string_lossy().into_owned();
-    let mut result = vec![exe];
-    result.extend(parts.map(|p| p.to_string()));
-    result
-}
-
-fn expand_tilde(path: &str) -> PathBuf {
-    if let Some(rest) = path.strip_prefix("~/") {
-        dirs::home_dir()
-            .expect("home directory not found")
-            .join(rest)
-    } else {
-        PathBuf::from(path)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,11 +209,8 @@ mod tests {
             r#"
 command = "claude --verbose"
 layout = "horizontal"
-defaultView = "flat"
 sharedState = true
-groupNameSeparator = "/"
 theme = "light"
-sessionNameFormatter = "~/bin/format"
 "#,
         )
         .unwrap();
@@ -264,11 +218,17 @@ sessionNameFormatter = "~/bin/format"
 
         assert_eq!(config.command, "claude --verbose");
         assert_eq!(config.layout, LayoutDirection::Horizontal);
-        assert!(config.default_flat_view);
         assert!(config.shared_state);
-        assert_eq!(config.group_name_separator.as_deref(), Some("/"));
         assert_eq!(config.theme, ThemeMode::Light);
-        assert!(config.session_name_formatter.is_some());
+    }
+
+    #[test]
+    fn auto_track_sessions_defaults_to_true_and_parses_from_toml_and_json() {
+        assert!(build_config(&parse_toml("").unwrap(), false).auto_track_sessions);
+        let from_toml = parse_toml("autoTrackSessions = false\n").unwrap();
+        let from_json = parse_json(r#"{"autoTrackSessions": false}"#).unwrap();
+        assert!(!build_config(&from_toml, false).auto_track_sessions);
+        assert!(!build_config(&from_json, false).auto_track_sessions);
     }
 
     #[test]
@@ -306,6 +266,15 @@ previewScrollMode = "virtualized"
             toml_config.claude_code_preview_scroll_mode,
             json_config.claude_code_preview_scroll_mode
         );
+    }
+
+    #[test]
+    fn removed_grouping_keys_are_ignored() {
+        let config_file = parse_toml(
+            "defaultView = \"flat\"\ngroupNameSeparator = \"/\"\nsessionNameFormatter = \"fmt\"\n",
+        )
+        .unwrap();
+        assert_eq!(build_config(&config_file, false).command, "claude");
     }
 
     #[test]

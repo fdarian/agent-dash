@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 
 const SESSIONS_INIT = [
-  { group: 'my-project', name: 'refactor-auth', active: true, unread: false, sel: false },
-  { group: 'my-project', name: 'fix-payments', active: true, unread: true, sel: true },
-  { group: 'my-project', name: 'ci-flake', active: false, unread: false, sel: false },
-  { group: 'side-project', name: 'add-docs', active: false, unread: false, sel: false },
-  { group: 'side-project', name: 'bench-bench', active: true, unread: false, sel: false },
-  { group: 'infra', name: 'terraform-plan', active: true, unread: true, sel: false },
+  { group: 'In progress', name: 'refactor-auth', active: true, unread: false, sel: false },
+  { group: 'In progress', name: 'bench-bench', active: true, unread: false, sel: false },
+  { group: 'Completed', name: 'fix-payments', active: true, unread: true, sel: true },
+  { group: 'Need action', name: 'terraform-plan', active: true, unread: false, sel: false },
+  { group: 'Idle', name: 'ci-flake', active: false, unread: false, sel: false },
+  { group: 'Idle', name: 'add-docs', active: false, unread: false, sel: false },
 ];
 
 type StreamLine = {
@@ -88,7 +88,7 @@ function LiveTUI(props: { size?: 'sm' | 'lg' }) {
       <div className="ad-tui-bar">
         <div className="dots"><i /><i /><i /></div>
         <span className="title">agent-dash · tmux</span>
-        <span className="right">6 sessions · 4 active</span>
+        <span className="right">6 sessions · 4 live</span>
       </div>
       <div className="ad-tui-body">
         <div className="ad-tui-sidebar">
@@ -108,7 +108,6 @@ function LiveTUI(props: { size?: 'sm' | 'lg' }) {
               ))}
             </div>
           ))}
-          <div className="ad-hidden-hr">─── Hidden (1) ───</div>
         </div>
         <div className="ad-tui-preview">
           {visibleLines.map((l, i) => {
@@ -127,11 +126,11 @@ function LiveTUI(props: { size?: 'sm' | 'lg' }) {
       </div>
       <div className="ad-tui-foot">
         <span>
-          <span className="on">●</span> 4 Active · 3 Groups · fix-payments · unread 2
+          <span className="on">●</span> 4 live · 2 closed · fix-payments · unread 1
         </span>
         <span>
           <kbd>j</kbd><span>/</span><kbd>k</kbd>move{' '}
-          <kbd>o</kbd>switch <kbd>v</kbd>copy <kbd>?</kbd>help <kbd>q</kbd>quit
+          <kbd>o</kbd>open/resume <kbd>v</kbd>copy <kbd>?</kbd>help <kbd>q</kbd>quit
         </span>
       </div>
     </div>
@@ -163,8 +162,8 @@ function Hero() {
           <span className="accent">quiet pane.</span>
         </h1>
         <p className="ad-lede">
-          Agent Dash is a terminal dashboard for the Claude Code sessions already running in
-          your tmux server. Discover them, watch them think, switch between them — without
+          Agent Dash is a terminal dashboard for your Claude Code sessions, running in tmux or
+          closed. Watch them think, switch between them, and resume yesterday&apos;s — without
           touching the mouse.
         </p>
         <div className="ad-cta-row">
@@ -213,7 +212,8 @@ function SpecSheet() {
           <h3>Finds what&apos;s already running</h3>
           <p>
             Recursive pgrep across your tmux panes surfaces every Claude process. No
-            registration, no config file. Start a new session with <code>c</code>.
+            registration, no config file. Start a new session with <code>c</code>, or pull
+            in old ones with <code>agent-dash import</code>.
           </p>
         </div>
         <div className="ad-callout">
@@ -228,8 +228,8 @@ function SpecSheet() {
           <span className="tag">03 · state</span>
           <h3>Remembers where you were</h3>
           <p>
-            Read markers, collapsed groups, and hidden sessions persist under{' '}
-            <code>~/.config/agent-dash/</code>. Restart and resume.
+            Every session is kept under <code>~/.config/agent-dash/</code>, closed ones
+            included. Press <code>o</code> on one to resume it in a new tmux session.
           </p>
         </div>
       </div>
@@ -240,11 +240,12 @@ function SpecSheet() {
 function Keys() {
   const rows: Array<{ k: string; l: React.ReactNode; accent?: boolean }> = [
     { k: 'j k', l: <><b>Move</b> through sessions</> },
-    { k: 'o', l: <><b>Switch</b> to the tmux pane</>, accent: true },
+    { k: 'o', l: <><b>Switch</b> to a pane, or resume</>, accent: true },
     { k: 'v', l: <><b>Copy mode</b> with vim motions</> },
     { k: '/', l: <><b>Search</b> preview content</> },
     { k: 'c', l: <><b>Create</b> a new session</> },
-    { k: 'h', l: <><b>Hide</b> what&apos;s not your problem</> },
+    { k: 'a', l: <><b>Archive</b> what&apos;s not your problem</> },
+    { k: '`', l: <><b>Group</b> by state, folder, or date</> },
     { k: 'r', l: <><b>Mark read</b> and move on</> },
     { k: '?', l: <><b>Help</b> overlay, filterable</> },
   ];

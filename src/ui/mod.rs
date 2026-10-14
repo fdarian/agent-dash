@@ -4,16 +4,18 @@ use ratatui::widgets::Paragraph;
 use crate::app::{AppState, Focus};
 use crate::config::LayoutDirection;
 use crate::notes;
-use crate::session::VisibleItem;
 
 pub mod bottom_bar;
 pub mod confirm_dialog;
 pub mod help_overlay;
+pub mod import_picker;
 pub mod keybinds;
+pub mod list_nav;
 pub mod pane_note;
 pub mod pane_preview;
 pub mod session_list;
 pub mod theme;
+pub mod view_config;
 
 pub fn render(frame: &mut Frame, state: &mut AppState) {
     let [main_area, bar_area] =
@@ -22,7 +24,7 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     match state.focus {
         Focus::Sessions => {
             if state.sessions_expanded {
-                session_list::render(frame, main_area, state, true, state.flat_view);
+                session_list::render(frame, main_area, state, true);
                 state.preview_pane_area = Rect::default();
             } else {
                 let chunks = match state.config.layout {
@@ -35,19 +37,9 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
                             .split(main_area)
                     }
                 };
-                session_list::render(frame, chunks[0], state, true, state.flat_view);
+                session_list::render(frame, chunks[0], state, true);
 
-                let note = note_for_selected(state);
-                let selected_is_group = matches!(
-                    state.visible_items.get(state.selected_index),
-                    Some(VisibleItem::GroupHeader { .. })
-                );
-                match note {
-                    // Groups have no single pane to preview, so the note fills the column.
-                    Some(content) if selected_is_group => {
-                        state.preview_pane_area = Rect::default();
-                        pane_note::render(frame, chunks[1], state, &content);
-                    }
+                match note_for_selected(state) {
                     // A session with a note: note on top, live pane preview below.
                     Some(content) => {
                         let note_height = note_pane_height(&content, chunks[1].height);
@@ -80,6 +72,9 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     if state.show_help {
         help_overlay::render(frame, state);
     }
+    if let Some(ref overlay) = state.view_config {
+        view_config::render(frame, state, overlay);
+    }
 
     if let Some(ref msg) = state.toast_message {
         let area = frame.area();
@@ -96,18 +91,11 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     }
 }
 
-/// Reads the note content for the currently selected session or group, returning
-/// `None` when there is no selection, the item type has no note, or the note is empty.
+/// Reads the note content for the currently selected session, returning `None` when there is
+/// no selection, a group header is selected, or the note is empty.
 fn note_for_selected(state: &AppState) -> Option<String> {
-    let item = state.visible_items.get(state.selected_index)?;
-    let path = match item {
-        VisibleItem::Session { session, .. } => notes::session_note_path(session),
-        VisibleItem::GroupHeader {
-            tmux_session_name, ..
-        } => notes::group_note_path(tmux_session_name),
-        _ => return None,
-    };
-    notes::read_note(&path)
+    let session = state.visible_items.get(state.selected_index)?.session()?;
+    notes::read_note(&notes::session_note_path(session))
 }
 
 /// Sizes the note pane to its content (plus borders), clamped between 3 rows and

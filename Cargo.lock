@@ -22,6 +22,7 @@ dependencies = [
  "futures",
  "indexmap",
  "libc",
+ "memchr",
  "notify",
  "nucleo-matcher",
  "ratatui",

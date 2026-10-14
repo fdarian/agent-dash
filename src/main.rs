@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
@@ -9,24 +9,23 @@ use ratatui::prelude::*;
 use std::io;
 
 mod app;
-mod cache;
 mod claude_sessions;
 mod claude_transcript;
 mod config;
 mod config_watch;
 mod copy_mode;
-mod enrichment;
-mod filter_query;
+mod fuzzy;
+mod import_cmd;
 mod selection;
-mod session;
+mod sessions;
 mod state;
 mod time_fmt;
 mod ui;
 
+mod multiplexer;
 mod notes;
 mod pipe_pane;
 mod resize_pane;
-mod tmux;
 
 use ui::theme::resolve_palette;
 
@@ -43,6 +42,14 @@ struct Cli {
     map_exit: Option<String>,
     #[arg(long)]
     no_auto_focus: bool,
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Bring existing Claude CLI and Desktop sessions into Agent Dash
+    Import(import_cmd::ImportArgs),
 }
 
 #[tokio::main]
@@ -51,6 +58,10 @@ async fn main() -> Result<()> {
 
     let config = config::load_config(cli.exit);
     let palette = resolve_palette(config.theme);
+
+    if let Some(Command::Import(args)) = cli.command {
+        return import_cmd::run(args, palette);
+    }
 
     // Terminal setup
     enable_raw_mode()?;

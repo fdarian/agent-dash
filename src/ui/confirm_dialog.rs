@@ -25,9 +25,9 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);
 
-    if let Some(ref target) = state.pending_confirm_target {
-        let message = Line::from(format!("Close session {}?", target)).fg(state.theme.text);
-        let hint = Line::from("[Enter] Confirm  [Esc] Cancel").fg(state.theme.border_unfocused);
+    if let Some(ref pane) = state.pending_confirm_target {
+        let message = Line::from(format!("Close session {}?", pane.target)).fg(state.theme.text);
+        let hint = Line::from("[Enter] Confirm  [Esc] Cancel").fg(state.theme.text_subtle);
 
         let msg_area = Rect::new(inner.x + 1, inner.y, inner.width.saturating_sub(2), 1);
         let hint_area = Rect::new(inner.x + 1, inner.y + 1, inner.width.saturating_sub(2), 1);

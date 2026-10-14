@@ -1,30 +1,24 @@
 ---
 title: Agent Dash
-description: A TUI dashboard for managing agent sessions in tmux
+description: A TUI dashboard for your Claude Code sessions, running in tmux or closed
 ---
 
-Agent Dash is a terminal user interface (TUI) application for managing and monitoring agent sessions running in tmux.
+Agent Dash is a terminal dashboard for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions. It lists the sessions running in your tmux server next to the ones that aren't, so a session you closed yesterday is one keypress from running again.
 
 Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crossterm-rs/crossterm), and [Tokio](https://tokio.rs).
 
 ## Features
 
-- **Live session monitoring** — real-time preview of agent sessions with ANSI rendering
-- **Session grouping** — sessions organized by tmux session name with collapsible groups
+- **Persistent sessions** — every session Agent Dash has seen is remembered by its Claude session ID, including closed ones. Press `o` on a closed session to resume it in a new tmux session.
+- **Three ways to group** — by state (in progress, completed, need action, idle), by folder, or by date. Backtick cycles them; `S` opens the view settings.
+- **Archive** — `a` hides a session from the default view. Sessions you close on purpose are archived for you.
+- **Import** — `agent-dash import` pulls in existing sessions from the Claude CLI and Claude Desktop.
+- **Live preview** — real-time pane output with ANSI rendering, in a dual-pane layout with configurable orientation
 - **Copy mode** — vim-like motions, search, and text selection on preview content
-- **Unread tracking** — automatic detection of session activity changes
-- **Persistent state** — session visibility, collapse state, and read markers saved across restarts
-- **Dual-pane layout** — session list alongside live preview, with configurable orientation
-- **Search** — forward and backward search in preview content
-- **Clipboard support** — yank selected text or full preview to clipboard
+- **Unread tracking** — a session that finishes working is marked until you look at it
 
-## How It Works
+## How it works
 
-Agent Dash connects to your tmux server and discovers agent sessions by detecting supported agent processes (`claude`, `opencode`) running in tmux panes. It uses a combination of:
+Every two seconds Agent Dash finds the tmux panes running `claude` and reads the `~/.claude/sessions/<pid>.json` file Claude Code writes for each process. That file carries the session ID, working directory, title, and busy/idle status. Agent Dash needs that file: a `claude` pane without it is not listed. See [Claude Code](/docs/agents) for the details and for how a closed session is told apart from a crashed one.
 
-- **FIFO pipe monitoring** for low-latency preview updates
-- **`tmux capture-pane` polling** as a fallback
-- **Recursive `pgrep`** for agent process detection
-- **Braille Unicode detection** (U+2800–U+28FF) in pane titles for Claude Code activity status
-- **Content scanning** for opencode busy/idle status
-- **Last-line parsing** for Claude Code prompt state (Plan/Ask mode)
+The preview uses a FIFO pipe for low-latency updates, with `tmux capture-pane` polling as the fallback. Plan and Ask prompt state is read from the last line of the pane.

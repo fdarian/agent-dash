@@ -11,8 +11,8 @@ Press `?` at any time to see keybinds in the built-in help overlay.
 |-----|--------|
 | `0` | Focus preview pane |
 | `1` | Focus session list |
-| `o` | Switch to tmux pane |
-| `O` | Attach session in popup |
+| `o` | Switch to the session's pane, or resume a closed session |
+| `O` | Attach session in popup (live sessions only) |
 | `v` | Enter copy mode |
 | `?` | Toggle help overlay |
 | `q` | Quit |
@@ -20,19 +20,51 @@ Press `?` at any time to see keybinds in the built-in help overlay.
 
 ## Session List
 
+Every list in Agent Dash (sessions, view settings, and the picker in `agent-dash import`) navigates with `j` / `k`, `↑` / `↓`, or `Ctrl+n` / `Ctrl+p`, selects with `Enter`, and closes with `Esc`.
+
 | Key | Action |
 |-----|--------|
-| `j` / `↓` | Next session |
-| `k` / `↑` | Previous session |
+| `j` / `↓` / `Ctrl+n` | Next session |
+| `k` / `↑` / `Ctrl+p` | Previous session |
+| `Enter` | Same as `o` |
 | `h` | Collapse group |
-| `H` | Hide/unhide session or group |
-| `l` | Expand group / hidden section |
-| `r` | Mark session as read |
-| `c` | Create new session |
-| `x` | Close session pane (requires confirmation) |
+| `l` | Expand group |
+| `/` | Filter sessions (fuzzy) |
+| `` ` `` | Cycle grouping: state, folder, date |
+| `S` | View settings: status, grouping, last activity |
+| `a` | Archive / unarchive session |
+| `c` | New session in the selected session's folder |
+| `r` | Toggle read / unread |
+| `n` | Edit a note for the session |
+| `x` | Close the session's pane (live sessions, requires confirmation) |
 | `+` | Maximize session list |
 | `_` | Minimize session list |
-| `` ` `` | Toggle flat view |
+
+## View Settings
+
+Opened with `S`.
+
+| Key | Action |
+|-----|--------|
+| `1` / `2` / `3` | Edit Status / Grouping / Last activity |
+| `j` / `k` | Move between rows or options |
+| `Enter` | Open the row, or apply the option and go back |
+| `Esc` | Back out one level |
+
+## Import Picker
+
+Opened by `agent-dash import`. Nothing is selected to start with.
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` / `↑` / `↓` / `Ctrl+n` / `Ctrl+p` | Move cursor |
+| `Tab` / `Shift+Tab` | Cycle the source filter: All, CLI, Desktop |
+| `Space` | Toggle session |
+| `a` | Select every visible session (honoring the source and text filters) |
+| `n` | Deselect all |
+| `/` | Fuzzy filter (`Enter` keeps it, `Esc` clears it) |
+| `Enter` | Import selected sessions |
+| `Esc` / `q` | Quit without importing (`Esc` clears a filter first) |
 
 ## Preview Pane
 

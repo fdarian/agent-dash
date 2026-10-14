@@ -16,13 +16,18 @@ pub const KEYBINDS: &[KeybindEntry] = &[
         context: "global",
     },
     KeybindEntry {
-        key: "j / ↓",
+        key: "j ↓ ^n",
         description: "Next session / Scroll down",
         context: "sessions",
     },
     KeybindEntry {
-        key: "k / ↑",
+        key: "k ↑ ^p",
         description: "Previous session / Scroll up",
+        context: "sessions",
+    },
+    KeybindEntry {
+        key: "Enter",
+        description: "Switch to session pane, or resume a closed session",
         context: "sessions",
     },
     KeybindEntry {
@@ -31,33 +36,33 @@ pub const KEYBINDS: &[KeybindEntry] = &[
         context: "sessions",
     },
     KeybindEntry {
-        key: "H",
-        description: "Hide/unhide session or group",
-        context: "sessions",
-    },
-    KeybindEntry {
         key: "o",
-        description: "Switch to tmux pane",
+        description: "Switch to session pane, or resume a closed session",
         context: "global",
     },
     KeybindEntry {
         key: "O",
-        description: "Attach session in popup",
+        description: "Attach session in popup (live sessions only)",
         context: "global",
     },
     KeybindEntry {
         key: "r",
-        description: "Mark session as read",
+        description: "Toggle session read/unread",
         context: "sessions",
     },
     KeybindEntry {
         key: "c",
-        description: "Create new session",
+        description: "New session in the selected session's folder",
+        context: "sessions",
+    },
+    KeybindEntry {
+        key: "a",
+        description: "Archive / unarchive session",
         context: "sessions",
     },
     KeybindEntry {
         key: "n",
-        description: "Edit note for session or group",
+        description: "Edit note for session",
         context: "sessions",
     },
     KeybindEntry {
@@ -76,8 +81,13 @@ pub const KEYBINDS: &[KeybindEntry] = &[
         context: "sessions",
     },
     KeybindEntry {
+        key: "S",
+        description: "View config: status, grouping, last activity",
+        context: "sessions",
+    },
+    KeybindEntry {
         key: "`",
-        description: "Toggle flat view",
+        description: "Cycle grouping: state / folder / date",
         context: "sessions",
     },
     KeybindEntry {

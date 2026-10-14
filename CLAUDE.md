@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Agent Dash is a Rust TUI application for managing and monitoring agent sessions running in tmux. Built with ratatui, crossterm, and tokio.
+Agent Dash is a Rust TUI application for managing and monitoring Claude Code sessions, live in tmux or closed. Built with ratatui, crossterm, and tokio.
 
 ## CI / Quality
 
@@ -14,11 +14,19 @@ Agent Dash is a Rust TUI application for managing and monitoring agent sessions 
 
 ## Architecture
 
-- **Event loop** (`app.rs`): crossterm event stream + background tmux polling via mpsc channel
-- **Preview pipeline**: FIFO-based pipe watching (`pipe_pane.rs`) with fallback to `tmux capture-pane` polling, ANSI codes converted via `ansi-to-tui` crate
+- **Sessions** (`src/sessions/`): a session is keyed by Claude `sessionId`, not by pane. `Session` = persisted `SessionRecord` + `Option<LiveSession>`
+  - `record.rs` — the store (`~/.config/agent-dash/sessions.json`): atomic writes; several instances coexist because records merge per field group (archive state, unread state, each with its own `*_changed_at` epoch-ms stamp, newest wins; metadata by larger `last_activity`) and deletions persist as 30-day tombstones. `sync` only re-reads when the file's mtime/len changed
+  - `live.rs` — the per-tick live overlay and the pure `track` function that turns two consecutive ticks into store mutations
+  - `view.rs` — status/activity filters and the three groupings (state, folder, date); pure and unit-tested
+  - `discover.rs` — turns the multiplexer's panes into a `LiveSet` (Claude process detection + pid file via `claude_sessions.rs`)
+  - `import.rs` — scanners for existing sessions (see Import below)
+- **Multiplexer** (`src/multiplexer/`): `Multiplexer` trait covers lifecycle only (list panes, focus, spawn, kill, name check) and knows nothing about agents; it must not import `sessions` or `claude_*`. `tmux.rs` is the only implementation. Preview, capture, pipe, resize and copy mode talk to tmux directly
+- **App** (`src/app/`): `poll.rs` discovers panes every 2s and sends a `LiveSet` (`None` when tmux is unreachable); `mod.rs` runs `track` on each message, applies the mutations to the store and saves; `actions.rs` handles switch/resume/create; key handling is split per mode under `keys/`, with the view-config overlay in `view_config.rs`
+- **List navigation** (`ui/list_nav.rs`): one helper maps j/k, arrows, Ctrl+n/Ctrl+p, Enter, Esc for every list and picker; new lists use it rather than matching keys themselves
+- **Import** (`import_cmd.rs`, `sessions/import.rs`): `agent-dash import` is a subcommand with its own full-screen picker (`app/import_picker.rs` state, `ui/import_picker.rs` widget); `--all` / `--since <1d|3d|7d|30d>` skip the TUI and take `--source <cli|desktop>`; in the picker Tab cycles the same source filter, combined with `/`, while the selection persists across filters. The main app has no import UI, only an empty-list hint. The scan lists Claude sessions not yet in the store from `~/.claude/projects/*/*.jsonl` (CLI) and Claude Desktop's `claude-code-sessions/*/*/local_*.json`, one thread per chunk of files. Desktop wins on overlap and sessions archived in Desktop are skipped. Transcripts are never read whole (`claude_transcript::summarize`): the last 1 MiB gives title, cwd and activity, and only without a custom/ai title the first 64 KiB gives the first user prompt, then `last-prompt`. Only UUID session ids are offered, and `resume_command` refuses non-UUIDs and shell-quotes the id
+- **UI state** (`state.rs`): `~/.config/agent-dash/state.json` holds the global view config (status, grouping, last-activity window) and per-instance collapsed groups keyed by group key. Keys it doesn't know are kept on save, so versions sharing the file don't strip each other's fields
+- **Preview pipeline**: FIFO-based pipe watching (`pipe_pane.rs`) with fallback to `tmux capture-pane` polling, ANSI codes converted via `ansi-to-tui`
 - **Copy mode** (`copy_mode.rs`): vim-like motions, search, and selection on frozen preview content
-- **Session grouping** (`session.rs`): sessions grouped by tmux session name, with collapsible groups and hidden section
-- **Persistence** (`state.rs`, `cache.rs`): state saved to `~/.config/agent-dash/state.json`, sessions cached to `~/.config/agent-dash/cache/`
 
 ## Documentation Site
 
@@ -28,12 +36,20 @@ Agent Dash is a Rust TUI application for managing and monitoring agent sessions 
 
 ## Internal docs
 
-- `docs/agent-detection.md` — how agents are detected and how busy/idle status is determined per agent
-- `docs/enrichment.md` — the plugin tier: enrichment file schema, opencode plugin, Claude session file
+- [docs/agent-detection.md](docs/agent-detection.md) — how Claude panes are detected and how busy/idle status is determined
 
 ## Non-obvious details
 
-- Claude status/session ID/cwd come from `~/.claude/sessions/<claude_pid>.json` (`claude_sessions.rs`), joined by the PID `detect_agent` returns. The braille Unicode range (0x2800-0x28FF) in the pane title is the fallback when that file is absent
-- Prompt state (Plan/Ask) is parsed from the last non-empty line of pane content
-- Claude process detection uses recursive pgrep on tmux pane child processes
+- Claude Code is the only agent. Discovery is tmux-pane based: `list-panes` -> claude process detection (recursive pgrep on pane children, `claude_sessions::find_claude_pid`) -> `~/.claude/sessions/<claude_pid>.json` (`claude_sessions.rs`, Claude Code 2.1.119 or later), which supplies session id, cwd, name (only for named sessions; otherwise the transcript's custom-title, then ai-title, via `TranscriptCache::title`), status (`busy`; `waiting` on the user counts as Need action like a Plan/Ask prompt; else idle) and start time; `sessions/discover.rs` glues the steps together. A pane without that file is skipped; there is no pane-title fallback
+- Closing is classified from the pid file in `track` (`sessions/live.rs`):
+  - file missing, or holding another session id -> archive with reason `closed` (delete the record if the session has no transcript; the transcript lookup only happens here)
+  - same id, pid dead -> crash: leave it as closed
+  - same id, pid alive, or file present but unreadable/malformed -> pending: re-checked each reachable tick for up to 10s (the `Closing` set in `SessionBook`), then left as closed
+  - no close transitions on the first tick or while tmux is unreachable
+- `autoTrackSessions = false` (config) makes `track` skip inserting newly detected live sessions; only ones on a pane spawned by `c` (`created_panes`, origin `created`) are inserted. Stored sessions keep resuming, auto-archiving and flagging unread, and live panes outside the store aren't shown. `SessionBook::set_auto_track` is fed from the config before every tick, so reloads apply live
+- `a` archives with reason `user`; archiving (either kind) clears unread
+- An archived session unarchives only when a live process started (pid file `startedAt`, ms) after `archive_changed_at`; appearing in the live set doesn't count, so a discovery blip can't undo an archive and archiving an already-live session sticks
+- A deleted id keeps a tombstone (epoch ms) in `sessions.json`; a record only beats it if an intent field changed after the deletion
+- Saves: intent changes (insert, archive, unread, delete) save at once; metadata-only changes at most every 10s (flushed on exit). A failed save stays dirty and is retried each tick, with the error toasted once per failure streak
+- Prompt state (Plan/Ask) is parsed from the last non-empty line of pane content, only for idle live sessions
 - FIFO monitoring creates temp files at `/tmp/agent-dash-{pid}-preview.fifo` with O_NONBLOCK

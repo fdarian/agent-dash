@@ -10,10 +10,15 @@ pub enum ThemeMode {
 #[derive(Debug, Clone, Copy)]
 pub struct Palette {
     pub primary: Color,
+    /// Borders only; text uses `text_*`.
     pub border_unfocused: Color,
+    /// Primary text: row titles, setting rows, typed input. The terminal's own foreground, so
+    /// it is never dimmer than the rest of the terminal.
     pub text: Color,
     pub text_dim: Color,
+    /// Labels, hints and empty-state messages.
     pub text_subtle: Color,
+    /// Secondary columns (folder, source, age) and input placeholders.
     pub text_muted: Color,
     pub bg_selected: Color,
     pub selected_fg: Color,
@@ -21,7 +26,6 @@ pub struct Palette {
     pub bg_subtle: Color,
     pub accent_warning: Color,
     pub accent_info: Color,
-    pub accent_flag: Color,
     pub search_match_bg: Color,
     pub search_match_fg: Color,
     pub search_current_bg: Color,
@@ -35,7 +39,7 @@ impl Palette {
         Palette {
             primary: Color::Rgb(0xD9, 0x77, 0x57),
             border_unfocused: Color::Rgb(0x66, 0x66, 0x66),
-            text: Color::Rgb(0xCC, 0xCC, 0xCC),
+            text: Color::Reset,
             text_dim: Color::Rgb(0xAA, 0xAA, 0xAA),
             text_subtle: Color::Rgb(0x88, 0x88, 0x88),
             text_muted: Color::Rgb(0x55, 0x55, 0x55),
@@ -45,7 +49,6 @@ impl Palette {
             bg_subtle: Color::Rgb(0x33, 0x33, 0x33),
             accent_warning: Color::Rgb(0xE5, 0xC0, 0x7B),
             accent_info: Color::Rgb(0x61, 0xAF, 0xEF),
-            accent_flag: Color::Rgb(0x61, 0x96, 0xCC),
             search_match_bg: Color::Rgb(0x88, 0x88, 0x00),
             search_match_fg: Color::Black,
             search_current_bg: Color::Rgb(0xFF, 0xFF, 0x00),
@@ -59,7 +62,7 @@ impl Palette {
         Palette {
             primary: Color::Rgb(0xD9, 0x77, 0x57),
             border_unfocused: Color::Rgb(0x99, 0x99, 0x99),
-            text: Color::Rgb(0x33, 0x33, 0x33),
+            text: Color::Reset,
             text_dim: Color::Rgb(0x55, 0x55, 0x55),
             text_subtle: Color::Rgb(0x77, 0x77, 0x77),
             text_muted: Color::Rgb(0xAA, 0xAA, 0xAA),
@@ -69,7 +72,6 @@ impl Palette {
             bg_subtle: Color::Rgb(0xEE, 0xEE, 0xEE),
             accent_warning: Color::Rgb(0xB8, 0x8C, 0x2E),
             accent_info: Color::Rgb(0x2E, 0x7D, 0xC4),
-            accent_flag: Color::Rgb(0x2E, 0x6E, 0xA8),
             search_match_bg: Color::Rgb(0xE5, 0xE0, 0x60),
             search_match_fg: Color::Black,
             search_current_bg: Color::Rgb(0xFF, 0xFF, 0x00),
