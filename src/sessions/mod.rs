@@ -141,6 +141,10 @@ impl SessionBook {
         self.created_panes.insert(pane_id, now_ms);
     }
 
+    pub fn record(&self, session_id: &str) -> Option<&SessionRecord> {
+        self.store.get(session_id)
+    }
+
     pub fn sessions(&self) -> Vec<Session> {
         self.store
             .records()

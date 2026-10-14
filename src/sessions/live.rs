@@ -1,4 +1,4 @@
-use super::record::{ArchiveReason, Origin, SessionRecord, Store};
+use super::record::{ArchiveReason, ArchiveSnapshot, Origin, SessionRecord, Store};
 use crate::multiplexer::PaneRef;
 use std::collections::{BTreeMap, HashSet};
 
@@ -116,6 +116,11 @@ pub enum Mutation {
     SetUnread {
         session_id: String,
         unread: bool,
+    },
+    /// Undo of an archive or unarchive.
+    RestoreArchive {
+        session_id: String,
+        snapshot: ArchiveSnapshot,
     },
     Delete {
         session_id: String,
@@ -358,6 +363,10 @@ pub fn apply(store: &mut Store, mutations: Vec<Mutation>, now_ms: u64) -> bool {
             Mutation::SetUnread { session_id, unread } => {
                 store.set_unread(&session_id, unread, now_ms)
             }
+            Mutation::RestoreArchive {
+                session_id,
+                snapshot,
+            } => store.restore_archive(&session_id, snapshot, now_ms),
             Mutation::Delete { session_id } => store.remove(&session_id, now_ms),
             Mutation::Refresh {
                 session_id,

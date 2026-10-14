@@ -57,11 +57,13 @@ pub(super) fn handle_view_config(
     key: KeyEvent,
     selected_pane_target: &watch::Sender<Option<PreviewTarget>>,
 ) -> Option<Action> {
+    let prior = state.ui.view;
     let overlay = state.view_config.as_mut()?;
     match overlay.handle_key(key, &mut state.ui.view) {
         Outcome::Unchanged => {}
         Outcome::Closed => state.view_config = None,
         Outcome::Changed => {
+            state.undo.push_view_change(prior, state.ui.view);
             save_ui_state(state);
             refresh_keeping_selection(state);
             update_selected_target(state, selected_pane_target);

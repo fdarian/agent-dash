@@ -22,6 +22,14 @@ pub enum ArchiveReason {
     Closed,
 }
 
+/// The fields `a` changes, as they were before it ran; `Store::restore_archive` puts them back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ArchiveSnapshot {
+    pub archived_at: Option<u64>,
+    pub archive_reason: Option<ArchiveReason>,
+    pub unread: bool,
+}
+
 /// Deleted-session tombstones older than this are dropped on save.
 const TOMBSTONE_TTL_MS: u64 = 30 * 24 * 60 * 60 * 1000;
 
@@ -73,6 +81,14 @@ impl SessionRecord {
             unread: false,
             unread_changed_at: now_ms,
             origin,
+        }
+    }
+
+    pub fn archive_snapshot(&self) -> ArchiveSnapshot {
+        ArchiveSnapshot {
+            archived_at: self.archived_at,
+            archive_reason: self.archive_reason,
+            unread: self.unread,
         }
     }
 
@@ -250,6 +266,27 @@ impl Store {
         record.archived_at = None;
         record.archive_reason = None;
         record.archive_changed_at = now_ms;
+        self.unsaved.intent = true;
+        true
+    }
+
+    /// Puts the archive fields and unread back exactly as snapshotted. Both change stamps move
+    /// to `now_ms` so the restore wins merges with other instances that saw the undone state.
+    /// Returns whether the session exists.
+    pub fn restore_archive(
+        &mut self,
+        session_id: &str,
+        snapshot: ArchiveSnapshot,
+        now_ms: u64,
+    ) -> bool {
+        let Some(record) = self.data.records.get_mut(session_id) else {
+            return false;
+        };
+        record.archived_at = snapshot.archived_at;
+        record.archive_reason = snapshot.archive_reason;
+        record.archive_changed_at = now_ms;
+        record.unread = snapshot.unread;
+        record.unread_changed_at = now_ms;
         self.unsaved.intent = true;
         true
     }
@@ -745,6 +782,48 @@ pub(crate) mod tests {
         assert_eq!(record.archive_reason, None);
         assert_eq!(record.archive_changed_at, 8_000);
         assert!(!store.unarchive("a", 9_000));
+    }
+
+    #[test]
+    fn restoring_after_archive_brings_back_unread_and_clears_archive() {
+        let mut store = Store::empty(PathBuf::from("/nonexistent/sessions.json"));
+        store.insert(record("a", 1));
+        store.set_unread("a", true, 5);
+        let before = store.get("a").unwrap().archive_snapshot();
+        store.archive("a", ArchiveReason::User, 9_000);
+
+        assert!(store.restore_archive("a", before, 12_000));
+        let restored = store.get("a").unwrap();
+        assert_eq!(restored.archived_at, None);
+        assert_eq!(restored.archive_reason, None);
+        assert!(restored.unread);
+        assert_eq!(restored.archive_changed_at, 12_000);
+        assert_eq!(restored.unread_changed_at, 12_000);
+        assert!(store.has_unsaved_intent());
+    }
+
+    #[test]
+    fn restoring_after_unarchive_brings_back_the_original_archive() {
+        let mut store = Store::empty(PathBuf::from("/nonexistent/sessions.json"));
+        store.insert(record("a", 1));
+        store.archive("a", ArchiveReason::Closed, 5_000);
+        let before = store.get("a").unwrap().archive_snapshot();
+        store.unarchive("a", 8_000);
+
+        assert!(store.restore_archive("a", before, 12_000));
+        let restored = store.get("a").unwrap();
+        assert_eq!(restored.archived_at, Some(5));
+        assert_eq!(restored.archive_reason, Some(ArchiveReason::Closed));
+        assert!(!restored.unread);
+        assert_eq!(restored.archive_changed_at, 12_000);
+    }
+
+    #[test]
+    fn restoring_an_unknown_id_changes_nothing() {
+        let mut store = Store::empty(PathBuf::from("/nonexistent/sessions.json"));
+        let snapshot = record("a", 1).archive_snapshot();
+        assert!(!store.restore_archive("zzz", snapshot, 1));
+        assert!(!store.has_unsaved_intent());
     }
 
     #[test]

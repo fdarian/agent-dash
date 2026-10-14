@@ -140,6 +140,10 @@ fn current_entries(state: &AppState) -> Vec<BarEntry> {
                 desc: "archive",
             },
             BarEntry {
+                key: "u",
+                desc: "undo",
+            },
+            BarEntry {
                 key: "x",
                 desc: "close",
             },

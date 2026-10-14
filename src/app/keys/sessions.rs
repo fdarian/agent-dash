@@ -2,6 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::watch;
 
 use crate::app::actions::request_exit;
+use crate::app::undo::UndoEntry;
 use crate::app::view_config::ViewConfigOverlay;
 use crate::app::{
     forward_scroll_target, get_selected_pane_target, mutate_store, refresh_keeping_selection,
@@ -97,18 +98,31 @@ pub(super) fn handle(
             if matches!(state.focus, Focus::Sessions) {
                 if let Some(session) = selected_session(state) {
                     let session_id = session.record.session_id.clone();
+                    let snapshot = session.record.archive_snapshot();
                     let mutation = if session.record.archived_at.is_some() {
-                        Mutation::Unarchive { session_id }
+                        Mutation::Unarchive {
+                            session_id: session_id.clone(),
+                        }
                     } else {
                         Mutation::Archive {
-                            session_id,
+                            session_id: session_id.clone(),
                             reason: ArchiveReason::User,
                         }
                     };
                     mutate_store(state, vec![mutation]);
+                    state.undo.push(UndoEntry::ArchiveToggle {
+                        session_id,
+                        snapshot,
+                    });
                     refresh_keeping_selection(state);
                     update_selected_target(state, selected_pane_target);
                 }
+            }
+            None
+        }
+        KeyCode::Char('u') => {
+            if matches!(state.focus, Focus::Sessions) {
+                undo_last(state, selected_pane_target);
             }
             None
         }
@@ -197,7 +211,9 @@ pub(super) fn handle(
             None
         }
         KeyCode::Char('`') => {
+            let prior = state.ui.view;
             state.ui.view.grouping = state.ui.view.grouping.next();
+            state.undo.push_view_change(prior, state.ui.view);
             save_ui_state(state);
             refresh_keeping_selection(state);
             update_selected_target(state, selected_pane_target);
@@ -291,6 +307,48 @@ fn refresh_after_collapse_change(
     refresh_keeping_selection(state);
     update_selected_target(state, selected_pane_target);
     save_ui_state(state);
+}
+
+fn undo_last(state: &mut AppState, selected_pane_target: &watch::Sender<Option<PreviewTarget>>) {
+    let Some(entry) = state.undo.pop() else {
+        show_toast(state, "Nothing to undo", 2);
+        return;
+    };
+    match &entry {
+        UndoEntry::ArchiveToggle {
+            session_id,
+            snapshot,
+        } => {
+            if state.book.record(session_id).is_none() {
+                show_toast(state, "Can't undo: the session no longer exists", 2);
+                return;
+            }
+            // Before the store write so its error toast, if any, isn't overwritten.
+            show_toast(state, entry.undone_message(), 2);
+            mutate_store(
+                state,
+                vec![Mutation::RestoreArchive {
+                    session_id: session_id.clone(),
+                    snapshot: *snapshot,
+                }],
+            );
+            refresh_keeping_selection(state);
+            let restored = state.visible_items.iter().position(|item| {
+                item.session()
+                    .is_some_and(|session| session.record.session_id == *session_id)
+            });
+            if let Some(index) = restored {
+                state.selected_index = index;
+            }
+        }
+        UndoEntry::ViewChange { prior } => {
+            show_toast(state, entry.undone_message(), 2);
+            state.ui.view = *prior;
+            save_ui_state(state);
+            refresh_keeping_selection(state);
+        }
+    }
+    update_selected_target(state, selected_pane_target);
 }
 
 /// `o` and Enter-in-filter: switch to the selected session's pane and clear its unread mark, or

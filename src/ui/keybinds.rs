@@ -61,6 +61,11 @@ pub const KEYBINDS: &[KeybindEntry] = &[
         context: "sessions",
     },
     KeybindEntry {
+        key: "u",
+        description: "Undo last archive / unarchive or view change",
+        context: "sessions",
+    },
+    KeybindEntry {
         key: "n",
         description: "Edit note for session",
         context: "sessions",

@@ -30,6 +30,7 @@ pub mod import_picker;
 mod keys;
 mod mouse;
 mod poll;
+mod undo;
 pub mod view_config;
 
 pub enum Focus {
@@ -65,6 +66,7 @@ pub struct AppState {
     pub show_help: bool,
     pub view_config: Option<view_config::ViewConfigOverlay>,
     pub sessions_expanded: bool,
+    undo: undo::UndoStack,
     last_prompts: LastPromptCache,
     /// `last-prompt` of the selected session when it isn't live; refreshed on selection and
     /// discovery ticks rather than per frame.
@@ -172,6 +174,7 @@ pub async fn run(
         show_help: false,
         view_config: None,
         sessions_expanded: false,
+        undo: undo::UndoStack::default(),
         last_prompts: LastPromptCache::default(),
         closed_session_prompt: None,
 
