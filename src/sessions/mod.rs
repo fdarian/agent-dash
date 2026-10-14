@@ -39,7 +39,7 @@ pub fn resume_command(command: &str, session_id: &str) -> Result<String> {
     Ok(format!("{command} --resume {}", shell_quote(session_id)))
 }
 
-fn shell_quote(arg: &str) -> String {
+pub(crate) fn shell_quote(arg: &str) -> String {
     format!("'{}'", arg.replace('\'', "'\\''"))
 }
 

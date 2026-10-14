@@ -2,12 +2,14 @@ use crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::watch;
 
 use super::apply_text_input;
+use crate::app::new_session;
 use crate::app::view_config::Outcome;
 use crate::app::{
     refresh_keeping_selection, save_ui_state, update_selected_target, Action, AppState,
     PreviewTarget,
 };
 use crate::ui::list_nav::{nav_action, NavAction, NavMode};
+use crate::worktree::{load_repo_info, random_name, WorktreeRequest};
 
 pub(super) fn handle_confirm(state: &mut AppState, key: KeyEvent) -> Option<Action> {
     match key.code {
@@ -49,6 +51,38 @@ pub(super) fn handle_help(state: &mut AppState, key: KeyEvent) -> Option<Action>
             state.help_filter_active = true;
         }
         None
+    }
+}
+
+pub(super) fn handle_new_session(state: &mut AppState, key: KeyEvent) -> Option<Action> {
+    let dialog = state.new_session.as_mut()?;
+    match dialog.handle_key(key, &load_repo_info) {
+        new_session::Outcome::Pending => None,
+        new_session::Outcome::Closed => {
+            state.new_session = None;
+            None
+        }
+        new_session::Outcome::Submit(submission) => {
+            let worktree_offered = dialog.worktree_available();
+            state.new_session = None;
+            let checked = submission.worktree.is_some();
+            if worktree_offered && state.ui.new_session_worktree != checked {
+                state.ui.new_session_worktree = checked;
+                save_ui_state(state);
+            }
+            Some(Action::CreateSession {
+                cwd: submission.cwd,
+                worktree: submission.worktree.map(|request| match request {
+                    WorktreeRequest::New { name, base } if name.is_empty() => {
+                        WorktreeRequest::New {
+                            name: random_name(),
+                            base,
+                        }
+                    }
+                    other => other,
+                }),
+            })
+        }
     }
 }
 

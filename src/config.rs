@@ -58,9 +58,25 @@ struct ClaudeCodeConfigFile {
 }
 
 #[derive(Debug, Deserialize)]
+struct WorktreeConfigFile {
+    create: Option<String>,
+    checkout: Option<String>,
+}
+
+/// Shell templates behind the New session dialog's Worktree checkbox.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorktreeCommands {
+    /// Makes a new branch and worktree; takes `{{name}}` and `{{base}}`.
+    pub create: String,
+    /// Makes a worktree for an existing branch; takes `{{name}}` only.
+    pub checkout: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ConfigFile {
     command: Option<String>,
+    worktree: Option<WorktreeConfigFile>,
     layout: Option<LayoutDirection>,
     shared_state: Option<bool>,
     theme: Option<ThemeMode>,
@@ -70,6 +86,8 @@ struct ConfigFile {
 
 pub struct AppConfig {
     pub command: String,
+    /// The dialog's worktree option is hidden unless `create` is set.
+    pub worktree: Option<WorktreeCommands>,
     pub exit_on_switch: bool,
     pub layout: LayoutDirection,
     pub shared_state: bool,
@@ -82,6 +100,7 @@ impl AppConfig {
     fn defaults(exit_on_switch: bool) -> Self {
         Self {
             command: "claude".to_string(),
+            worktree: None,
             exit_on_switch,
             layout: LayoutDirection::default(),
             shared_state: false,
@@ -144,6 +163,13 @@ fn build_config(config_file: &ConfigFile, exit_on_switch: bool) -> AppConfig {
     if let Some(command) = config_file.command.as_ref() {
         config.command = command.clone();
     }
+
+    config.worktree = config_file.worktree.as_ref().and_then(|worktree| {
+        worktree.create.as_ref().map(|create| WorktreeCommands {
+            create: create.clone(),
+            checkout: worktree.checkout.clone(),
+        })
+    });
 
     if let Some(layout) = config_file.layout {
         config.layout = layout;
@@ -229,6 +255,51 @@ theme = "light"
         let from_json = parse_json(r#"{"autoTrackSessions": false}"#).unwrap();
         assert!(!build_config(&from_toml, false).auto_track_sessions);
         assert!(!build_config(&from_json, false).auto_track_sessions);
+    }
+
+    #[test]
+    fn worktree_commands_parse_from_toml_and_json() {
+        assert_eq!(build_config(&parse_toml("").unwrap(), false).worktree, None);
+        let expected = Some(WorktreeCommands {
+            create: "git worktree add ../{{name}} -b {{name}} {{base}}".to_string(),
+            checkout: Some("git worktree add ../{{name}} {{name}}".to_string()),
+        });
+        let from_toml = parse_toml(
+            r#"
+[worktree]
+create = "git worktree add ../{{name}} -b {{name}} {{base}}"
+checkout = "git worktree add ../{{name}} {{name}}"
+"#,
+        )
+        .unwrap();
+        let from_json = parse_json(
+            r#"{"worktree": {
+                "create": "git worktree add ../{{name}} -b {{name}} {{base}}",
+                "checkout": "git worktree add ../{{name}} {{name}}"}}"#,
+        )
+        .unwrap();
+        assert_eq!(build_config(&from_toml, false).worktree, expected);
+        assert_eq!(build_config(&from_json, false).worktree, expected);
+    }
+
+    #[test]
+    fn checkout_is_optional_and_create_is_required_for_the_option() {
+        let only_create = parse_toml("[worktree]\ncreate = \"wt\"\n").unwrap();
+        assert_eq!(
+            build_config(&only_create, false).worktree,
+            Some(WorktreeCommands {
+                create: "wt".to_string(),
+                checkout: None
+            })
+        );
+        let only_checkout = parse_toml("[worktree]\ncheckout = \"wt\"\n").unwrap();
+        assert_eq!(build_config(&only_checkout, false).worktree, None);
+    }
+
+    #[test]
+    fn the_old_worktree_command_key_is_ignored() {
+        let config_file = parse_toml("worktreeCommand = \"wt\"\n").unwrap();
+        assert_eq!(build_config(&config_file, false).worktree, None);
     }
 
     #[test]

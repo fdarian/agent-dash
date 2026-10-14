@@ -52,7 +52,7 @@ pub const KEYBINDS: &[KeybindEntry] = &[
     },
     KeybindEntry {
         key: "c",
-        description: "New session in the selected session's folder",
+        description: "New session: pick a folder, optionally in a new git worktree",
         context: "sessions",
     },
     KeybindEntry {

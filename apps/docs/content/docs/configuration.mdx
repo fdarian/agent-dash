@@ -16,6 +16,10 @@ theme = "dark"
 sharedState = false
 autoTrackSessions = true
 
+[worktree]
+create = "git worktree add ../{{name}} -b {{name}} {{base}}"
+checkout = "git worktree add ../{{name}} {{name}}"
+
 [claudeCode]
 previewScrollMode = "scrollback"
 ```
@@ -29,6 +33,10 @@ The same configuration as JSON:
   "theme": "dark",
   "sharedState": false,
   "autoTrackSessions": true,
+  "worktree": {
+    "create": "git worktree add ../{{name}} -b {{name}} {{base}}",
+    "checkout": "git worktree add ../{{name}} {{name}}"
+  },
   "claudeCode": {
     "previewScrollMode": "scrollback"
   }
@@ -38,6 +46,40 @@ The same configuration as JSON:
 ### command
 
 The command used to start a new session (`c`). Resuming a closed session runs it with `--resume <session id>` appended. Defaults to `"claude"`.
+
+### worktree
+
+Optional. Shell commands that create git worktrees, set under a `worktree` table (TOML) or object (JSON). With `create` set, the new-session dialog (`c`) gets a **Worktree** checkbox; leave it unset and the checkbox is hidden.
+
+| Key | Placeholders | Runs when |
+|-----|--------------|-----------|
+| `create` | `{{name}}`, `{{base}}` | The name is not an existing local branch: makes a new branch and its worktree |
+| `checkout` | `{{name}}` | The name is an existing local branch with no worktree yet. Optional: without it the dialog says "no worktree.checkout configured" |
+
+With the checkbox on, **Name** and **Base** take branch names, and the list at the bottom of the dialog suggests branches for whichever field has focus (local branches for Name, local and remote for Base, most recently committed first). Pick from the list like zsh's menu completion: the arrow keys or `Ctrl+n`/`Ctrl+p` write the highlighted suggestion into the field, and moving back up past the first one restores what the field held before (what you typed, or the prefilled Base). The list is filtered by what you typed, so it stays put while you cycle. `Tab` only moves to the next field and `Enter` always creates the session from what the fields contain. A line under the fields says what the name will do:
+
+- blank: a random new branch, like `stellar-ptarmigan`, from Base
+- not a local branch: a new branch from Base
+- a local branch that already has a worktree: the session opens in that worktree and no command runs (Base is ignored)
+- a local branch without a worktree: runs `checkout` (Base is ignored)
+
+Base starts as the folder's current branch. The checkbox starts as you left it the last time you created a session.
+
+Commands run with `sh -c` in the chosen folder, which is the repository root when the folder is inside a git repository. The placeholders are replaced with the values you entered, already shell-quoted, so don't add quotes around them. Any other `{{...}}` placeholder, including `{{base}}` in `checkout`, is an error.
+
+```toml
+# plain git: a sibling directory per branch
+[worktree]
+create = "git worktree add ../{{name}} -b {{name}} {{base}}"
+checkout = "git worktree add ../{{name}} {{name}}"
+
+# worktrunk
+[worktree]
+create = "wt switch --create {{name}} --base {{base}} --no-cd"
+checkout = "wt switch {{name}} --no-cd"
+```
+
+Agent Dash then finds the worktree through `git worktree list`, so the command must leave a worktree checked out on the branch called `{{name}}`. The new session starts in that worktree and is named after it. The commands run in the background, so slow hooks don't freeze the UI; a failure shows the last line of its stderr.
 
 ### layout
 
@@ -80,5 +122,5 @@ Controls how scrolling works in the Claude Code preview pane. Set it as `preview
 | `~/.config/agent-dash/config.toml` | Configuration (takes precedence over `config.json`) |
 | `~/.config/agent-dash/config.json` | Configuration (used when no `config.toml` exists) |
 | `~/.config/agent-dash/sessions.json` | Every known session: title, folder, last activity, archived, unread |
-| `~/.config/agent-dash/state.json` | View settings (status, grouping, last activity) and collapsed groups |
+| `~/.config/agent-dash/state.json` | View settings (status, grouping, last activity), the Worktree checkbox state and collapsed groups |
 | `/tmp/agent-dash-{pid}-preview.fifo` | Temporary FIFO pipes for preview |

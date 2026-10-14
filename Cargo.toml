@@ -22,3 +22,4 @@ nucleo-matcher = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 notify = "7"
 memchr = "2"
+petname = { version = "3.2.0", default-features = false, features = ["default-rng", "default-words"] }

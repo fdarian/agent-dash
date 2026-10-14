@@ -2,6 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::watch;
 
 use crate::app::actions::request_exit;
+use crate::app::new_session::{NewSessionDialog, WorktreeOption};
 use crate::app::undo::UndoEntry;
 use crate::app::view_config::ViewConfigOverlay;
 use crate::app::{
@@ -14,6 +15,7 @@ use crate::sessions::live::Mutation;
 use crate::sessions::record::ArchiveReason;
 use crate::sessions::view::VisibleItem;
 use crate::ui::list_nav::{nav_action, NavAction, NavMode};
+use crate::worktree::load_repo_info;
 
 pub(super) fn handle(
     state: &mut AppState,
@@ -84,13 +86,23 @@ pub(super) fn handle(
         }
         KeyCode::Char('c') => {
             if matches!(state.focus, Focus::Sessions) {
-                let Some(session) = selected_session(state) else {
-                    show_toast(state, "Select a session to create from", 2);
-                    return None;
-                };
-                return Some(Action::CreateSession {
-                    cwd: session.record.cwd.clone(),
-                });
+                let dialog = NewSessionDialog::open(
+                    state
+                        .sessions_snapshot
+                        .iter()
+                        .map(|session| &session.record),
+                    selected_session(state).map(|session| session.record.folder_key()),
+                    // The stored checkbox is ignored, not cleared, while no command is configured.
+                    match &state.config.worktree {
+                        Some(commands) => WorktreeOption::Available {
+                            checked: state.ui.new_session_worktree,
+                            can_checkout: commands.checkout.is_some(),
+                        },
+                        None => WorktreeOption::Unavailable,
+                    },
+                    &load_repo_info,
+                );
+                state.new_session = Some(dialog);
             }
             None
         }

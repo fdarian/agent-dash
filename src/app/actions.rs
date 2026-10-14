@@ -1,9 +1,13 @@
-use super::{mutate_store, now_ms, refresh_visible_items, show_toast, Action, AppState};
+use super::{
+    creating_worktree_toast, mutate_store, now_ms, refresh_visible_items, show_toast, Action,
+    AppState, Message,
+};
 use crate::multiplexer::naming::{base_name, random_suffix, resolve_conflict};
 use crate::multiplexer::tmux::TmuxClient;
 use crate::multiplexer::{Multiplexer, PaneRef};
 use crate::sessions::live::Mutation;
 use crate::sessions::{basename, resume_command};
+use crate::worktree::{self, WorktreeRequest};
 
 pub(super) async fn process_action(state: &mut AppState, action: Action) {
     let tmux = TmuxClient;
@@ -39,12 +43,24 @@ pub(super) async fn process_action(state: &mut AppState, action: Action) {
                 switch_to_spawned(&tmux, state, &pane).await;
             }
         }
-        Action::CreateSession { cwd } => {
-            let command = state.config.command.clone();
-            if let Some(pane) = spawn_session(&tmux, state, &basename(&cwd), &cwd, &command).await {
-                state.book.expect_created(pane.pane_id.clone(), now_ms());
-                switch_to_spawned(&tmux, state, &pane).await;
-            }
+        Action::CreateSession {
+            cwd,
+            worktree: None,
+        } => {
+            create_session(&tmux, state, &basename(&cwd), &cwd).await;
+        }
+        Action::CreateSession {
+            cwd: _,
+            worktree: Some(WorktreeRequest::Existing { branch, path }),
+        } => {
+            create_session(&tmux, state, &branch, &path).await;
+        }
+        Action::CreateSession {
+            cwd,
+            worktree: Some(request),
+        } => start_worktree(state, cwd, request),
+        Action::SpawnInWorktree { path, name } => {
+            create_session(&tmux, state, &name, &path).await;
         }
         Action::KillPane(pane) => {
             let _ = tmux.kill(&pane).await;
@@ -60,6 +76,39 @@ pub(super) async fn process_action(state: &mut AppState, action: Action) {
                 let _ = crate::multiplexer::tmux::send_scroll_up(&target, col, row).await;
             });
         }
+    }
+}
+
+/// Runs the worktree command off the UI loop; the result comes back as
+/// `Message::WorktreeCreated`.
+fn start_worktree(state: &mut AppState, folder: String, request: WorktreeRequest) {
+    let Some(commands) = state.config.worktree.clone() else {
+        show_toast(state, "worktree.create is not configured", 4);
+        return;
+    };
+    // Long enough to outlast a slow hook; the result message clears it.
+    show_toast(state, creating_worktree_toast(request.label()), 600);
+    let tx = state.message_tx.clone();
+    tokio::spawn(async move {
+        let result = worktree::run(&commands, &folder, &request).await;
+        let _ = tx.send(Message::WorktreeCreated {
+            name: request.label().to_string(),
+            result,
+        });
+    });
+}
+
+/// Starts the configured command in `cwd` and switches to it.
+async fn create_session<M: Multiplexer>(
+    multiplexer: &M,
+    state: &mut AppState,
+    label: &str,
+    cwd: &str,
+) {
+    let command = state.config.command.clone();
+    if let Some(pane) = spawn_session(multiplexer, state, label, cwd, &command).await {
+        state.book.expect_created(pane.pane_id.clone(), now_ms());
+        switch_to_spawned(multiplexer, state, &pane).await;
     }
 }
 

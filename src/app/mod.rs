@@ -22,6 +22,7 @@ use crate::sessions::{Session, SessionBook};
 use crate::state::{self, UiState};
 use crate::ui;
 use crate::ui::theme::{resolve_palette, Palette};
+use crate::worktree::WorktreeRequest;
 use actions::process_action;
 use keys::handle_key_event;
 use mouse::handle_mouse_event;
@@ -30,6 +31,7 @@ mod actions;
 pub mod import_picker;
 mod keys;
 mod mouse;
+pub mod new_session;
 mod poll;
 mod undo;
 pub mod view_config;
@@ -67,6 +69,9 @@ pub struct AppState {
     pub pending_confirm_target: Option<PaneRef>,
     pub show_help: bool,
     pub view_config: Option<view_config::ViewConfigOverlay>,
+    pub new_session: Option<new_session::NewSessionDialog>,
+    /// Lets actions hand slow work to a task that reports back through the event loop.
+    message_tx: mpsc::UnboundedSender<Message>,
     pub sessions_expanded: bool,
     undo: undo::UndoStack,
     last_prompts: LastPromptCache,
@@ -103,6 +108,11 @@ pub enum Message {
     TmuxUnreachable(String),
     PreviewUpdated(String),
     ConfigChanged,
+    /// A worktree command run finished; `Ok` holds the new worktree's path.
+    WorktreeCreated {
+        name: String,
+        result: Result<String>,
+    },
 }
 
 pub enum Action {
@@ -116,6 +126,13 @@ pub enum Action {
     },
     CreateSession {
         cwd: String,
+        /// When set, `cwd` is the repository the worktree is created from.
+        worktree: Option<WorktreeRequest>,
+    },
+    /// Starts the session in a worktree that `CreateSession` created.
+    SpawnInWorktree {
+        path: String,
+        name: String,
     },
     KillPane(PaneRef),
     ForwardScrollDown {
@@ -176,6 +193,8 @@ pub async fn run(
         pending_confirm_target: None,
         show_help: false,
         view_config: None,
+        new_session: None,
+        message_tx: tx.clone(),
         sessions_expanded: false,
         undo: undo::UndoStack::default(),
         last_prompts: LastPromptCache::default(),
@@ -269,7 +288,9 @@ pub async fn run(
                 }
             }
             Some(msg) = rx.recv() => {
-                handle_message(&mut state, msg, &target_tx);
+                if let Some(action) = handle_message(&mut state, msg, &target_tx) {
+                    process_action(&mut state, action).await;
+                }
             }
             _ = sigterm.recv() => {
                 state.should_quit = true;
@@ -338,7 +359,7 @@ fn handle_message(
     state: &mut AppState,
     msg: Message,
     selected_pane_target: &watch::Sender<Option<PreviewTarget>>,
-) {
+) -> Option<Action> {
     match msg {
         Message::SessionsUpdated(live) => {
             let old_items = std::mem::take(&mut state.visible_items);
@@ -365,7 +386,7 @@ fn handle_message(
         }
         Message::PreviewUpdated(content) => {
             if state.copy_mode.is_some() {
-                return;
+                return None;
             }
             if !state
                 .preview_selection
@@ -391,7 +412,23 @@ fn handle_message(
                 );
             }
         },
+        Message::WorktreeCreated { name, result } => {
+            // Only clears this run's own toast, in case another run's is showing.
+            if state.toast_message.as_deref() == Some(&creating_worktree_toast(&name)) {
+                state.toast_message = None;
+                state.toast_deadline = None;
+            }
+            match result {
+                Ok(path) => return Some(Action::SpawnInWorktree { path, name }),
+                Err(err) => show_toast(state, format!("{err:#}"), 6),
+            }
+        }
     }
+    None
+}
+
+fn creating_worktree_toast(name: &str) -> String {
+    format!("Creating worktree {name}…")
 }
 
 pub(crate) fn now_ms() -> u64 {

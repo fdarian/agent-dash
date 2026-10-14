@@ -21,6 +21,7 @@ mod sessions;
 mod state;
 mod time_fmt;
 mod ui;
+mod worktree;
 
 mod multiplexer;
 mod notes;

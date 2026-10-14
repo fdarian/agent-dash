@@ -23,6 +23,10 @@ pub(super) fn handle_key_event(
         return overlays::handle_help(state, key);
     }
 
+    if state.new_session.is_some() {
+        return overlays::handle_new_session(state, key);
+    }
+
     if state.view_config.is_some() {
         return overlays::handle_view_config(state, key, selected_pane_target);
     }

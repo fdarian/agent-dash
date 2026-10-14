@@ -11,6 +11,7 @@ pub mod help_overlay;
 pub mod import_picker;
 pub mod keybinds;
 pub mod list_nav;
+pub mod new_session;
 pub mod pane_note;
 pub mod pane_preview;
 pub mod session_list;
@@ -71,6 +72,9 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     }
     if state.show_help {
         help_overlay::render(frame, state);
+    }
+    if let Some(ref dialog) = state.new_session {
+        new_session::render(frame, state, dialog);
     }
     if let Some(ref overlay) = state.view_config {
         view_config::render(frame, state, overlay);

@@ -29,6 +29,30 @@ fn current_entries(state: &AppState) -> Vec<BarEntry> {
             },
         ];
     }
+    if state.new_session.is_some() {
+        return vec![
+            BarEntry {
+                key: "^n/^p",
+                desc: "pick",
+            },
+            BarEntry {
+                key: "Tab",
+                desc: "next",
+            },
+            BarEntry {
+                key: "Space",
+                desc: "toggle",
+            },
+            BarEntry {
+                key: "Enter",
+                desc: "create",
+            },
+            BarEntry {
+                key: "Esc",
+                desc: "cancel",
+            },
+        ];
+    }
     if let Some(overlay) = state.view_config {
         return match overlay {
             ViewConfigOverlay::Rows { .. } => vec![

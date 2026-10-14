@@ -278,13 +278,7 @@ fn group_by_folder(sessions: Vec<&Session>) -> Vec<Group<'_>> {
     let mut by_path: BTreeMap<&str, Vec<&Session>> = BTreeMap::new();
     for session in sessions {
         by_path
-            .entry(
-                session
-                    .record
-                    .repo_root
-                    .as_deref()
-                    .unwrap_or(session.record.cwd.as_str()),
-            )
+            .entry(session.record.folder_key())
             .or_default()
             .push(session);
     }

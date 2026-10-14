@@ -4,7 +4,11 @@ use super::{forward_scroll_target, scroll_preview_down, scroll_preview_up, Actio
 use crate::selection::{self, ContentPosition, PreviewSelection};
 
 pub(super) fn handle_mouse_event(state: &mut AppState, mouse: MouseEvent) -> Option<Action> {
-    if state.pending_confirm_target.is_some() || state.show_help || state.view_config.is_some() {
+    if state.pending_confirm_target.is_some()
+        || state.show_help
+        || state.view_config.is_some()
+        || state.new_session.is_some()
+    {
         return None;
     }
 

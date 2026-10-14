@@ -184,6 +184,8 @@ impl Multiplexer for TmuxClient {
     }
 
     async fn spawn(&self, name: &str, cwd: &str, command: &str) -> Result<PaneRef> {
+        // No shell-command argument: the pane runs the default interactive shell (so rc files
+        // apply) and survives the command exiting. The command is typed into it instead.
         let output = run_command(
             "tmux",
             &[
@@ -196,12 +198,16 @@ impl Multiplexer for TmuxClient {
                 "-P",
                 "-F",
                 PANE_FORMAT,
-                command,
             ],
         )
         .await?;
         let created = parse_created_pane(&output)
             .ok_or_else(|| anyhow!("tmux new-session returned unparseable output: {output:?}"))?;
+        if let Err(err) = type_command(&created.pane_id, command).await {
+            // Best effort: the typing error is the one worth reporting.
+            let _ = run_command("tmux", &["kill-session", "-t", &format!("={name}")]).await;
+            return Err(err);
+        }
         Ok(PaneRef {
             pane_id: created.pane_id,
             target: created.pane_target,
@@ -224,6 +230,12 @@ impl Multiplexer for TmuxClient {
             .status;
         Ok(status.success())
     }
+}
+
+async fn type_command(pane_id: &str, command: &str) -> Result<()> {
+    run_command("tmux", &["send-keys", "-t", pane_id, "-l", "--", command]).await?;
+    run_command("tmux", &["send-keys", "-t", pane_id, "Enter"]).await?;
+    Ok(())
 }
 
 pub async fn capture_pane_visible(pane_target: &str) -> Result<String> {

@@ -25,6 +25,7 @@ struct PersistedState {
     /// Kept raw so that unknown keys inside it survive; `ViewConfig` is overlaid on save.
     view: Map<String, Value>,
     per_instance: HashMap<String, InstanceState>,
+    new_session_worktree: bool,
     #[serde(flatten)]
     unknown: Map<String, Value>,
 }
@@ -49,6 +50,8 @@ pub struct UiState {
     pub view: ViewConfig,
     /// Per tmux client unless `sharedState` is set.
     pub collapsed_groups: HashSet<String>,
+    /// Global: the New session dialog's Worktree checkbox as of the last submit.
+    pub new_session_worktree: bool,
 }
 
 fn read_persisted(path: &Path) -> Result<Option<PersistedState>> {
@@ -75,6 +78,7 @@ fn load_from(path: &Path, instance_id: &str) -> Result<UiState> {
         return Ok(UiState {
             view: ViewConfig::default(),
             collapsed_groups: HashSet::new(),
+            new_session_worktree: false,
         });
     };
     let collapsed_groups = persisted
@@ -87,6 +91,7 @@ fn load_from(path: &Path, instance_id: &str) -> Result<UiState> {
     Ok(UiState {
         view,
         collapsed_groups,
+        new_session_worktree: persisted.new_session_worktree,
     })
 }
 
@@ -103,6 +108,7 @@ fn save_to(path: &Path, instance_id: &str, ui: &UiState) -> Result<()> {
     let mut collapsed: Vec<String> = ui.collapsed_groups.iter().cloned().collect();
     collapsed.sort();
     instance.collapsed_groups = collapsed;
+    persisted.new_session_worktree = ui.new_session_worktree;
 
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)
@@ -126,6 +132,7 @@ mod tests {
                 activity: ActivityWindow::Month,
             },
             collapsed_groups: collapsed.iter().map(|g| g.to_string()).collect(),
+            new_session_worktree: false,
         }
     }
 
@@ -166,11 +173,32 @@ mod tests {
     }
 
     #[test]
+    fn new_session_worktree_is_global_and_defaults_to_false() {
+        let dir = TempDir::new("state-new-session-worktree");
+        let path = dir.0.join("state.json");
+        assert!(!load_from(&path, "inst-a").unwrap().new_session_worktree);
+
+        let mut checked = ui(&[]);
+        checked.new_session_worktree = true;
+        save_to(&path, "inst-a", &checked).unwrap();
+        assert_eq!(
+            read_json(&path)["newSessionWorktree"],
+            serde_json::json!(true)
+        );
+        assert!(load_from(&path, "inst-a").unwrap().new_session_worktree);
+        assert!(load_from(&path, "inst-b").unwrap().new_session_worktree);
+
+        save_to(&path, "inst-b", &ui(&[])).unwrap();
+        assert!(!load_from(&path, "inst-a").unwrap().new_session_worktree);
+    }
+
+    #[test]
     fn missing_file_loads_defaults() {
         let dir = TempDir::new("state-missing");
         let loaded = load_from(&dir.0.join("state.json"), "inst-a").unwrap();
         assert_eq!(loaded.view, ViewConfig::default());
         assert!(loaded.collapsed_groups.is_empty());
+        assert!(!loaded.new_session_worktree);
     }
 
     #[test]

@@ -63,6 +63,12 @@ pub struct SessionRecord {
 }
 
 impl SessionRecord {
+    /// The folder this session belongs to: its repo root when known, else its cwd. The Folder
+    /// grouping and the New session dialog's folder list both key by this.
+    pub fn folder_key(&self) -> &str {
+        self.repo_root.as_deref().unwrap_or(self.cwd.as_str())
+    }
+
     /// A freshly inserted record: inserting is the initial archive and unread intent.
     pub fn new(
         session_id: String,

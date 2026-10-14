@@ -50,7 +50,7 @@ When you want to type into a session, press <span className="ad-kb-inline"><kbd>
 | `k` / `↑` / `Ctrl+p` | Previous session |
 | `o` / `Enter` | Switch to the pane, or resume a closed session |
 | `O` | Open the pane in a popup |
-| `c` | New session in the selected session's folder |
+| `c` | New session: pick a folder, optionally in a new git worktree |
 | `r` | Toggle read / unread |
 | `?` | Toggle the help overlay |
 
@@ -133,7 +133,7 @@ Agent Dash keeps its own files next to your config. You can inspect or delete an
 | `~/.config/agent-dash/config.toml` | Configuration (takes precedence over `config.json`) |
 | `~/.config/agent-dash/config.json` | Configuration (used when no `config.toml` exists) |
 | `~/.config/agent-dash/sessions.json` | Every session Agent Dash knows: title, folder, last activity, archived, unread |
-| `~/.config/agent-dash/state.json` | View settings and collapsed groups |
+| `~/.config/agent-dash/state.json` | View settings, the Worktree checkbox state and collapsed groups |
 | `/tmp/agent-dash-{pid}-preview.fifo` | Live preview FIFO |
 
 <Callout kind="warn" title="Warning · FIFO cleanup">
