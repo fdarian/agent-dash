@@ -214,7 +214,8 @@ impl Multiplexer for TmuxClient {
         })
     }
 
-    async fn kill(&self, pane: &PaneRef) -> Result<()> {
+    async fn kill(&self, pane: &PaneRef, fallback_session: Option<&str>) -> Result<()> {
+        move_clients_off_last_pane(pane, fallback_session).await?;
         run_command("tmux", &["kill-pane", "-t", &pane.target]).await?;
         Ok(())
     }
@@ -230,6 +231,115 @@ impl Multiplexer for TmuxClient {
             .status;
         Ok(status.success())
     }
+}
+
+/// Killing the last pane of a tmux session destroys the session and detaches its clients, so
+/// they are switched to another session first. With no other session there is nowhere to go.
+async fn move_clients_off_last_pane(pane: &PaneRef, fallback_session: Option<&str>) -> Result<()> {
+    let session = pane.session_name();
+    // `=` makes tmux match the name exactly instead of by prefix.
+    let session_target = format!("={session}");
+
+    let panes = run_command(
+        "tmux",
+        &[
+            "list-panes",
+            "-s",
+            "-t",
+            &session_target,
+            "-F",
+            "#{pane_id}",
+        ],
+    )
+    .await?;
+    if !is_only_pane(&panes, &pane.pane_id) {
+        return Ok(());
+    }
+
+    let clients = run_command(
+        "tmux",
+        &[
+            "list-clients",
+            "-t",
+            &session_target,
+            "-F",
+            "#{client_name}",
+        ],
+    )
+    .await?;
+    let clients: Vec<&str> = clients.lines().filter(|line| !line.is_empty()).collect();
+    if clients.is_empty() {
+        return Ok(());
+    }
+
+    let sessions = run_command(
+        "tmux",
+        &[
+            "list-sessions",
+            "-F",
+            "#{session_last_attached}\t#{session_name}",
+        ],
+    )
+    .await?;
+    let sessions = parse_sessions(&sessions)?;
+    let Some(target) = pick_target_session(session, fallback_session, &sessions) else {
+        return Ok(());
+    };
+
+    let target = format!("={target}");
+    for client in clients {
+        run_command("tmux", &["switch-client", "-c", client, "-t", &target]).await?;
+    }
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct TmuxSession {
+    name: String,
+    /// Epoch seconds; 0 for a session nobody has attached to.
+    last_attached: u64,
+}
+
+fn is_only_pane(list_panes_output: &str, pane_id: &str) -> bool {
+    let mut ids = list_panes_output.lines().filter(|line| !line.is_empty());
+    ids.next() == Some(pane_id) && ids.next().is_none()
+}
+
+fn parse_sessions(output: &str) -> Result<Vec<TmuxSession>> {
+    output
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let (last_attached, name) = line
+                .split_once('\t')
+                .ok_or_else(|| anyhow!("tmux list-sessions returned unparseable line: {line:?}"))?;
+            let last_attached = if last_attached.is_empty() {
+                0
+            } else {
+                last_attached.parse().map_err(|_| {
+                    anyhow!("tmux list-sessions returned unparseable line: {line:?}")
+                })?
+            };
+            Ok(TmuxSession {
+                name: name.to_string(),
+                last_attached,
+            })
+        })
+        .collect()
+}
+
+/// Where to send clients of `dying`: `fallback` if it exists, else the most recently attached
+/// other session.
+fn pick_target_session<'a>(
+    dying: &str,
+    fallback: Option<&str>,
+    sessions: &'a [TmuxSession],
+) -> Option<&'a str> {
+    let others = || sessions.iter().filter(|session| session.name != dying);
+    fallback
+        .and_then(|fallback| others().find(|session| session.name == fallback))
+        .or_else(|| others().max_by_key(|session| session.last_attached))
+        .map(|session| session.name.as_str())
 }
 
 async fn type_command(pane_id: &str, command: &str) -> Result<()> {
@@ -307,5 +417,63 @@ mod tests {
         assert_eq!(pane.pane_id, "%3");
         assert_eq!(pane.pane_target, "work:0.0");
         assert!(parse_created_pane("%3\ttitle").is_none());
+    }
+
+    fn sessions(entries: &[(&str, u64)]) -> Vec<TmuxSession> {
+        entries
+            .iter()
+            .map(|(name, last_attached)| TmuxSession {
+                name: name.to_string(),
+                last_attached: *last_attached,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn only_pane_needs_exactly_the_given_pane() {
+        assert!(is_only_pane("%3\n", "%3"));
+        assert!(!is_only_pane("%3\n%4\n", "%3"));
+        assert!(!is_only_pane("%4\n", "%3"));
+        assert!(!is_only_pane("", "%3"));
+    }
+
+    #[test]
+    fn parse_sessions_reads_last_attached_and_name() {
+        assert_eq!(
+            parse_sessions("1700\twork\n\tnever attached\n").unwrap(),
+            sessions(&[("work", 1700), ("never attached", 0)])
+        );
+        assert!(parse_sessions("work\n").is_err());
+        assert!(parse_sessions("soon\twork\n").is_err());
+    }
+
+    #[test]
+    fn target_prefers_the_fallback_when_it_exists() {
+        let all = sessions(&[("dying", 9), ("main", 1), ("recent", 5)]);
+        assert_eq!(
+            pick_target_session("dying", Some("main"), &all),
+            Some("main")
+        );
+    }
+
+    #[test]
+    fn target_skips_a_missing_or_dying_fallback() {
+        let all = sessions(&[("dying", 9), ("main", 1), ("recent", 5)]);
+        assert_eq!(
+            pick_target_session("dying", Some("gone"), &all),
+            Some("recent")
+        );
+        assert_eq!(
+            pick_target_session("dying", Some("dying"), &all),
+            Some("recent")
+        );
+        assert_eq!(pick_target_session("dying", None, &all), Some("recent"));
+    }
+
+    #[test]
+    fn target_is_none_without_another_session() {
+        let only = sessions(&[("dying", 9)]);
+        assert_eq!(pick_target_session("dying", Some("dying"), &only), None);
+        assert_eq!(pick_target_session("dying", None, &[]), None);
     }
 }

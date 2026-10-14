@@ -89,6 +89,7 @@ struct ConfigFile {
     shared_state: Option<bool>,
     theme: Option<ThemeMode>,
     auto_track_sessions: Option<bool>,
+    default_tmux_session: Option<String>,
     claude_code: Option<ClaudeCodeConfigFile>,
 }
 
@@ -103,6 +104,8 @@ pub struct AppConfig {
     pub shared_state: bool,
     pub theme: ThemeMode,
     pub auto_track_sessions: bool,
+    /// Where tmux clients go when closing a session removes the last pane of their tmux session.
+    pub default_tmux_session: Option<String>,
     pub claude_code_preview_scroll_mode: PreviewScrollMode,
 }
 
@@ -117,6 +120,7 @@ impl AppConfig {
             shared_state: false,
             theme: ThemeMode::Dark,
             auto_track_sessions: true,
+            default_tmux_session: None,
             claude_code_preview_scroll_mode: PreviewScrollMode::default(),
         }
     }
@@ -202,6 +206,8 @@ fn build_config(config_file: &ConfigFile, exit_on_switch: bool) -> AppConfig {
         config.auto_track_sessions = auto_track_sessions;
     }
 
+    config.default_tmux_session = config_file.default_tmux_session.clone();
+
     if let Some(preview_scroll_mode) = config_file
         .claude_code
         .as_ref()
@@ -270,6 +276,25 @@ theme = "light"
         let from_json = parse_json(r#"{"autoTrackSessions": false}"#).unwrap();
         assert!(!build_config(&from_toml, false).auto_track_sessions);
         assert!(!build_config(&from_json, false).auto_track_sessions);
+    }
+
+    #[test]
+    fn default_tmux_session_is_unset_by_default_and_parses_from_toml_and_json() {
+        assert_eq!(
+            build_config(&parse_toml("").unwrap(), false).default_tmux_session,
+            None
+        );
+        let from_toml = parse_toml("defaultTmuxSession = \"main\"\n").unwrap();
+        let from_json = parse_json(r#"{"defaultTmuxSession": "main"}"#).unwrap();
+        let expected = Some("main".to_string());
+        assert_eq!(
+            build_config(&from_toml, false).default_tmux_session,
+            expected
+        );
+        assert_eq!(
+            build_config(&from_json, false).default_tmux_session,
+            expected
+        );
     }
 
     #[test]

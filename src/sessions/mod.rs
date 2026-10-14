@@ -1,3 +1,4 @@
+pub mod close;
 pub mod discover;
 pub mod import;
 pub mod live;

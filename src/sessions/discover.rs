@@ -70,7 +70,7 @@ mod tests {
         async fn spawn(&self, _: &str, _: &str, _: &str) -> Result<PaneRef> {
             unreachable!()
         }
-        async fn kill(&self, _: &PaneRef) -> Result<()> {
+        async fn kill(&self, _: &PaneRef, _: Option<&str>) -> Result<()> {
             unreachable!()
         }
         async fn name_taken(&self, _: &str) -> Result<bool> {

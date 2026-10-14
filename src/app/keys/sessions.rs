@@ -8,7 +8,8 @@ use crate::app::view_config::ViewConfigOverlay;
 use crate::app::{
     forward_scroll_target, get_selected_pane_target, mutate_store, refresh_keeping_selection,
     refresh_visible_items, save_ui_state, scroll_preview_down, scroll_preview_up, selected_session,
-    show_toast, update_selected_target, Action, AppState, Focus, PreviewTarget,
+    show_toast, update_selected_target, Action, AppState, ArchiveRollback, CloseTarget, Focus,
+    PreviewTarget,
 };
 use crate::config::Mode;
 use crate::copy_mode;
@@ -114,6 +115,7 @@ pub(super) fn handle(
             None
         }
         KeyCode::Char('a') => {
+            let mut action = None;
             if matches!(state.focus, Focus::Sessions) {
                 if let Some(session) = selected_session(state) {
                     let session_id = session.record.session_id.clone();
@@ -123,6 +125,16 @@ pub(super) fn handle(
                             session_id: session_id.clone(),
                         }
                     } else {
+                        action = session.live.as_ref().map(|live| {
+                            Action::CloseSession(CloseTarget {
+                                pid: live.pid,
+                                pane: live.pane.clone(),
+                                rollback: Some(ArchiveRollback {
+                                    session_id: session_id.clone(),
+                                    snapshot,
+                                }),
+                            })
+                        });
                         Mutation::Archive {
                             session_id: session_id.clone(),
                             reason: ArchiveReason::User,
@@ -137,7 +149,7 @@ pub(super) fn handle(
                     update_selected_target(state, selected_pane_target);
                 }
             }
-            None
+            action
         }
         KeyCode::Char('u') => {
             if matches!(state.focus, Focus::Sessions) {
@@ -147,8 +159,12 @@ pub(super) fn handle(
         }
         KeyCode::Char('x') => {
             if matches!(state.focus, Focus::Sessions) {
-                if let Some(pane) = selected_session(state).and_then(|s| s.pane()) {
-                    state.pending_confirm_target = Some(pane.clone());
+                if let Some(live) = selected_session(state).and_then(|s| s.live.as_ref()) {
+                    state.pending_confirm_target = Some(CloseTarget {
+                        pid: live.pid,
+                        pane: live.pane.clone(),
+                        rollback: None,
+                    });
                 }
             }
             None

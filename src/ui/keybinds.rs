@@ -57,7 +57,7 @@ pub const KEYBINDS: &[KeybindEntry] = &[
     },
     KeybindEntry {
         key: "a",
-        description: "Archive / unarchive session",
+        description: "Archive / unarchive session (archiving stops its live Claude)",
         context: "sessions",
     },
     KeybindEntry {
@@ -72,7 +72,7 @@ pub const KEYBINDS: &[KeybindEntry] = &[
     },
     KeybindEntry {
         key: "x",
-        description: "Close session pane",
+        description: "Stop Claude and close the session pane",
         context: "sessions",
     },
     KeybindEntry {

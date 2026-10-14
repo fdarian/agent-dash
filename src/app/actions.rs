@@ -2,9 +2,11 @@ use super::{
     creating_worktree_toast, mutate_store, now_ms, refresh_visible_items, show_toast, Action,
     AppState, Message,
 };
+use crate::claude_sessions::FsProbe;
 use crate::multiplexer::naming::{base_name, random_suffix, resolve_conflict};
 use crate::multiplexer::tmux::TmuxClient;
 use crate::multiplexer::{Multiplexer, PaneRef};
+use crate::sessions::close::{close_session, CloseError};
 use crate::sessions::live::Mutation;
 use crate::sessions::{basename, resume_command};
 use crate::worktree::{self, WorktreeRequest};
@@ -69,9 +71,31 @@ pub(super) async fn process_action(state: &mut AppState, action: Action) {
         } => {
             create_session(&tmux, state, &name, &path, &command).await;
         }
-        Action::KillPane(pane) => {
-            let _ = tmux.kill(&pane).await;
-            // The session is archived by the next tick's tracking, not here.
+        Action::CloseSession(target) => {
+            // The wait for Claude to exit must not block the UI loop. A user archive is
+            // already stored; a close from `x` is archived by the next tick's tracking.
+            let fallback_session = state.config.default_tmux_session.clone();
+            let tx = state.message_tx.clone();
+            tokio::spawn(async move {
+                let result = close_session(
+                    &TmuxClient,
+                    &FsProbe,
+                    target.pid,
+                    &target.pane,
+                    fallback_session.as_deref(),
+                )
+                .await;
+                let failure = match result {
+                    Ok(()) => return,
+                    // The archive is undone only while Claude still runs.
+                    Err(CloseError::ClaudeAlive(err)) => (err, target.rollback),
+                    Err(CloseError::PaneKept(err)) => (err, None),
+                };
+                let _ = tx.send(Message::CloseFailed {
+                    error: format!("{:#}", failure.0),
+                    rollback: failure.1,
+                });
+            });
         }
         Action::ForwardScrollDown { target, col, row } => {
             tokio::spawn(async move {

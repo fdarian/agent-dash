@@ -15,7 +15,7 @@ pub(super) fn handle_confirm(state: &mut AppState, key: KeyEvent) -> Option<Acti
     match key.code {
         KeyCode::Enter => {
             let target = state.pending_confirm_target.take().unwrap();
-            Some(Action::KillPane(target))
+            Some(Action::CloseSession(target))
         }
         KeyCode::Esc => {
             state.pending_confirm_target = None;

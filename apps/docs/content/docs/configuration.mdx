@@ -15,6 +15,7 @@ layout = "vertical"
 theme = "dark"
 sharedState = false
 autoTrackSessions = true
+defaultTmuxSession = "main"
 
 [[modes]]
 name = "yolo"
@@ -40,6 +41,7 @@ The same configuration as JSON:
   "modes": [
     { "name": "yolo", "command": "claude --dangerously-skip-permissions" }
   ],
+  "defaultTmuxSession": "main",
   "worktree": {
     "create": "git worktree add ../{{name}} -b {{name}} {{base}}",
     "checkout": "git worktree add ../{{name}} {{name}}"
@@ -124,6 +126,10 @@ When `true`, which groups are collapsed is shared by every Agent Dash instance. 
 ### autoTrackSessions
 
 When `true` (default), every Claude session found running in a tmux pane is added to the session list. When `false`, only sessions you start with `c` are added automatically; other running Claude panes stay out of the list. Sessions already in the list keep updating either way: they still resume, archive when closed, and get the unread mark. Use [`agent-dash import`](/docs/getting-started#import-what-you-already-have) to add existing sessions by hand.
+
+### defaultTmuxSession
+
+Closing a live session (`a` to archive it, or `x`) exits Claude Code and removes its tmux pane. When that pane was the last one in its tmux session, tmux would detach any client attached to it. Agent Dash moves those clients to another session first: the one named here if it exists, otherwise the session you attached to most recently. With no other session, the clients are left alone and tmux detaches them. Unset by default.
 
 ### previewScrollMode
 

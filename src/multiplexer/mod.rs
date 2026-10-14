@@ -33,6 +33,9 @@ pub trait Multiplexer {
     async fn list_panes(&self) -> Result<Vec<Pane>>;
     async fn focus(&self, pane: &PaneRef) -> Result<()>;
     async fn spawn(&self, name: &str, cwd: &str, command: &str) -> Result<PaneRef>;
-    async fn kill(&self, pane: &PaneRef) -> Result<()>;
+    /// Removes the pane. When it is the last one of its multiplexer session, clients attached
+    /// to that session are first moved to another one (`fallback_session` if it exists) so
+    /// they aren't kicked out.
+    async fn kill(&self, pane: &PaneRef, fallback_session: Option<&str>) -> Result<()>;
     async fn name_taken(&self, name: &str) -> Result<bool>;
 }

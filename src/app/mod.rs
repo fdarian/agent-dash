@@ -15,7 +15,7 @@ use crate::multiplexer::PaneRef;
 use crate::resize_pane;
 use crate::selection::PreviewSelection;
 use crate::sessions::live::{LiveSet, Mutation};
-use crate::sessions::record::{default_store_path, Store};
+use crate::sessions::record::{default_store_path, ArchiveSnapshot, Store};
 use crate::sessions::repo::RepoRoots;
 use crate::sessions::view::{self, VisibleItem};
 use crate::sessions::{Session, SessionBook};
@@ -66,7 +66,7 @@ pub struct AppState {
     pub preview_pane_area: Rect,
     pub preview_selection: Option<PreviewSelection>,
     pub copy_mode: Option<copy_mode::CopyModeState>,
-    pub pending_confirm_target: Option<PaneRef>,
+    pub pending_confirm_target: Option<CloseTarget>,
     pub show_help: bool,
     pub view_config: Option<view_config::ViewConfigOverlay>,
     pub new_session: Option<new_session::NewSessionDialog>,
@@ -115,6 +115,28 @@ pub enum Message {
         command: String,
         result: Result<String>,
     },
+    /// A background close didn't fully succeed.
+    CloseFailed {
+        error: String,
+        /// Set when Claude is still running after an archive, so the archive must be undone.
+        rollback: Option<ArchiveRollback>,
+    },
+}
+
+/// Undoes an archive whose close failed.
+#[derive(Debug, Clone)]
+pub struct ArchiveRollback {
+    pub session_id: String,
+    pub snapshot: ArchiveSnapshot,
+}
+
+/// A live session to close: its Claude process and the pane it runs in.
+#[derive(Debug, Clone)]
+pub struct CloseTarget {
+    pub pid: u32,
+    pub pane: PaneRef,
+    /// `None` when the close isn't part of an archive.
+    pub rollback: Option<ArchiveRollback>,
 }
 
 pub enum Action {
@@ -139,7 +161,8 @@ pub enum Action {
         name: String,
         command: String,
     },
-    KillPane(PaneRef),
+    /// Exits the session's Claude process, then removes its pane.
+    CloseSession(CloseTarget),
     ForwardScrollDown {
         target: String,
         col: u16,
@@ -417,6 +440,38 @@ fn handle_message(
                 );
             }
         },
+        Message::CloseFailed { error, rollback } => {
+            let Some(rollback) = rollback else {
+                show_toast(state, error, 6);
+                return None;
+            };
+            let Some(record) = state.book.record(&rollback.session_id) else {
+                show_toast(state, error, 6);
+                return None;
+            };
+            let title = crate::sessions::display_title(&record.title, &record.session_id);
+            // The user may have unarchived it in the meantime; the snapshot would then
+            // overwrite a newer choice.
+            if record.archived_at.is_none() {
+                show_toast(state, format!("Couldn't close {title}: {error}"), 6);
+                return None;
+            }
+            // Before the store write so its error toast, if any, isn't overwritten.
+            show_toast(
+                state,
+                format!("Couldn't close {title}: {error} — unarchived"),
+                6,
+            );
+            mutate_store(
+                state,
+                vec![Mutation::RestoreArchive {
+                    session_id: rollback.session_id,
+                    snapshot: rollback.snapshot,
+                }],
+            );
+            refresh_keeping_selection(state);
+            update_selected_target(state, selected_pane_target);
+        }
         Message::WorktreeCreated {
             name,
             command,
