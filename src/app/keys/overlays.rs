@@ -72,6 +72,7 @@ pub(super) fn handle_new_session(state: &mut AppState, key: KeyEvent) -> Option<
             }
             Some(Action::CreateSession {
                 cwd: submission.cwd,
+                command: submission.command,
                 worktree: submission.worktree.map(|request| match request {
                     WorktreeRequest::New { name, base } if name.is_empty() => {
                         WorktreeRequest::New {

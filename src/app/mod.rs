@@ -111,6 +111,8 @@ pub enum Message {
     /// A worktree command run finished; `Ok` holds the new worktree's path.
     WorktreeCreated {
         name: String,
+        /// The mode's command the session is then started with.
+        command: String,
         result: Result<String>,
     },
 }
@@ -126,6 +128,8 @@ pub enum Action {
     },
     CreateSession {
         cwd: String,
+        /// The selected mode's command.
+        command: String,
         /// When set, `cwd` is the repository the worktree is created from.
         worktree: Option<WorktreeRequest>,
     },
@@ -133,6 +137,7 @@ pub enum Action {
     SpawnInWorktree {
         path: String,
         name: String,
+        command: String,
     },
     KillPane(PaneRef),
     ForwardScrollDown {
@@ -412,14 +417,24 @@ fn handle_message(
                 );
             }
         },
-        Message::WorktreeCreated { name, result } => {
+        Message::WorktreeCreated {
+            name,
+            command,
+            result,
+        } => {
             // Only clears this run's own toast, in case another run's is showing.
             if state.toast_message.as_deref() == Some(&creating_worktree_toast(&name)) {
                 state.toast_message = None;
                 state.toast_deadline = None;
             }
             match result {
-                Ok(path) => return Some(Action::SpawnInWorktree { path, name }),
+                Ok(path) => {
+                    return Some(Action::SpawnInWorktree {
+                        path,
+                        name,
+                        command,
+                    })
+                }
                 Err(err) => show_toast(state, format!("{err:#}"), 6),
             }
         }

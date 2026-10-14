@@ -45,22 +45,29 @@ pub(super) async fn process_action(state: &mut AppState, action: Action) {
         }
         Action::CreateSession {
             cwd,
+            command,
             worktree: None,
         } => {
-            create_session(&tmux, state, &basename(&cwd), &cwd).await;
+            create_session(&tmux, state, &basename(&cwd), &cwd, &command).await;
         }
         Action::CreateSession {
             cwd: _,
+            command,
             worktree: Some(WorktreeRequest::Existing { branch, path }),
         } => {
-            create_session(&tmux, state, &branch, &path).await;
+            create_session(&tmux, state, &branch, &path, &command).await;
         }
         Action::CreateSession {
             cwd,
+            command,
             worktree: Some(request),
-        } => start_worktree(state, cwd, request),
-        Action::SpawnInWorktree { path, name } => {
-            create_session(&tmux, state, &name, &path).await;
+        } => start_worktree(state, cwd, request, command),
+        Action::SpawnInWorktree {
+            path,
+            name,
+            command,
+        } => {
+            create_session(&tmux, state, &name, &path, &command).await;
         }
         Action::KillPane(pane) => {
             let _ = tmux.kill(&pane).await;
@@ -81,7 +88,7 @@ pub(super) async fn process_action(state: &mut AppState, action: Action) {
 
 /// Runs the worktree command off the UI loop; the result comes back as
 /// `Message::WorktreeCreated`.
-fn start_worktree(state: &mut AppState, folder: String, request: WorktreeRequest) {
+fn start_worktree(state: &mut AppState, folder: String, request: WorktreeRequest, command: String) {
     let Some(commands) = state.config.worktree.clone() else {
         show_toast(state, "worktree.create is not configured", 4);
         return;
@@ -93,20 +100,21 @@ fn start_worktree(state: &mut AppState, folder: String, request: WorktreeRequest
         let result = worktree::run(&commands, &folder, &request).await;
         let _ = tx.send(Message::WorktreeCreated {
             name: request.label().to_string(),
+            command,
             result,
         });
     });
 }
 
-/// Starts the configured command in `cwd` and switches to it.
+/// Starts `command` in `cwd` and switches to it.
 async fn create_session<M: Multiplexer>(
     multiplexer: &M,
     state: &mut AppState,
     label: &str,
     cwd: &str,
+    command: &str,
 ) {
-    let command = state.config.command.clone();
-    if let Some(pane) = spawn_session(multiplexer, state, label, cwd, &command).await {
+    if let Some(pane) = spawn_session(multiplexer, state, label, cwd, command).await {
         state.book.expect_created(pane.pane_id.clone(), now_ms());
         switch_to_spawned(multiplexer, state, &pane).await;
     }

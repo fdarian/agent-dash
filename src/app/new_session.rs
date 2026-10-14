@@ -5,6 +5,7 @@ use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::keys::apply_text_input;
+use crate::config::Mode;
 use crate::sessions::record::SessionRecord;
 use crate::ui::list_nav::{nav_action, step, NavAction, NavMode};
 use crate::worktree::{RepoInfo, WorktreeRequest};
@@ -12,6 +13,7 @@ use crate::worktree::{RepoInfo, WorktreeRequest};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Field {
     Folder,
+    Mode,
     Worktree,
     Name,
     Base,
@@ -20,6 +22,8 @@ pub enum Field {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Submission {
     pub cwd: String,
+    /// The selected mode's command.
+    pub command: String,
     pub worktree: Option<WorktreeRequest>,
 }
 
@@ -75,6 +79,10 @@ pub struct NewSessionDialog {
     folder_highlight: Option<usize>,
     folder_restore: String,
     pub focus: Field,
+    /// Index 0 is the implicit default mode; the Mode field exists only when there are more.
+    modes: Vec<Mode>,
+    /// Index into `modes`; starts at 0 on every open.
+    pub mode: usize,
     worktree_available: bool,
     can_checkout: bool,
     pub worktree: bool,
@@ -104,8 +112,10 @@ impl NewSessionDialog {
         records: impl Iterator<Item = &'a SessionRecord>,
         selected_folder: Option<&str>,
         worktree: WorktreeOption,
+        modes: Vec<Mode>,
         load: RepoLoader,
     ) -> Self {
+        assert!(!modes.is_empty(), "the default mode is always present");
         let (checked, can_checkout) = match worktree {
             WorktreeOption::Unavailable => (false, false),
             WorktreeOption::Available {
@@ -128,6 +138,8 @@ impl NewSessionDialog {
             folder_highlight: None,
             folder_restore: String::new(),
             focus: Field::Folder,
+            modes,
+            mode: 0,
             worktree_available: worktree != WorktreeOption::Unavailable,
             can_checkout,
             worktree: checked,
@@ -155,6 +167,15 @@ impl NewSessionDialog {
         self.worktree_available
     }
 
+    pub fn modes(&self) -> &[Mode] {
+        &self.modes
+    }
+
+    /// Whether the dialog offers the Mode field: only when modes are configured.
+    pub fn modes_available(&self) -> bool {
+        self.modes.len() > 1
+    }
+
     /// The default folder, shown dim in the empty Folder input: the selected session's, else the
     /// most recent one.
     pub fn folder_placeholder(&self) -> Option<&str> {
@@ -164,6 +185,9 @@ impl NewSessionDialog {
     /// The focusable fields in Tab order.
     pub fn fields(&self) -> Vec<Field> {
         let mut fields = vec![Field::Folder];
+        if self.modes_available() {
+            fields.push(Field::Mode);
+        }
         if self.worktree_available {
             fields.push(Field::Worktree);
             if self.worktree {
@@ -187,6 +211,7 @@ impl NewSessionDialog {
     pub fn suggestions(&self) -> Vec<&str> {
         match self.focus {
             Field::Folder => self.filtered_folders(),
+            Field::Mode => self.modes.iter().map(|mode| mode.name.as_str()).collect(),
             Field::Worktree => Vec::new(),
             Field::Name => matching(&self.repo.local, &self.name_query),
             Field::Base => {
@@ -208,6 +233,7 @@ impl NewSessionDialog {
             Field::Folder => self.folder_highlight,
             Field::Name => self.name_highlight,
             Field::Base => self.base_highlight,
+            Field::Mode => Some(self.mode),
             Field::Worktree => None,
         }
     }
@@ -297,8 +323,15 @@ impl NewSessionDialog {
             match nav {
                 NavAction::Select => return self.submit(),
                 NavAction::Close => return Outcome::Closed,
+                NavAction::Next | NavAction::Prev if self.focus == Field::Mode => {
+                    self.mode = step(self.mode, self.modes.len(), nav);
+                }
                 NavAction::Next | NavAction::Prev => self.move_highlight(nav),
             }
+            return Outcome::Pending;
+        }
+        if self.focus == Field::Mode {
+            self.handle_mode_key(key);
             return Outcome::Pending;
         }
         if self.focus == Field::Worktree {
@@ -317,9 +350,28 @@ impl NewSessionDialog {
         Outcome::Pending
     }
 
+    fn handle_mode_key(&mut self, key: KeyEvent) {
+        if key.modifiers != KeyModifiers::NONE {
+            return;
+        }
+        match key.code {
+            KeyCode::Char(digit @ '0'..='9') => {
+                let index = digit as usize - '0' as usize;
+                if index < self.modes.len() {
+                    self.mode = index;
+                }
+            }
+            KeyCode::Left => self.mode = step(self.mode, self.modes.len(), NavAction::Prev),
+            KeyCode::Right => self.mode = step(self.mode, self.modes.len(), NavAction::Next),
+            _ => {}
+        }
+    }
+
     fn text_mut(&mut self) -> (&mut String, &mut usize) {
         match self.focus {
-            Field::Folder | Field::Worktree => (&mut self.folder, &mut self.folder_cursor),
+            Field::Folder | Field::Mode | Field::Worktree => {
+                (&mut self.folder, &mut self.folder_cursor)
+            }
             Field::Name => (&mut self.name, &mut self.name_cursor),
             Field::Base => (&mut self.base, &mut self.base_cursor),
         }
@@ -327,7 +379,7 @@ impl NewSessionDialog {
 
     fn restore_mut(&mut self) -> &mut String {
         match self.focus {
-            Field::Folder | Field::Worktree => &mut self.folder_restore,
+            Field::Folder | Field::Mode | Field::Worktree => &mut self.folder_restore,
             Field::Name => &mut self.name_restore,
             Field::Base => &mut self.base_restore,
         }
@@ -337,7 +389,7 @@ impl NewSessionDialog {
     /// continues from the cycled text.
     fn set_query_from_text(&mut self) {
         match self.focus {
-            Field::Folder | Field::Worktree => {
+            Field::Folder | Field::Mode | Field::Worktree => {
                 self.folder_query = self.folder.clone();
                 self.folder_highlight = None;
             }
@@ -357,7 +409,7 @@ impl NewSessionDialog {
     /// moves on, clamping at the end; Up from the first match restores the text the field had
     /// before cycling started.
     fn move_highlight(&mut self, nav: NavAction) {
-        if self.focus == Field::Worktree {
+        if matches!(self.focus, Field::Worktree | Field::Mode) {
             return;
         }
         let list: Vec<String> = self
@@ -385,7 +437,7 @@ impl NewSessionDialog {
         *cursor = shown.chars().count();
         *text = shown;
         match focus {
-            Field::Folder | Field::Worktree => self.folder_highlight = next,
+            Field::Folder | Field::Mode | Field::Worktree => self.folder_highlight = next,
             Field::Name => self.name_highlight = next,
             Field::Base => {
                 self.base_highlight = next;
@@ -460,9 +512,11 @@ impl NewSessionDialog {
             self.error = Some("No folder selected".to_string());
             return Outcome::Pending;
         };
+        let command = self.modes[self.mode].command.clone();
         if !self.worktree {
             return Outcome::Submit(Submission {
                 cwd,
+                command,
                 worktree: None,
             });
         }
@@ -494,6 +548,7 @@ impl NewSessionDialog {
         };
         Outcome::Submit(Submission {
             cwd,
+            command,
             worktree: Some(worktree),
         })
     }
@@ -578,8 +633,50 @@ mod tests {
             } else {
                 WorktreeOption::Unavailable
             },
+            default_only(),
             &repo_of,
         )
+    }
+
+    fn mode(name: &str, command: &str) -> Mode {
+        Mode {
+            name: name.to_string(),
+            command: command.to_string(),
+        }
+    }
+
+    fn default_only() -> Vec<Mode> {
+        vec![mode("default", "claude")]
+    }
+
+    fn three_modes() -> Vec<Mode> {
+        vec![
+            mode("default", "claude"),
+            mode("yolo", "claude --dangerously-skip-permissions"),
+            mode("plan", "claude --permission-mode plan"),
+        ]
+    }
+
+    /// `projects()` with the worktree checkbox available and two configured modes.
+    fn with_modes() -> NewSessionDialog {
+        let records = [record("/work/web", 30)];
+        NewSessionDialog::open(
+            records.iter(),
+            Some("/work/web"),
+            WorktreeOption::Available {
+                checked: false,
+                can_checkout: true,
+            },
+            three_modes(),
+            &repo_of,
+        )
+    }
+
+    fn mode_focused() -> NewSessionDialog {
+        let mut dialog = with_modes();
+        tab(&mut dialog);
+        assert_eq!(dialog.focus, Field::Mode);
+        dialog
     }
 
     fn repo_of(folder: &str) -> Result<RepoInfo> {
@@ -644,6 +741,7 @@ mod tests {
             records.iter(),
             selected,
             WorktreeOption::Unavailable,
+            default_only(),
             &repo_of,
         )
     }
@@ -651,6 +749,7 @@ mod tests {
     fn submit_cwd(cwd: &str) -> Outcome {
         Outcome::Submit(Submission {
             cwd: cwd.to_string(),
+            command: "claude".to_string(),
             worktree: None,
         })
     }
@@ -658,6 +757,7 @@ mod tests {
     fn submit_new(cwd: &str, name: &str, base: &str) -> Outcome {
         Outcome::Submit(Submission {
             cwd: cwd.to_string(),
+            command: "claude".to_string(),
             worktree: Some(WorktreeRequest::New {
                 name: name.to_string(),
                 base: base.to_string(),
@@ -1032,6 +1132,7 @@ mod tests {
                 checked: true,
                 can_checkout: true,
             },
+            default_only(),
             &repo_of,
         );
         assert!(dialog.worktree);
@@ -1316,6 +1417,7 @@ mod tests {
             enter(&mut dialog),
             Outcome::Submit(Submission {
                 cwd: "/work/web".to_string(),
+                command: "claude".to_string(),
                 worktree: Some(WorktreeRequest::Existing {
                     branch: "Feat-B".to_string(),
                     path: "/wt/feat-b".to_string()
@@ -1390,6 +1492,7 @@ mod tests {
             enter(&mut dialog),
             Outcome::Submit(Submission {
                 cwd: "/work/web".to_string(),
+                command: "claude".to_string(),
                 worktree: Some(WorktreeRequest::Existing {
                     branch: "Feat-B".to_string(),
                     path: "/wt/feat-b".to_string()
@@ -1406,6 +1509,7 @@ mod tests {
             enter(&mut dialog),
             Outcome::Submit(Submission {
                 cwd: "/work/web".to_string(),
+                command: "claude".to_string(),
                 worktree: Some(WorktreeRequest::Checkout {
                     branch: "docs".to_string()
                 })
@@ -1506,5 +1610,153 @@ mod tests {
         down(&mut dialog);
         up(&mut dialog);
         assert_eq!(dialog.base, "branch-of:/Work/Docs");
+    }
+
+    #[test]
+    fn without_configured_modes_there_is_no_mode_field() {
+        let mut dialog = projects();
+        assert!(!dialog.modes_available());
+        assert_eq!(dialog.fields(), vec![Field::Folder, Field::Worktree]);
+        tab(&mut dialog);
+        assert_eq!(dialog.focus, Field::Worktree);
+    }
+
+    #[test]
+    fn the_mode_field_follows_folder_in_focus_order() {
+        let mut dialog = with_modes();
+        assert_eq!(
+            dialog.fields(),
+            vec![Field::Folder, Field::Mode, Field::Worktree]
+        );
+        tab(&mut dialog);
+        assert_eq!(dialog.focus, Field::Mode);
+        tab(&mut dialog);
+        assert_eq!(dialog.focus, Field::Worktree);
+        tab(&mut dialog);
+        assert_eq!(dialog.focus, Field::Folder);
+        send(&mut dialog, press(KeyCode::BackTab));
+        send(&mut dialog, press(KeyCode::BackTab));
+        assert_eq!(dialog.focus, Field::Mode);
+    }
+
+    #[test]
+    fn the_mode_field_works_without_the_worktree_checkbox() {
+        let records = [record("/a", 1)];
+        let dialog = NewSessionDialog::open(
+            records.iter(),
+            Some("/a"),
+            WorktreeOption::Unavailable,
+            three_modes(),
+            &repo_of,
+        );
+        assert_eq!(dialog.fields(), vec![Field::Folder, Field::Mode]);
+    }
+
+    #[test]
+    fn digits_select_the_mode_with_that_index() {
+        let mut dialog = mode_focused();
+        assert_eq!(dialog.mode, 0);
+        send(&mut dialog, press(KeyCode::Char('2')));
+        assert_eq!(dialog.mode, 2);
+        send(&mut dialog, press(KeyCode::Char('1')));
+        assert_eq!(dialog.mode, 1);
+        send(&mut dialog, press(KeyCode::Char('0')));
+        assert_eq!(dialog.mode, 0);
+    }
+
+    #[test]
+    fn a_digit_without_a_mode_is_ignored() {
+        let mut dialog = mode_focused();
+        send(&mut dialog, press(KeyCode::Char('1')));
+        for digit in ['3', '9'] {
+            send(&mut dialog, press(KeyCode::Char(digit)));
+            assert_eq!(dialog.mode, 1);
+        }
+    }
+
+    #[test]
+    fn up_and_down_move_the_selection_and_clamp_at_the_ends() {
+        let mut dialog = mode_focused();
+        assert_eq!(dialog.highlight_index(), Some(0));
+        down(&mut dialog);
+        down(&mut dialog);
+        down(&mut dialog);
+        assert_eq!(dialog.mode, 2);
+        assert_eq!(dialog.highlight_index(), Some(2));
+        send(&mut dialog, ctrl('p'));
+        assert_eq!(dialog.mode, 1);
+        up(&mut dialog);
+        up(&mut dialog);
+        assert_eq!(dialog.mode, 0);
+        send(&mut dialog, ctrl('n'));
+        assert_eq!(dialog.mode, 1);
+    }
+
+    #[test]
+    fn left_and_right_step_the_selection() {
+        let mut dialog = mode_focused();
+        send(&mut dialog, press(KeyCode::Right));
+        send(&mut dialog, press(KeyCode::Right));
+        send(&mut dialog, press(KeyCode::Right));
+        assert_eq!(dialog.mode, 2);
+        send(&mut dialog, press(KeyCode::Left));
+        assert_eq!(dialog.mode, 1);
+    }
+
+    #[test]
+    fn the_mode_list_shows_every_mode_and_other_keys_are_swallowed() {
+        let mut dialog = mode_focused();
+        assert_eq!(dialog.suggestions(), vec!["default", "yolo", "plan"]);
+        type_text(&mut dialog, "abc ");
+        send(&mut dialog, press(KeyCode::Backspace));
+        assert_eq!((dialog.folder.as_str(), dialog.mode), ("", 0));
+        assert!(!dialog.worktree);
+    }
+
+    #[test]
+    fn the_selection_is_kept_when_focus_moves_away() {
+        let mut dialog = mode_focused();
+        send(&mut dialog, press(KeyCode::Char('2')));
+        tab(&mut dialog);
+        tab(&mut dialog);
+        tab(&mut dialog);
+        assert_eq!(dialog.focus, Field::Mode);
+        assert_eq!(dialog.mode, 2);
+    }
+
+    #[test]
+    fn submitting_carries_the_selected_modes_command() {
+        let mut dialog = with_modes();
+        assert_eq!(enter(&mut dialog), submit_cwd("/work/web"));
+
+        let mut dialog = mode_focused();
+        send(&mut dialog, press(KeyCode::Char('1')));
+        assert_eq!(
+            enter(&mut dialog),
+            Outcome::Submit(Submission {
+                cwd: "/work/web".to_string(),
+                command: "claude --dangerously-skip-permissions".to_string(),
+                worktree: None,
+            })
+        );
+    }
+
+    #[test]
+    fn a_worktree_submission_carries_the_selected_modes_command_too() {
+        let mut dialog = mode_focused();
+        send(&mut dialog, press(KeyCode::Char('2')));
+        tab(&mut dialog);
+        send(&mut dialog, press(KeyCode::Char(' ')));
+        assert_eq!(
+            enter(&mut dialog),
+            Outcome::Submit(Submission {
+                cwd: "/work/web".to_string(),
+                command: "claude --permission-mode plan".to_string(),
+                worktree: Some(WorktreeRequest::New {
+                    name: String::new(),
+                    base: "branch-of:/work/web".to_string(),
+                }),
+            })
+        );
     }
 }

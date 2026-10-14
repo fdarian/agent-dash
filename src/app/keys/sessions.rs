@@ -10,6 +10,7 @@ use crate::app::{
     refresh_visible_items, save_ui_state, scroll_preview_down, scroll_preview_up, selected_session,
     show_toast, update_selected_target, Action, AppState, Focus, PreviewTarget,
 };
+use crate::config::Mode;
 use crate::copy_mode;
 use crate::sessions::live::Mutation;
 use crate::sessions::record::ArchiveReason;
@@ -100,6 +101,12 @@ pub(super) fn handle(
                         },
                         None => WorktreeOption::Unavailable,
                     },
+                    std::iter::once(Mode {
+                        name: "default".to_string(),
+                        command: state.config.command.clone(),
+                    })
+                    .chain(state.config.modes.iter().cloned())
+                    .collect(),
                     &load_repo_info,
                 );
                 state.new_session = Some(dialog);

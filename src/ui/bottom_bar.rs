@@ -2,6 +2,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
 use super::theme::Palette;
+use crate::app::new_session::Field;
 use crate::app::view_config::ViewConfigOverlay;
 use crate::app::{AppState, Focus};
 
@@ -29,7 +30,19 @@ fn current_entries(state: &AppState) -> Vec<BarEntry> {
             },
         ];
     }
-    if state.new_session.is_some() {
+    if let Some(dialog) = state.new_session.as_ref() {
+        // Space only toggles the Worktree checkbox; the mode is picked by number instead.
+        let field_hint = if dialog.focus == Field::Mode {
+            BarEntry {
+                key: "0-9",
+                desc: "mode",
+            }
+        } else {
+            BarEntry {
+                key: "Space",
+                desc: "toggle",
+            }
+        };
         return vec![
             BarEntry {
                 key: "^n/^p",
@@ -39,10 +52,7 @@ fn current_entries(state: &AppState) -> Vec<BarEntry> {
                 key: "Tab",
                 desc: "next",
             },
-            BarEntry {
-                key: "Space",
-                desc: "toggle",
-            },
+            field_hint,
             BarEntry {
                 key: "Enter",
                 desc: "create",

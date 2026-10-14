@@ -16,6 +16,10 @@ theme = "dark"
 sharedState = false
 autoTrackSessions = true
 
+[[modes]]
+name = "yolo"
+command = "claude --dangerously-skip-permissions"
+
 [worktree]
 create = "git worktree add ../{{name}} -b {{name}} {{base}}"
 checkout = "git worktree add ../{{name}} {{name}}"
@@ -33,6 +37,9 @@ The same configuration as JSON:
   "theme": "dark",
   "sharedState": false,
   "autoTrackSessions": true,
+  "modes": [
+    { "name": "yolo", "command": "claude --dangerously-skip-permissions" }
+  ],
   "worktree": {
     "create": "git worktree add ../{{name}} -b {{name}} {{base}}",
     "checkout": "git worktree add ../{{name}} {{name}}"
@@ -46,6 +53,22 @@ The same configuration as JSON:
 ### command
 
 The command used to start a new session (`c`). Resuming a closed session runs it with `--resume <session id>` appended. Defaults to `"claude"`.
+
+### modes
+
+Optional. Named alternatives to `command`, set as a `[[modes]]` array (TOML) or a `modes` array (JSON). Each entry needs a `name` and a `command`. With at least one mode, the new-session dialog (`c`) gets a **Mode** row right under Folder; leave it unset and the row is hidden.
+
+The first mode is always `default`, which runs the top-level `command`; yours follow in config order as `1`, `2`, and so on. The dialog starts on `default` every time. With Mode focused (`Tab`), press its number (`0` to `9`) to choose it, or use `←`/`→` or the arrow keys and `Ctrl+n`/`Ctrl+p` to step through the list below, which shows each mode's command. `Enter` starts the session with the chosen mode's command, also when a worktree is created. Resuming a closed session always uses `command`.
+
+```toml
+[[modes]]
+name = "yolo"
+command = "claude --dangerously-skip-permissions"
+
+[[modes]]
+name = "plan"
+command = "claude --permission-mode plan"
+```
 
 ### worktree
 

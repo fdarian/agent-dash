@@ -72,10 +72,18 @@ pub struct WorktreeCommands {
     pub checkout: Option<String>,
 }
 
+/// A named command the New session dialog can start instead of the top-level `command`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Mode {
+    pub name: String,
+    pub command: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ConfigFile {
     command: Option<String>,
+    modes: Option<Vec<Mode>>,
     worktree: Option<WorktreeConfigFile>,
     layout: Option<LayoutDirection>,
     shared_state: Option<bool>,
@@ -86,6 +94,8 @@ struct ConfigFile {
 
 pub struct AppConfig {
     pub command: String,
+    /// Extra modes in config order; the dialog puts the implicit "default" (`command`) before them.
+    pub modes: Vec<Mode>,
     /// The dialog's worktree option is hidden unless `create` is set.
     pub worktree: Option<WorktreeCommands>,
     pub exit_on_switch: bool,
@@ -100,6 +110,7 @@ impl AppConfig {
     fn defaults(exit_on_switch: bool) -> Self {
         Self {
             command: "claude".to_string(),
+            modes: Vec::new(),
             worktree: None,
             exit_on_switch,
             layout: LayoutDirection::default(),
@@ -162,6 +173,10 @@ fn build_config(config_file: &ConfigFile, exit_on_switch: bool) -> AppConfig {
 
     if let Some(command) = config_file.command.as_ref() {
         config.command = command.clone();
+    }
+
+    if let Some(modes) = config_file.modes.as_ref() {
+        config.modes = modes.clone();
     }
 
     config.worktree = config_file.worktree.as_ref().and_then(|worktree| {
@@ -300,6 +315,49 @@ checkout = "git worktree add ../{{name}} {{name}}"
     fn the_old_worktree_command_key_is_ignored() {
         let config_file = parse_toml("worktreeCommand = \"wt\"\n").unwrap();
         assert_eq!(build_config(&config_file, false).worktree, None);
+    }
+
+    #[test]
+    fn modes_default_to_none_and_parse_in_order_from_toml_and_json() {
+        assert!(build_config(&parse_toml("").unwrap(), false)
+            .modes
+            .is_empty());
+        let expected = vec![
+            Mode {
+                name: "yolo".to_string(),
+                command: "claude --dangerously-skip-permissions".to_string(),
+            },
+            Mode {
+                name: "plan".to_string(),
+                command: "claude --permission-mode plan".to_string(),
+            },
+        ];
+        let from_toml = parse_toml(
+            r#"
+[[modes]]
+name = "yolo"
+command = "claude --dangerously-skip-permissions"
+
+[[modes]]
+name = "plan"
+command = "claude --permission-mode plan"
+"#,
+        )
+        .unwrap();
+        let from_json = parse_json(
+            r#"{"modes": [
+                {"name": "yolo", "command": "claude --dangerously-skip-permissions"},
+                {"name": "plan", "command": "claude --permission-mode plan"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(build_config(&from_toml, false).modes, expected);
+        assert_eq!(build_config(&from_json, false).modes, expected);
+    }
+
+    #[test]
+    fn a_mode_needs_both_name_and_command() {
+        assert!(parse_toml("[[modes]]\nname = \"yolo\"\n").is_err());
+        assert!(parse_toml("[[modes]]\ncommand = \"claude\"\n").is_err());
     }
 
     #[test]
